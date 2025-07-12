@@ -1,0 +1,221 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ────────────────
+    // Helper Functions
+    // ────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isTaskOwner(taskId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/tasks/$(taskId)) &&
+        get(/databases/$(database)/documents/tasks/$(taskId)).data.createdBy == request.auth.uid;
+    }
+
+    function isTaskAssignee(taskId) {
+      let task = get(/databases/$(database)/documents/tasks/$(taskId)).data;
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/tasks/$(taskId)) &&
+        (task.assignTo == request.auth.uid || 
+         task.assignTo == user.email ||
+         task.assignTo == user.alias);
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserRole() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return userDoc.exists ? userDoc.data.role : "staff";
+    }
+
+    function isStaff() {
+      return isAuthenticated() && getUserRole() == "staff";
+    }
+
+    function isStaffOrAdmin() {
+      return isStaff() || isAdmin();
+    }
+
+    function isValidNudge() {
+      let newNudge = request.resource.data.nudges[request.resource.data.nudges.size() - 1];
+      return newNudge.userId == request.auth.uid &&
+             newNudge.userAlias == request.auth.email &&
+             newNudge.timestamp is timestamp;
+    }
+
+    function canModifyTask(task) {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return 
+        task.userId == request.auth.uid ||
+        task.creatorId == request.auth.uid ||
+        task.assignTo == request.auth.email ||
+        task.assignTo == user.alias;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function canAccessTask(task) {
+      let userData = getUserData();
+      return 
+        task.userId == request.auth.uid ||
+        task.creatorId == request.auth.uid ||
+        task.assignTo == request.auth.uid ||
+        task.assignTo == request.auth.email ||
+        task.assignTo == userData.email ||
+        task.assignTo == userData.alias;
+    }
+
+    // Allow read access to all collections for authenticated users
+    match /{document=**} {
+      allow read: if isAuthenticated();
+    }
+
+    // ────────────────
+    // Users Collection
+    // ────────────────
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (request.auth.uid == userId || request.auth.token.admin == true);
+    }
+
+    // ────────────────
+    // Leads Collection
+    // ────────────────
+    match /leads/{leadId} {
+      // Allow create with basic validation, no auth required for API
+      allow create: if 
+        request.resource.data.fullName is string &&
+        request.resource.data.phoneNumber is string &&
+        request.resource.data.status is string;
+      
+      // Allow update by any authenticated user
+      allow update: if isAuthenticated();
+      
+      // Allow delete by admin or creator
+      allow delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // ────────────────
+    // Tasks Collection
+    // ────────────────
+    match /tasks/{taskId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ────────────────
+    // Notifications Collection
+    // ────────────────
+    match /notifications/{notificationId} {
+      allow create: if isAuthenticated() && (
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.type in ['task_nudge'] &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.isRead is bool
+      );
+
+      allow update: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.email ||
+        resource.data.senderId == request.auth.uid
+      ) && (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+      );
+
+      allow delete: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.email ||
+        resource.data.senderId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // ────────────────
+    // Notes Collection
+    // ────────────────
+    match /notes/{noteId} {
+      // Allow all operations if user is authenticated
+      allow read, write: if isAuthenticated();
+    }
+
+    // ────────────────
+    // Links Collection
+    // ────────────────
+    match /links/{linkId} {
+      function isValidLink() {
+        return request.resource.data.title is string &&
+               request.resource.data.url is string &&
+               request.resource.data.addedBy is string;
+      }
+
+      // Allow all authenticated users to read links
+      allow read: if isAuthenticated();
+
+      // Allow create if user is authenticated and link data is valid
+      allow create: if isAuthenticated() && isValidLink() && 
+        request.resource.data.addedBy == request.auth.email;
+
+      // Allow all authenticated users to delete links
+      allow delete: if isAuthenticated();
+
+      // Allow update only for the link owner
+      allow update: if isAuthenticated() && 
+        resource.data.addedBy == request.auth.email;
+    }
+
+    // ────────────────
+    // User Tabs Collection
+    // ────────────────
+    match /userTabs/{tabId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.name is string &&
+        request.resource.data.color in ['red', 'blue', 'green', 'purple', 'yellow'];
+      allow update: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == resource.data.userId &&  // Prevent changing ownership
+        request.resource.data.name is string &&
+        request.resource.data.color in ['red', 'blue', 'green', 'purple', 'yellow'];
+      allow delete: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+    }
+
+    // ────────────────
+    // Task Tabs Collection
+    // ────────────────
+    match /taskTabs/{taskTabId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+        request.resource.data.addedBy == request.auth.uid;
+      allow delete: if isAuthenticated() && 
+        resource.data.addedBy == request.auth.uid;
+    }
+
+    // ────────────────
+    // Archived Tasks Collection
+    // ────────────────
+    match /archivedTasks/{taskId} {
+      // Allow read for all authenticated users
+      allow read: if isAuthenticated();
+      // Allow create, update, delete only for admins
+      allow create, update, delete: if isAdmin();
+    }
+
+  } // END documents
+} // END service 
