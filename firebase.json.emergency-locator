@@ -1,0 +1,9 @@
+{
+  "firestore": {
+    "rules": "firestore.rules.emergency-locator",
+    "indexes": "firestore.indexes.json"
+  },
+  "database": {
+    "rules": "realtime-database-rules.json"
+  }
+} 

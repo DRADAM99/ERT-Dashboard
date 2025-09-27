@@ -1,4 +1,4 @@
-// Version 7.0 - Collapse/expand Kanban
+// Version 6.7 - Collapse/expand Kanban
 "use client";
 
 // Utility functions for layout persistence
@@ -659,109 +659,22 @@ const handleFollowUpClick = async (lead) => {
       const exportSuccess = await exportEmergencyDataToCSV();
       
       if (exportSuccess) {
-        // Clear system for next emergency event
-        console.log("🧹 Clearing system for next emergency event...");
-        
-        try {
-          // Delete all event logs from Firestore
-          console.log("🗑️ Deleting all event logs...");
-          const { collection, getDocs, deleteDoc, doc } = await import("firebase/firestore");
-          const { db } = await import("../firebase");
-          
-          // Get all event logs
-          const eventLogsRef = collection(db, "eventLogs");
-          const eventLogsSnapshot = await getDocs(eventLogsRef);
-          
-          // Delete all event logs
-          const deletePromises = eventLogsSnapshot.docs.map(async (eventDoc) => {
-            await deleteDoc(doc(db, "eventLogs", eventDoc.id));
-          });
-          
-          await Promise.all(deletePromises);
-          console.log("✅ All event logs deleted successfully");
-          
-          // Delete all residents from Firestore
-          console.log("🗑️ Deleting all residents...");
-          await clearResidentsCollection();
-          console.log("✅ All residents deleted successfully");
-          
-          // Also delete any linked tasks
-          try {
-            const tasksRef = collection(db, "tasks");
-            const tasksSnapshot = await getDocs(tasksRef);
-            
-            const taskDeletePromises = tasksSnapshot.docs.map(async (taskDoc) => {
-              await deleteDoc(doc(db, "tasks", taskDoc.id));
-            });
-            
-            await Promise.all(taskDeletePromises);
-            console.log("✅ All linked tasks deleted successfully");
-          } catch (taskError) {
-            console.error('Error deleting linked tasks:', taskError);
-          }
-          
-          // Call Google Apps Script to clear all resident statuses and residents
-          const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7cvLc_iqfybXNOd8PV8klJe65Sgo1sLtN2hA8NGo-clBFVV4vwTrIrBIuV1kdIDQ_3A/exec"; // Your actual Google Apps Script URL
-          
-          console.log("🔄 Calling Google Apps Script webhook:", GOOGLE_APPS_SCRIPT_URL);
-          
-          let clearResponse;
-          try {
-            clearResponse = await fetch(GOOGLE_APPS_SCRIPT_URL, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-              },
-              body: 'clearSystem=1',
-              mode: 'no-cors' // Add this to handle CORS issues
-            });
-            
-            console.log("📥 Response status:", clearResponse.status);
-            
-            // Try to get response text, but handle potential errors
-            let responseText = '';
-            try {
-              responseText = await clearResponse.text();
-              console.log("📥 Response text:", responseText);
-            } catch (textError) {
-              console.log("📥 Could not read response text:", textError);
-            }
-          } catch (fetchError) {
-            console.error("❌ Fetch error:", fetchError);
-            throw fetchError;
-          }
-          
-          if (clearResponse && clearResponse.ok) {
-            console.log("✅ System cleared successfully");
-            toast({
-              title: "אירוע החירום הסתיים",
-              description: "הנתונים יוצאו לקובץ CSV, כל האירועים והתושבים נמחקו והמערכת נוקתה בהצלחה",
-            });
-          } else {
-            console.warn("⚠️ System clear failed, but export and event deletion succeeded");
-            toast({
-              title: "אירוע החירום הסתיים",
-              description: "הנתונים יוצאו לקובץ CSV, כל האירועים והתושבים נמחקו בהצלחה, אך ניקוי המערכת נכשל",
-            });
-          }
-        } catch (clearError) {
-          console.error("❌ Error clearing system:", clearError);
-          toast({
-            title: "אירוע החירום הסתיים",
-            description: "הנתונים יוצאו לקובץ CSV, כל האירועים והתושבים נמחקו בהצלחה, אך ניקוי המערכת נכשל",
-          });
-        }
+        toast({
+          title: "אירוע החירום הסתיים",
+          description: "הנתונים יוצאו לקובץ CSV בהצלחה",
+        });
         
         // Close dialog
         setShowEndEmergencyDialog(false);
+        
+        // Optionally, you can clear the data here if needed
+        // await clearAllEmergencyData();
       } else {
         toast({
           title: "שגיאה בייצוא הנתונים",
           description: "לא ניתן היה לייצא את הנתונים",
           variant: "destructive"
         });
-        // Close dialog even if export failed
-        setShowEndEmergencyDialog(false);
       }
     } catch (error) {
       console.error("❌ Error ending emergency event:", error);
@@ -770,8 +683,6 @@ const handleFollowUpClick = async (lead) => {
         description: error.message || "שגיאה לא ידועה",
         variant: "destructive"
       });
-      // Close dialog even if there's an error
-      setShowEndEmergencyDialog(false);
     }
   };
 
@@ -799,31 +710,6 @@ const handleFollowUpClick = async (lead) => {
         emergencyEventId: emergencyEventId
       });
 
-      // Call Google Apps Script to trigger ירוק בעיניים
-      const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7cvLc_iqfybXNOd8PV8klJe65Sgo1sLtN2hA8NGo-clBFVV4vwTrIrBIuV1kdIDQ_3A/exec";
-      
-      console.log("🔄 Calling Google Apps Script for ירוק בעיניים:", GOOGLE_APPS_SCRIPT_URL);
-      
-      try {
-        const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: 'triggerGreenInEyes=1',
-          mode: 'no-cors'
-        });
-        
-        console.log("📥 ירוק בעיניים response status:", response.status);
-      } catch (scriptError) {
-        console.error("❌ Error calling Google Apps Script:", scriptError);
-        toast({
-          title: "שגיאה בקריאה לסקריפט",
-          description: "לא ניתן להפעיל את נוהל ירוק בעיניים",
-          variant: "destructive"
-        });
-      }
-
       // Send notification to all users (optional)
       toast({
         title: "נוהל ירוק בעיניים הופעל",
@@ -832,6 +718,12 @@ const handleFollowUpClick = async (lead) => {
 
       // Close dialog
       setShowGreenEyesDialog(false);
+
+      // Optionally, you can add more emergency procedures here:
+      // - Send SMS notifications
+      // - Activate emergency protocols
+      // - Notify emergency services
+      // - etc.
 
     } catch (error) {
       console.error("❌ Error activating Green Eyes:", error);
@@ -1547,19 +1439,6 @@ const [residents, setResidents] = useState([]);
 const [residentCategories, setResidentCategories] = useState([]);
 const [selectedResidentCategories, setSelectedResidentCategories] = useState([]);
 
-// Function to clear residents collection (for debugging)
-const clearResidentsCollection = async () => {
-  try {
-    const residentsRef = collection(db, 'residents');
-    const snapshot = await getDocs(residentsRef);
-    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-    await Promise.all(deletePromises);
-    console.log('✅ Cleared residents collection');
-  } catch (error) {
-    console.error('❌ Error clearing residents:', error);
-  }
-};
-
 useEffect(() => {
   if (!currentUser) return;
 
@@ -1597,13 +1476,6 @@ useEffect(() => {
             .filter(Boolean)
         )
       ).sort();
-      
-      // Add blank status option if there are residents with empty status
-      const hasBlankStatus = fetchedResidents.some(r => !(r[catKey] || '').trim());
-      if (hasBlankStatus) {
-        cats.unshift('ללא סטטוס'); // Add at the beginning
-      }
-      
       setResidentCategories(cats);
       setSelectedResidentCategories(cats); // Default: all selected
     }
@@ -1629,15 +1501,7 @@ const filteredResidents = useMemo(() => {
     return residents;
   }
   
-  const filtered = residents.filter(r => {
-    const status = (r[catKey] || '').trim();
-    // Handle "ללא סטטוס" (No Status) option
-    if (selectedResidentCategories.includes('ללא סטטוס')) {
-      if (!status) return true; // Include residents with blank status
-    }
-    // Include residents with matching status
-    return selectedResidentCategories.includes(status);
-  });
+  const filtered = residents.filter(r => selectedResidentCategories.includes((r[catKey] || '').trim()));
   console.log(`📊 Filtered residents: ${filtered.length} out of ${residents.length}`);
   return filtered;
 }, [residents, selectedResidentCategories]);
@@ -3890,7 +3754,7 @@ const calculatedAnalytics = useMemo(() => {
   </div>
 
   <div className="w-full sm:w-48 text-center sm:text-left text-sm text-gray-500 flex flex-col items-center sm:items-end sm:ml-0">
-    <span>{'Version 7.0'}</span>
+    <span>{'Version 6.7'}</span>
     <div className="flex flex-col gap-2 mt-2">
       <Button 
         size="sm" 
@@ -3925,7 +3789,7 @@ const calculatedAnalytics = useMemo(() => {
 <div dir="rtl" className="grid grid-cols-1 lg:grid-cols-12 gap-2 sm:gap-4 p-2 sm:p-4 bg-gray-50 min-h-[calc(100vh-90px)]">
           {/* Task Manager Block */}
         <div style={{ order: blockOrder.TM }} className={`col-span-1 ${isTMFullView ? 'lg:col-span-12' : 'lg:col-span-4'} transition-all duration-300 ease-in-out`}>
-          <TaskManager2 
+                    <TaskManager2 
             currentUser={currentUser}
             alias={alias}
             users={users}
@@ -3943,6 +3807,301 @@ const calculatedAnalytics = useMemo(() => {
 
   
   {/* Residents/Leads Block */}
+            <Button 
+              size="xs" 
+              onClick={() => toggleBlockOrder("TM")} 
+              title="שנה מיקום בלוק"
+              className="w-full sm:w-auto"
+            >
+              {'מיקום: '}{blockOrder.TM}
+            </Button>
+          </div>
+        </div>
+        
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button variant={taskFilter === 'הכל' ? 'default' : 'outline'} size="sm" onClick={() => setTaskFilter('הכל')}>{'הכל'}</Button>
+              <Button variant={taskFilter === 'שלי' ? 'default' : 'outline'} size="sm" onClick={() => setTaskFilter('שלי')}>{'שלי'}</Button>
+              <Button variant={taskFilter === 'אחרים' ? 'default' : 'outline'} size="sm" onClick={() => setTaskFilter('אחרים')}>{'אחרים'}</Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <IOSSwitch
+                  checked={showDoneTasks}
+                  onChange={(e) => setShowDoneTasks(e.target.checked)}
+                  inputProps={{ 'aria-label': 'הצג בוצעו' }}
+                />
+                <Label className="text-sm font-medium cursor-pointer select-none">{'הצג בוצעו'}</Label>
+              </div>
+              <div className="flex items-center gap-2 mr-4 pr-4 border-r">
+                <IOSSwitch
+                  checked={showOverdueEffects}
+                  onChange={(e) => setShowOverdueEffects(e.target.checked)}
+                  inputProps={{ 'aria-label': 'הצג חיווי איחור' }}
+                />
+                <Label className="text-sm font-medium cursor-pointer select-none">{'הצג חיווי איחור'}</Label>
+              </div>
+              {!isTMFullView && userHasSortedTasks && (
+                <Button variant="ghost" size="icon" className="w-8 h-8" title="אפס סדר ידני" onClick={() => setUserHasSortedTasks(false)}>
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-t pt-3">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <Select value={taskPriorityFilter} onValueChange={setTaskPriorityFilter}>
+                <SelectTrigger className="h-8 text-sm w-full sm:w-[100px]">
+                  <SelectValue placeholder="סינון עדיפות..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{'כל העדיפויות'}</SelectItem>
+                  {taskPriorities.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              
+              
+
+              <div className="relative w-full sm:w-auto">
+                <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Input 
+                  type="search" 
+                  placeholder="חפש משימות..." 
+                  className="h-8 text-sm pl-8 w-full sm:w-[180px]" 
+                  value={taskSearchTerm} 
+                  onChange={(e) => setTaskSearchTerm(e.target.value)} 
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <Button 
+                variant="outline" 
+                size="icon" 
+                className="w-8 h-8 text-red-600 hover:bg-red-50 hover:text-red-700" 
+                title="מחק משימות שבוצעו" 
+                onClick={handleClearDoneTasks} 
+                disabled={!tasks.some(task => task.done)}
+              >
+                <span role="img" aria-label="Clear Done">🧹</span>
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                title="היסטוריית משימות" 
+                onClick={() => setShowHistoryModal(true)}
+              >
+                <span role="img" aria-label="History">📜</span>
+              </Button>
+              <Button 
+                size="sm"
+                className="w-full sm:w-auto" 
+                onClick={() => {
+                  setNewTaskTitle("");
+                  setNewTaskSubtitle("");
+                  setNewTaskPriority("רגיל");
+                  setNewTaskCategory(taskCategories[0] || "");
+                  setNewTaskDueDate("");
+                  setNewTaskDueTime("");
+                  const myUser = assignableUsers.find(u => u.email === currentUser?.email || u.alias === currentUser?.alias);
+                  setNewTaskDepartment(myUser ? (myUser.alias || myUser.email) : (currentUser?.alias || currentUser?.email || ""));
+                  setShowTaskModal(true);
+                }}
+              >
+                {'+ משימה'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="flex-grow overflow-hidden">
+        {isTMFullView ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleCategoryDragEnd}
+          >
+            <SortableContext
+              items={taskCategories}
+              strategy={horizontalListSortingStrategy}
+            >
+              <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-${Math.min(6, Math.max(1, taskCategories.length))} gap-3 h-[calc(100vh-340px)] overflow-x-auto`}>
+                {taskCategories.map((category) => (
+                  <SortableCategoryColumn key={category} id={category} className="bg-gray-100 rounded-lg p-2 flex flex-col min-w-[280px] box-border w-full min-w-0">
+                    <div className="flex justify-between items-center mb-2 sticky top-0 bg-gray-100 py-1 px-1 z-10">
+                      {/* Collapse/expand chevron (RTL: left side) */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-6 h-6 text-gray-500 hover:text-blue-600 shrink-0 ml-2 rtl:ml-0 rtl:mr-2"
+                        title={kanbanCollapsed[category] ? 'הרחב קטגוריה' : 'צמצם קטגוריה'}
+                        onClick={() => handleToggleKanbanCollapse(category)}
+                        tabIndex={0}
+                        aria-label={kanbanCollapsed[category] ? 'הרחב קטגוריה' : 'צמצם קטגוריה'}
+                      >
+                        {/* Chevron points down when expanded, left when collapsed (RTL) */}
+                        {kanbanCollapsed[category] ? <ChevronLeft className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                      </Button>
+                      <h3 className="font-semibold text-center flex-grow">{category} ({sortedAndFilteredTasks.filter(task => task.category === category).length})</h3>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="w-6 h-6 text-gray-500 hover:text-blue-600 shrink-0" 
+                        title={`הוסף ל${category}`} 
+                        onClick={() => {
+                          setNewTaskCategory(category);
+                          setShowTaskModal(true);
+                        }}
+                      >
+                        <span role="img" aria-label="Add">➕</span>
+                      </Button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto w-full min-w-0 box-border" data-category={category} data-droppable="true">
+                      <div className="space-y-2 w-full min-w-0 box-border">
+                        {showTaskModal && newTaskCategory === category && renderTask(null)}
+                        {sortedAndFilteredTasks.filter(task => task.category === category).map((task) => (
+                          <SortableItem key={`task-${task.id}`} id={`task-${task.id}`}> 
+                            <div className="relative flex items-center group w-full min-w-0 box-border">
+                              {/* Per-task collapse chevron (RTL: left) - always visible */}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="w-6 h-6 text-gray-400 hover:text-blue-600 shrink-0 ml-2 rtl:ml-0 rtl:mr-2"
+                                title={kanbanTaskCollapsed[task.id] ? 'הרחב משימה' : 'צמצם משימה'}
+                                onClick={(e) => { e.stopPropagation(); handleToggleTaskCollapse(task.id); }}
+                                tabIndex={0}
+                                aria-label={kanbanTaskCollapsed[task.id] ? 'הרחב משימה' : 'צמצם משימה'}
+                              >
+                                {kanbanTaskCollapsed[task.id] ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                              {/* Category collapsed: always show collapsed block. Category expanded: show per-task state. */}
+                              {kanbanCollapsed[category] || kanbanTaskCollapsed[task.id] ? (
+                                <div className="flex-grow cursor-grab active:cursor-grabbing group w-full min-w-0 p-3 rounded-lg shadow-sm border bg-white flex items-center gap-2 min-h-[48px] box-border">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex-grow truncate text-right">
+                                        <div className={`font-medium truncate ${task.done ? 'line-through text-gray-500' : ''}`}>{task.title}</div>
+                                        {task.subtitle && (
+                                          <div className={`text-xs text-gray-600 truncate ${task.done ? 'line-through' : ''}`}>{task.subtitle}</div>
+                                        )}
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" align="end" className="max-w-xs text-xs text-right whitespace-pre-line">
+                                      {`🗓️ ${formatDateTime(task.dueDate)}\n🏢 ${task.department}\n${task.creatorAlias ? `📝 ${task.creatorAlias}\n` : ''}🏷️ ${task.category}\n${task.priority === 'דחוף' ? '🔥' : task.priority === 'נמוך' ? '⬇️' : '➖'} ${task.priority}`}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  {/* Action buttons remain visible */}
+                                  <div className="flex items-center gap-1">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8"
+                                          onClick={() => {
+                                            setEditingTaskId(task.id);
+                                            setEditingTitle(task.title);
+                                            setEditingSubtitle(task.subtitle || '');
+                                            setEditingPriority(task.priority);
+                                            setEditingCategory(task.category);
+                                            if (task.dueDate) {
+                                              const due = new Date(task.dueDate);
+                                              if (!isNaN(due.getTime())) {
+                                                setEditingDueDate(due.toLocaleDateString('en-CA'));
+                                                setEditingDueTime(due.toTimeString().slice(0, 5));
+                                              }
+                                            }
+                                            setEditingDepartment(task.department || '');
+                                          }}
+                                        >
+                                          <Pencil className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>ערוך משימה</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 relative"
+                                          onClick={() => {
+                                            setReplyingToTaskId(task.id);
+                                            setReplyInputValue("");
+                                          }}
+                                        >
+                                          <MessageCircle className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>הוסף תגובה</TooltipContent>
+                                    </Tooltip>
+                                    {!task.done && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="w-6 h-6 relative text-gray-400 hover:text-orange-600"
+                                            title="שלח תזכורת"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleNudgeTask(task.id);
+                                            }}
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                          >
+                                            <Bell className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>שלח תזכורת</TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex-grow w-full min-w-0 box-border">{renderTask(task)}</div>
+                              )}
+                            </div>
+                          </SortableItem>
+                        ))}
+                      </div>
+                    </div>
+                  </SortableCategoryColumn>
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        ) : (
+          <div className="h-[calc(100vh-340px)] overflow-y-auto pr-2">
+            <div className="space-y-2 w-full">
+              {showTaskModal && <div className="w-full">{renderTask(null)}</div>}
+              {sortedAndFilteredTasks.length === 0 && !showTaskModal && (
+                <div className="text-center text-gray-500 py-4 w-full">{'אין משימות להצגה'}</div>
+              )}
+              {sortedAndFilteredTasks.map((task) => {
+                const overdue = isTaskOverdue(task);
+                const overdue12h = isTaskOverdue12h(task);
+                return (
+                  <SortableItem key={task.uniqueId} id={`task-${task.id}`}>
+                    <div 
+                      className={`w-full flex items-start justify-between p-2 cursor-grab active:cursor-grabbing 
+                        ${task.done ? 'bg-gray-100 opacity-70' : ''} 
+                        ${overdue && showOverdueEffects ? 'after:content-[""] after:absolute after:top-0 after:bottom-0 after:right-0 after:w-1 after:bg-red-500 relative' : ''} 
+                        ${overdue12h && showOverdueEffects ? 'animate-pulse bg-yellow-50' : ''}`}
+                    >
+                      {renderTask(task)}
+                    </div>
+                  </SortableItem>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  </div>
+      */}
 
   
   {/* Residents/Leads Block */}
@@ -4058,16 +4217,9 @@ const calculatedAnalytics = useMemo(() => {
         )}
         
         <div className="mt-2 pt-2 border-t">
-           <div className="flex gap-2">
-             <Button variant="secondary" size="sm" onClick={() => setShowAnalytics(!showAnalytics)}>
-                 {showAnalytics ? 'הסתר ניתוח תושבים' : 'הצג ניתוח תושבים'}
-             </Button>
-             {currentUser?.role === 'admin' && (
-               <Button variant="destructive" size="sm" onClick={clearResidentsCollection}>
-                   🗑️ נקה נתוני תושבים
-               </Button>
-             )}
-           </div>
+           <Button variant="secondary" size="sm" onClick={() => setShowAnalytics(!showAnalytics)}>
+               {showAnalytics ? 'הסתר ניתוח תושבים' : 'הצג ניתוח תושבים'}
+           </Button>
         </div>
       </CardHeader>
        <CardContent className="flex-grow flex flex-col overflow-hidden">
@@ -4673,7 +4825,7 @@ const calculatedAnalytics = useMemo(() => {
             </p>
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
               <p className="text-xs text-yellow-800">
-                <strong>שים לב:</strong> פעולה זו תייצא את כל הנתונים לקובץ CSV ותנקה את המערכת לאירוע הבא:
+                <strong>שים לב:</strong> פעולה זו תייצא את כל הנתונים לקובץ CSV עם ציר זמן מלא של כל האירועים:
               </p>
               <ul className="text-xs text-yellow-700 mt-2 space-y-1 list-disc list-inside">
                 <li>יומן אירועים</li>
@@ -4681,10 +4833,6 @@ const calculatedAnalytics = useMemo(() => {
                 <li>שינויים בסטטוס תושבים</li>
                 <li>דיווחים ותגובות</li>
                 <li>כל הפעילות עם חותמות זמן</li>
-                <li><strong>ניקוי כל סטטוסי התושבים</strong></li>
-                <li><strong>מחיקת כל התושבים מהמערכת</strong></li>
-                <li><strong>מחיקת כל יומן האירועים</strong></li>
-                <li><strong>מחיקת כל המשימות והלידים</strong></li>
               </ul>
             </div>
           </div>

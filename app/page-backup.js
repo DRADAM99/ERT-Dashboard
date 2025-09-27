@@ -1,4 +1,4 @@
-// Version 7.0 - Collapse/expand Kanban
+// Version 6.7 - Collapse/expand Kanban
 "use client";
 
 // Utility functions for layout persistence
@@ -35,7 +35,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, RotateCcw, Bell, ChevronDown, Pencil, MessageCircle, Check, X, ChevronLeft, UserPlus } from 'lucide-react';
+import { Search, RotateCcw, Bell, ChevronDown, Pencil, MessageCircle, Check, X, ChevronLeft } from 'lucide-react';
 import NotesAndLinks from "@/components/NotesAndLinks";
 import {
   collection,
@@ -89,8 +89,6 @@ import {
 } from 'recharts';
 import ResidentsManagement from '../components/ResidentsManagement';
 import TaskManager from "@/components/TaskManager";
-import TaskManager2 from "@/components/TaskManager-2";
-import SimpleEmergencyLocator from "@/components/SimpleEmergencyLocator";
 
 import { useToast } from "@/components/ui/use-toast"
 
@@ -266,14 +264,6 @@ export default function Dashboard() {
   const [kanbanCollapsed, setKanbanCollapsed] = useState({});
   // --- Add per-task collapsed state ---
   const [kanbanTaskCollapsed, setKanbanTaskCollapsed] = useState({});
-  
-  // Emergency Event End functionality
-  const [showEndEmergencyDialog, setShowEndEmergencyDialog] = useState(false);
-  const [emergencyEventId, setEmergencyEventId] = useState(`emergency_${new Date().toISOString().split('T')[0]}_${Date.now()}`);
-  
-  // Green Eyes functionality
-  const [showGreenEyesDialog, setShowGreenEyesDialog] = useState(false);
-  
 // Add this handler for category drag end
 const handleCategoryDragEnd = (event) => {
   const { active, over } = event;
@@ -374,473 +364,6 @@ const handleFollowUpClick = async (lead) => {
       setHoldLeadId(null);
       setHoldProgress(0);
     }, 50);
-  };
-
-  // Emergency Event End Functions
-  const formatDateTimeForCSV = (timestamp) => {
-    if (!timestamp) return "";
-    if (timestamp.seconds) {
-      return new Date(timestamp.seconds * 1000).toISOString();
-    }
-    if (timestamp.toDate) {
-      return timestamp.toDate().toISOString();
-    }
-    if (timestamp instanceof Date) {
-      return timestamp.toISOString();
-    }
-    return new Date(timestamp).toISOString();
-  };
-
-  const exportEmergencyDataToCSV = async () => {
-    try {
-      console.log("📤 Starting emergency data export...");
-      
-      const csvData = [];
-      const headers = [
-        'Timestamp',
-        'Event Type',
-        'Event ID',
-        'User',
-        'Action',
-        'Details',
-        'Status',
-        'Department',
-        'Priority',
-        'Related IDs'
-      ];
-      csvData.push(headers);
-
-      // 1. Export Event Logs
-      const eventLogsSnapshot = await getDocs(collection(db, 'eventLogs'));
-      eventLogsSnapshot.docs.forEach(doc => {
-        const data = doc.data();
-        csvData.push([
-          formatDateTimeForCSV(data.createdAt),
-          'Event Log',
-          doc.id,
-          data.reporter || data.lastUpdater || '',
-          'Event Created',
-          data.description || '',
-          data.status || '',
-          data.department || '',
-          '',
-          ''
-        ]);
-        
-        // Add status changes
-        if (data.updatedAt && data.updatedAt !== data.createdAt) {
-          csvData.push([
-            formatDateTimeForCSV(data.updatedAt),
-            'Event Log',
-            doc.id,
-            data.lastUpdater || '',
-            'Status Updated',
-            `Status: ${data.status}`,
-            data.status || '',
-            data.department || '',
-            '',
-            ''
-          ]);
-        }
-        
-        // Add history entries
-        if (data.history && Array.isArray(data.history)) {
-          data.history.forEach(entry => {
-            csvData.push([
-              formatDateTimeForCSV(entry.timestamp),
-              'Event Log',
-              doc.id,
-              entry.userAlias || entry.userId || '',
-              'Update Added',
-              entry.text || '',
-              data.status || '',
-              data.department || '',
-              '',
-              ''
-            ]);
-          });
-        }
-      });
-
-      // 2. Export Tasks
-      const tasksSnapshot = await getDocs(collection(db, 'tasks'));
-      tasksSnapshot.docs.forEach(doc => {
-        const data = doc.data();
-        csvData.push([
-          formatDateTimeForCSV(data.createdAt),
-          'Task',
-          doc.id,
-          data.creatorAlias || data.creatorEmail || '',
-          'Task Created',
-          data.title || '',
-          data.status || '',
-          data.category || data.department || '',
-          data.priority || '',
-          data.residentId || ''
-        ]);
-        
-        // Add task status changes
-        if (data.updatedAt && data.updatedAt !== data.createdAt) {
-          csvData.push([
-            formatDateTimeForCSV(data.updatedAt),
-            'Task',
-            doc.id,
-            data.lastUpdater || data.creatorAlias || '',
-            'Task Updated',
-            data.title || '',
-            data.status || '',
-            data.category || data.department || '',
-            data.priority || '',
-            data.residentId || ''
-          ]);
-        }
-        
-        // Add task completion
-        if (data.completedAt) {
-          csvData.push([
-            formatDateTimeForCSV(data.completedAt),
-            'Task',
-            doc.id,
-            data.completedByAlias || data.completedBy || '',
-            'Task Completed',
-            data.title || '',
-            'Completed',
-            data.category || data.department || '',
-            data.priority || '',
-            data.residentId || ''
-          ]);
-        }
-        
-        // Add replies
-        if (data.replies && Array.isArray(data.replies)) {
-          data.replies.forEach(reply => {
-            csvData.push([
-              formatDateTimeForCSV(reply.timestamp),
-              'Task Reply',
-              doc.id,
-              reply.userAlias || reply.userId || '',
-              'Reply Added',
-              reply.text || '',
-              data.status || '',
-              data.category || data.department || '',
-              '',
-              data.residentId || ''
-            ]);
-          });
-        }
-      });
-
-      // 3. Export Residents
-      const residentsSnapshot = await getDocs(collection(db, 'residents'));
-      residentsSnapshot.docs.forEach(doc => {
-        const data = doc.data();
-        csvData.push([
-          formatDateTimeForCSV(data.createdAt || data.syncedAt),
-          'Resident',
-          doc.id,
-          data.syncedBy || data.createdBy || '',
-          'Resident Added',
-          `${data['שם פרטי'] || ''} ${data['שם משפחה'] || ''}`,
-          data.סטטוס || data.status || '',
-          '',
-          '',
-          ''
-        ]);
-        
-        // Add status changes
-        if (data.statusHistory && Array.isArray(data.statusHistory)) {
-          data.statusHistory.forEach(change => {
-            csvData.push([
-              formatDateTimeForCSV(change.timestamp),
-              'Resident Status',
-              doc.id,
-              change.userAlias || change.userId || '',
-              'Status Changed',
-              `${change.from} → ${change.to}`,
-              change.to || '',
-              '',
-              '',
-              change.updatedFromTask || ''
-            ]);
-          });
-        }
-        
-        // Add comments
-        if (data.comments && Array.isArray(data.comments)) {
-          data.comments.forEach(comment => {
-            csvData.push([
-              formatDateTimeForCSV(comment.timestamp),
-              'Resident Comment',
-              doc.id,
-              comment.userAlias || comment.userId || '',
-              'Comment Added',
-              comment.text || '',
-              data.סטטוס || data.status || '',
-              '',
-              '',
-              ''
-            ]);
-          });
-        }
-      });
-
-      // 4. Export Leads
-      const leadsSnapshot = await getDocs(collection(db, 'leads'));
-      leadsSnapshot.docs.forEach(doc => {
-        const data = doc.data();
-        csvData.push([
-          formatDateTimeForCSV(data.createdAt),
-          'Lead',
-          doc.id,
-          data.reporter || '',
-          'Lead Created',
-          data.fullName || data.description || '',
-          data.status || '',
-          data.department || '',
-          '',
-          ''
-        ]);
-        
-        // Add status changes
-        if (data.statusHistory && Array.isArray(data.statusHistory)) {
-          data.statusHistory.forEach(change => {
-            csvData.push([
-              formatDateTimeForCSV(change.timestamp),
-              'Lead Status',
-              doc.id,
-              change.userAlias || change.userId || '',
-              'Status Changed',
-              `${change.from} → ${change.to}`,
-              change.to || '',
-              '',
-              '',
-              ''
-            ]);
-          });
-        }
-      });
-
-      // Sort by timestamp
-      csvData.sort((a, b) => {
-        if (a[0] === 'Timestamp') return -1;
-        if (b[0] === 'Timestamp') return 1;
-        return new Date(a[0]) - new Date(b[0]);
-      });
-
-      // Convert to CSV string
-      const csvContent = csvData.map(row => 
-        row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
-      ).join('\n');
-
-      // Create and download file
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `emergency_event_${emergencyEventId}_${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      console.log("✅ Emergency data exported successfully");
-      return true;
-    } catch (error) {
-      console.error("❌ Error exporting emergency data:", error);
-      return false;
-    }
-  };
-
-  const handleEndEmergencyEvent = async () => {
-    try {
-      console.log("🏁 Ending emergency event...");
-      
-      // Export data to CSV
-      const exportSuccess = await exportEmergencyDataToCSV();
-      
-      if (exportSuccess) {
-        // Clear system for next emergency event
-        console.log("🧹 Clearing system for next emergency event...");
-        
-        try {
-          // Delete all event logs from Firestore
-          console.log("🗑️ Deleting all event logs...");
-          const { collection, getDocs, deleteDoc, doc } = await import("firebase/firestore");
-          const { db } = await import("../firebase");
-          
-          // Get all event logs
-          const eventLogsRef = collection(db, "eventLogs");
-          const eventLogsSnapshot = await getDocs(eventLogsRef);
-          
-          // Delete all event logs
-          const deletePromises = eventLogsSnapshot.docs.map(async (eventDoc) => {
-            await deleteDoc(doc(db, "eventLogs", eventDoc.id));
-          });
-          
-          await Promise.all(deletePromises);
-          console.log("✅ All event logs deleted successfully");
-          
-          // Delete all residents from Firestore
-          console.log("🗑️ Deleting all residents...");
-          await clearResidentsCollection();
-          console.log("✅ All residents deleted successfully");
-          
-          // Also delete any linked tasks
-          try {
-            const tasksRef = collection(db, "tasks");
-            const tasksSnapshot = await getDocs(tasksRef);
-            
-            const taskDeletePromises = tasksSnapshot.docs.map(async (taskDoc) => {
-              await deleteDoc(doc(db, "tasks", taskDoc.id));
-            });
-            
-            await Promise.all(taskDeletePromises);
-            console.log("✅ All linked tasks deleted successfully");
-          } catch (taskError) {
-            console.error('Error deleting linked tasks:', taskError);
-          }
-          
-          // Call Google Apps Script to clear all resident statuses and residents
-          const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7cvLc_iqfybXNOd8PV8klJe65Sgo1sLtN2hA8NGo-clBFVV4vwTrIrBIuV1kdIDQ_3A/exec"; // Your actual Google Apps Script URL
-          
-          console.log("🔄 Calling Google Apps Script webhook:", GOOGLE_APPS_SCRIPT_URL);
-          
-          let clearResponse;
-          try {
-            clearResponse = await fetch(GOOGLE_APPS_SCRIPT_URL, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-              },
-              body: 'clearSystem=1',
-              mode: 'no-cors' // Add this to handle CORS issues
-            });
-            
-            console.log("📥 Response status:", clearResponse.status);
-            
-            // Try to get response text, but handle potential errors
-            let responseText = '';
-            try {
-              responseText = await clearResponse.text();
-              console.log("📥 Response text:", responseText);
-            } catch (textError) {
-              console.log("📥 Could not read response text:", textError);
-            }
-          } catch (fetchError) {
-            console.error("❌ Fetch error:", fetchError);
-            throw fetchError;
-          }
-          
-          if (clearResponse && clearResponse.ok) {
-            console.log("✅ System cleared successfully");
-            toast({
-              title: "אירוע החירום הסתיים",
-              description: "הנתונים יוצאו לקובץ CSV, כל האירועים והתושבים נמחקו והמערכת נוקתה בהצלחה",
-            });
-          } else {
-            console.warn("⚠️ System clear failed, but export and event deletion succeeded");
-            toast({
-              title: "אירוע החירום הסתיים",
-              description: "הנתונים יוצאו לקובץ CSV, כל האירועים והתושבים נמחקו בהצלחה, אך ניקוי המערכת נכשל",
-            });
-          }
-        } catch (clearError) {
-          console.error("❌ Error clearing system:", clearError);
-          toast({
-            title: "אירוע החירום הסתיים",
-            description: "הנתונים יוצאו לקובץ CSV, כל האירועים והתושבים נמחקו בהצלחה, אך ניקוי המערכת נכשל",
-          });
-        }
-        
-        // Close dialog
-        setShowEndEmergencyDialog(false);
-      } else {
-        toast({
-          title: "שגיאה בייצוא הנתונים",
-          description: "לא ניתן היה לייצא את הנתונים",
-          variant: "destructive"
-        });
-        // Close dialog even if export failed
-        setShowEndEmergencyDialog(false);
-      }
-    } catch (error) {
-      console.error("❌ Error ending emergency event:", error);
-      toast({
-        title: "שגיאה בסיום אירוע החירום",
-        description: error.message || "שגיאה לא ידועה",
-        variant: "destructive"
-      });
-      // Close dialog even if there's an error
-      setShowEndEmergencyDialog(false);
-    }
-  };
-
-  // Green Eyes Activation Function
-  const handleGreenEyesActivation = async () => {
-    try {
-      console.log("🚨 Activating Green Eyes emergency procedure...");
-      
-      // Create emergency event log entry
-      await addDoc(collection(db, "eventLogs"), {
-        reporter: alias || currentUser?.email || "System",
-        recipient: "חמ\"ל",
-        description: "הפעלת נוהל ירוק בעיניים - אירוע חירום",
-        department: "חמ\"ל",
-        status: "מחכה",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        lastUpdater: alias || currentUser?.email || "System",
-        history: [{
-          timestamp: new Date().toISOString(),
-          text: "נוהל ירוק בעיניים הופעל",
-          userAlias: alias || currentUser?.email || "System"
-        }],
-        emergencyType: "green_eyes",
-        emergencyEventId: emergencyEventId
-      });
-
-      // Call Google Apps Script to trigger ירוק בעיניים
-      const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7cvLc_iqfybXNOd8PV8klJe65Sgo1sLtN2hA8NGo-clBFVV4vwTrIrBIuV1kdIDQ_3A/exec";
-      
-      console.log("🔄 Calling Google Apps Script for ירוק בעיניים:", GOOGLE_APPS_SCRIPT_URL);
-      
-      try {
-        const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: 'triggerGreenInEyes=1',
-          mode: 'no-cors'
-        });
-        
-        console.log("📥 ירוק בעיניים response status:", response.status);
-      } catch (scriptError) {
-        console.error("❌ Error calling Google Apps Script:", scriptError);
-        toast({
-          title: "שגיאה בקריאה לסקריפט",
-          description: "לא ניתן להפעיל את נוהל ירוק בעיניים",
-          variant: "destructive"
-        });
-      }
-
-      // Send notification to all users (optional)
-      toast({
-        title: "נוהל ירוק בעיניים הופעל",
-        description: "אירוע חירום נרשם במערכת",
-      });
-
-      // Close dialog
-      setShowGreenEyesDialog(false);
-
-    } catch (error) {
-      console.error("❌ Error activating Green Eyes:", error);
-      toast({
-        title: "שגיאה בהפעלת נוהל ירוק בעיניים",
-        description: error.message || "שגיאה לא ידועה",
-        variant: "destructive"
-      });
-    }
   };
 
   // --- Hold handlers for the button ---
@@ -1188,21 +711,6 @@ useEffect(() => {
         createdAt: serverTimestamp(),
         createdBy: currentUser.uid,
       });
-
-      // Auto-sync user to emergency locator
-      try {
-        const { autoSyncUserToEmergencyLocator } = await import("../lib/auto-sync-emergency-locator");
-        await autoSyncUserToEmergencyLocator(newUser.uid, {
-          email: newUserEmail,
-          name: newUserFullName,
-          role: newUserRole,
-          alias: newUserFullName
-        });
-        console.log(`✅ Auto-synced new user to emergency locator: ${newUserEmail}`);
-      } catch (error) {
-        console.error(`❌ Failed to auto-sync user to emergency locator: ${newUserEmail}`, error);
-        // Don't fail the user creation if emergency locator sync fails
-      }
       toast({
         title: "משתמש נוצר בהצלחה",
         description: `המשתמש ${newUserFullName} נוצר בהצלחה במחלקת ${newUserDepartment}`,
@@ -1542,104 +1050,48 @@ useEffect(() => {
   // ... existing code ...
   // In the compact list, do the same for the delete icon button:
   // ... existing code ...
-// Fetch residents from Firebase
+//fetch residents from sheet and add to leads
+const SHEET_ID = "1raVDAVFs8UzEEWQE7N0uVLUft3lM9Xq9VFS_FXxWuok";
+const API_KEY = "AIzaSyBR53KDvquviY4yq4bqsmHrw8LoH86-wZs";
+const RANGE = "גליון1!A1:Z500";
 const [residents, setResidents] = useState([]);
 const [residentCategories, setResidentCategories] = useState([]);
 const [selectedResidentCategories, setSelectedResidentCategories] = useState([]);
 
-// Function to clear residents collection (for debugging)
-const clearResidentsCollection = async () => {
-  try {
-    const residentsRef = collection(db, 'residents');
-    const snapshot = await getDocs(residentsRef);
-    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-    await Promise.all(deletePromises);
-    console.log('✅ Cleared residents collection');
-  } catch (error) {
-    console.error('❌ Error clearing residents:', error);
-  }
-};
-
 useEffect(() => {
-  if (!currentUser) return;
-
-  console.log("🔄 Setting up residents listener...");
-  console.log("👤 Current user:", currentUser.uid);
-
-  const unsubscribe = onSnapshot(collection(db, "residents"), (snapshot) => {
-    console.log(`📊 Residents listener triggered: ${snapshot.docs.length} documents`);
-    
-    const fetchedResidents = snapshot.docs.map((doc) => {
-      const data = doc.data();
-      console.log(`📄 Document ${doc.id}:`, data);
-      return {
-        id: doc.id,
-        ...data,
-        // Convert Firestore timestamps to Date objects
-        syncedAt: data.syncedAt?.toDate?.() || new Date(),
-        createdAt: data.createdAt?.toDate?.() || new Date(),
-      };
-    });
-
-    console.log("📋 Fetched residents:", fetchedResidents);
-    console.log("🔍 Sample resident fields:", fetchedResidents.length > 0 ? Object.keys(fetchedResidents[0]) : "No residents");
-    setResidents(fetchedResidents);
-    
-    // Extract unique categories from the 'סטטוס' or 'status' column
-    const catKey = fetchedResidents.length > 0 ? 
-      Object.keys(fetchedResidents[0]).find(k => k === 'סטטוס' || k.toLowerCase() === 'status') : null;
-    
-    if (catKey) {
-      const cats = Array.from(
-        new Set(
-          fetchedResidents
-            .map(r => (r[catKey] || '').trim())
-            .filter(Boolean)
-        )
-      ).sort();
-      
-      // Add blank status option if there are residents with empty status
-      const hasBlankStatus = fetchedResidents.some(r => !(r[catKey] || '').trim());
-      if (hasBlankStatus) {
-        cats.unshift('ללא סטטוס'); // Add at the beginning
+  fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(RANGE)}?key=${API_KEY}`
+  )
+    .then((res) => res.json())
+    .then((result) => {
+      if (result.values) {
+        const [header, ...rows] = result.values;
+        const parsed = rows.map((row) =>
+          Object.fromEntries(header.map((key, i) => [key, row[i] || ""]))
+        );
+        setResidents(parsed);
+        // Extract unique categories from the 'סטטוס' or 'status' column
+        const catKey = header.find(k => k === 'סטטוס' || k.toLowerCase() === 'status');
+        if (catKey) {
+          const cats = Array.from(
+            new Set(
+              parsed
+                .map(r => (r[catKey] || '').trim())
+                .filter(Boolean)
+            )
+          ).sort();
+          setResidentCategories(cats);
+          setSelectedResidentCategories(cats); // Default: all selected
+        }
       }
-      
-      setResidentCategories(cats);
-      setSelectedResidentCategories(cats); // Default: all selected
-    }
-  });
-
-  return () => unsubscribe();
-}, [currentUser]);
+    });
+}, []);
 //filter residents by selected categories
 const filteredResidents = useMemo(() => {
-  console.log("🔍 Filtering residents:", { 
-    residentsCount: residents.length, 
-    selectedCategories: selectedResidentCategories 
-  });
-  
-  if (!selectedResidentCategories.length) {
-    console.log("📋 No categories selected, returning all residents");
-    return residents;
-  }
-  
+  if (!selectedResidentCategories.length) return residents;
   const catKey = residents.length ? Object.keys(residents[0]).find(k => k === 'סטטוס' || k.toLowerCase() === 'status') : null;
-  if (!catKey) {
-    console.log("❌ No status category key found, returning all residents");
-    return residents;
-  }
-  
-  const filtered = residents.filter(r => {
-    const status = (r[catKey] || '').trim();
-    // Handle "ללא סטטוס" (No Status) option
-    if (selectedResidentCategories.includes('ללא סטטוס')) {
-      if (!status) return true; // Include residents with blank status
-    }
-    // Include residents with matching status
-    return selectedResidentCategories.includes(status);
-  });
-  console.log(`📊 Filtered residents: ${filtered.length} out of ${residents.length}`);
-  return filtered;
+  if (!catKey) return residents;
+  return residents.filter(r => selectedResidentCategories.includes((r[catKey] || '').trim()));
 }, [residents, selectedResidentCategories]);
 
   const handleMarkReplyAsRead = async (taskId) => {
@@ -1769,89 +1221,6 @@ const filteredResidents = useMemo(() => {
       toast({
         title: "שגיאה",
         description: "לא ניתן היה לשלוח תזכורת",
-        variant: "destructive"
-      });
-    }
-  };
-
-  // Handle resident status update from task
-  const handleUpdateResidentStatus = async (taskId, newStatus) => {
-    if (!currentUser) return;
-
-    try {
-      const taskRef = doc(db, 'tasks', taskId);
-      const taskDoc = await getDoc(taskRef);
-      const taskData = taskDoc.data();
-      
-      if (!taskData.residentId) {
-        toast({
-          title: "שגיאה",
-          description: "משימה זו אינה מקושרת לתושב",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      const residentRef = doc(db, 'residents', taskData.residentId);
-      const residentDoc = await getDoc(residentRef);
-      const residentData = residentDoc.data();
-      
-      const now = new Date();
-      const oldStatus = residentData.סטטוס || '';
-
-      // Update resident status
-      await updateDoc(residentRef, {
-        סטטוס: newStatus,
-        updatedAt: now,
-        lastStatusChange: {
-          from: oldStatus,
-          to: newStatus,
-          timestamp: now,
-          userId: currentUser.uid,
-          userAlias: alias || currentUser.email,
-          updatedFromTask: taskId
-        },
-        statusHistory: arrayUnion({
-          from: oldStatus,
-          to: newStatus,
-          timestamp: now,
-          userId: currentUser.uid,
-          userAlias: alias || currentUser.email,
-          updatedFromTask: taskId
-        })
-      });
-
-      // Add comment to resident about status change
-      const comment = {
-        text: `סטטוס עודכן ל"${newStatus}" דרך משימה: ${taskData.title}`,
-        timestamp: now,
-        userId: currentUser.uid,
-        userAlias: alias || currentUser.email,
-        updatedFromTask: taskId
-      };
-
-      await updateDoc(residentRef, {
-        comments: arrayUnion(comment)
-      });
-
-      // Immediately update the task's residentStatus in the UI
-      setTasks(prevTasks => 
-        prevTasks.map(task => 
-          task.id === taskId 
-            ? { ...task, residentStatus: newStatus }
-            : task
-        )
-      );
-
-      toast({
-        title: "סטטוס עודכן",
-        description: `סטטוס התושב עודכן ל${newStatus}`,
-      });
-    } catch (error) {
-      console.error('Error updating resident status:', error);
-      toast({
-        title: "שגיאה",
-        description: "לא ניתן היה לעדכן סטטוס התושב",
         variant: "destructive"
       });
     }
@@ -2049,44 +1418,6 @@ const filteredResidents = useMemo(() => {
               <span>🏷️ {task.category}</span>
               <span>{task.priority === 'דחוף' ? '🔥' : task.priority === 'נמוך' ? '⬇️' : '➖'} {task.priority}</span>
             </div>
-            
-            {/* Resident information display */}
-            {task.residentId && (
-              <div className="mt-2 p-2 bg-blue-50 rounded border-l-4 border-blue-400">
-                <div className="text-xs font-medium text-blue-800 mb-1">תושב מקושר:</div>
-                <div className="text-xs text-blue-700">{task.residentName}</div>
-                <div className="text-xs text-blue-600">טלפון: {task.residentPhone}</div>
-                <div className="text-xs text-blue-600">שכונה: {task.residentNeighborhood}</div>
-                <div className="mt-2 pt-2 border-t border-blue-200">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-blue-800">סטטוס תושב:</span>
-                    <Select
-                      value={task.residentStatus || ''}
-                      onValueChange={(newStatus) => {
-                        if (newStatus && ['כולם בסדר', 'זקוקים לסיוע', 'לא בטוח'].includes(newStatus)) {
-                          handleUpdateResidentStatus(task.id, newStatus);
-                        }
-                      }}
-                    >
-                      <SelectTrigger className={`text-xs px-2 py-1 rounded ${
-                        task.residentStatus === 'כולם בסדר' ? 'bg-green-100 text-green-800 border-green-300' :
-                        task.residentStatus === 'זקוקים לסיוע' ? 'bg-red-100 text-red-800 border-red-300' :
-                        task.residentStatus === 'לא בטוח' ? 'bg-orange-100 text-orange-800 border-orange-300' :
-                        'bg-gray-100 text-gray-800 border-gray-300'
-                      }`}>
-                        <SelectValue placeholder={task.residentStatus || 'לא מוגדר'} />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border border-gray-200 shadow-lg">
-                        <SelectItem value="כולם בסדר" className="hover:bg-gray-50">כולם בסדר</SelectItem>
-                        <SelectItem value="זקוקים לסיוע" className="hover:bg-gray-50">זקוקים לסיוע</SelectItem>
-                        <SelectItem value="לא בטוח" className="hover:bg-gray-50">לא בטוח</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-            )}
-            
             {/* Add TaskTabs component */}
             <TaskTabs taskId={task.id} currentUser={currentUser} />
           </div>
@@ -2161,29 +1492,6 @@ const filteredResidents = useMemo(() => {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>שלח תזכורת</TooltipContent>
-              </Tooltip>
-            )}
-
-            {/* Resident status update button for task assignees */}
-            {task.residentId && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const newStatus = prompt('עדכן סטטוס תושב (כולם בסדר/זקוקים לסיוע/לא בטוח):');
-                      if (newStatus && ['כולם בסדר', 'זקוקים לסיוע', 'לא בטוח'].includes(newStatus)) {
-                        handleUpdateResidentStatus(task.id, newStatus);
-                      }
-                    }}
-                  >
-                    <UserPlus className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>עדכן סטטוס תושב</TooltipContent>
               </Tooltip>
             )}
           </div>
@@ -2340,101 +1648,60 @@ const filteredResidents = useMemo(() => {
       orderBy("createdAt", "desc")
     );
 
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       console.log("Raw tasks from Firebase:", snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       
-      const tasksData = await Promise.all(snapshot.docs.map(async (doc) => {
-        const data = doc.data();
-        // --- FIX: Always parse dueDate as Date object ---
-        let dueDate = null;
-        if (data.dueDate) {
-          if (typeof data.dueDate.toDate === 'function') {
-            dueDate = data.dueDate.toDate();
-          } else if (typeof data.dueDate === 'string') {
-            dueDate = new Date(data.dueDate);
-          } else if (data.dueDate instanceof Date) {
-            dueDate = data.dueDate;
+      const tasksData = snapshot.docs
+        .map(doc => {
+          const data = doc.data();
+          // --- FIX: Always parse dueDate as Date object ---
+          let dueDate = null;
+          if (data.dueDate) {
+            if (typeof data.dueDate.toDate === 'function') {
+              dueDate = data.dueDate.toDate();
+            } else if (typeof data.dueDate === 'string') {
+              dueDate = new Date(data.dueDate);
+            } else if (data.dueDate instanceof Date) {
+              dueDate = data.dueDate;
+            }
           }
-        }
+          return {
+            id: doc.id,
+            ...data,
+            dueDate,
+            uniqueId: `task-${doc.id}-${Date.now()}`
+          };
+        })
+        .filter(task => {
+          const isCreator = task.userId === currentUser.uid || task.creatorId === currentUser.uid;
+          const isAssignee = 
+            task.assignTo === currentUser.uid ||
+            task.assignTo === currentUser.email ||
+            task.assignTo === currentUser.alias ||
+            task.assignTo === alias;
+          
+          console.log("Task visibility check:", {
+            taskId: task.id,
+            assignTo: task.assignTo,
+            currentUser: currentUser.uid,
+            currentEmail: currentUser.email,
+            currentAlias: currentUser.alias,
+            alias,
+            isCreator,
+            isAssignee
+          });
 
-        return {
-          id: doc.id,
-          ...data,
-          dueDate,
-          uniqueId: `task-${doc.id}-${Date.now()}`
-        };
-      }));
-
-      const filteredTasks = tasksData.filter(task => {
-        const isCreator = task.userId === currentUser.uid || task.creatorId === currentUser.uid;
-        const isAssignee = 
-          task.assignTo === currentUser.uid ||
-          task.assignTo === currentUser.email ||
-          task.assignTo === currentUser.alias ||
-          task.assignTo === alias;
-        
-        console.log("Task visibility check:", {
-          taskId: task.id,
-          assignTo: task.assignTo,
-          currentUser: currentUser.uid,
-          currentEmail: currentUser.email,
-          currentAlias: currentUser.alias,
-          alias,
-          isCreator,
-          isAssignee
+          return isCreator || isAssignee;
         });
 
-        return isCreator || isAssignee;
-      });
-
-      console.log("Filtered tasks:", filteredTasks);
-      setTasks(filteredTasks);
+      console.log("Filtered tasks:", tasksData);
+      setTasks(tasksData);
     }, (error) => {
       console.error("Error fetching tasks:", error);
     });
 
     return () => unsubscribe();
   }, [currentUser, alias]);
-
-  /** Residents Listener for Task Status Sync */
-  useEffect(() => {
-    if (!currentUser) return;
-
-    // Get all unique resident IDs from tasks
-    const residentIds = [...new Set(tasks.filter(task => task.residentId).map(task => task.residentId))];
-    
-    if (residentIds.length === 0) return;
-
-    console.log("Setting up residents listener for task sync:", residentIds);
-
-    const residentsRef = collection(db, "residents");
-    const q = query(residentsRef, where("__name__", "in", residentIds));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const residentsData = {};
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        residentsData[doc.id] = data.סטטוס || null;
-      });
-
-      // Update tasks with latest resident status
-      setTasks(prevTasks => 
-        prevTasks.map(task => {
-          if (task.residentId && residentsData[task.residentId] !== undefined) {
-            return {
-              ...task,
-              residentStatus: residentsData[task.residentId]
-            };
-          }
-          return task;
-        })
-      );
-    }, (error) => {
-      console.error("Error fetching residents for task sync:", error);
-    });
-
-    return () => unsubscribe();
-  }, [currentUser, tasks.length]); // Re-run when tasks change
   /** listens to pull but not needed here
   const tasksRef = collection(db, "tasks");
 const q = query(
@@ -3890,59 +3157,333 @@ const calculatedAnalytics = useMemo(() => {
   </div>
 
   <div className="w-full sm:w-48 text-center sm:text-left text-sm text-gray-500 flex flex-col items-center sm:items-end sm:ml-0">
-    <span>{'Version 7.0'}</span>
-    <div className="flex flex-col gap-2 mt-2">
-      <Button 
-        size="sm" 
-        onClick={() => setShowGreenEyesDialog(true)}
-        className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium border border-red-600"
-      >
-        הפעלת ירוק בעיניים
-      </Button>
-      <Button 
-        size="sm" 
-        onClick={() => setShowEndEmergencyDialog(true)}
-        className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium border border-green-600"
-      >
-        סיים אירוע חירום
-      </Button>
-      <button
-        className="text-xs text-red-600 underline"
-        onClick={() => {
-          import("firebase/auth").then(({ signOut }) =>
-            signOut(auth).then(() => router.push("/login"))
-          );
-        }}
-      >
-        התנתק
-      </button>
-    </div>
+    <span>{'Version 6.7'}</span>
+    <button
+      className="text-xs text-red-600 underline"
+      onClick={() => {
+        import("firebase/auth").then(({ signOut }) =>
+          signOut(auth).then(() => router.push("/login"))
+        );
+      }}
+    >
+      התנתק
+    </button>
   </div>
 </header>
 
 
         
 <div dir="rtl" className="grid grid-cols-1 lg:grid-cols-12 gap-2 sm:gap-4 p-2 sm:p-4 bg-gray-50 min-h-[calc(100vh-90px)]">
-          {/* Task Manager Block */}
-        <div style={{ order: blockOrder.TM }} className={`col-span-1 ${isTMFullView ? 'lg:col-span-12' : 'lg:col-span-4'} transition-all duration-300 ease-in-out`}>
-          <TaskManager2 
-            currentUser={currentUser}
-            alias={alias}
-            users={users}
-            department={department}
-            role={role}
-            isTMFullView={isTMFullView}
-            setIsTMFullView={setIsTMFullView}
-            blockOrder={blockOrder}
-            toggleBlockOrder={toggleBlockOrder}
-            taskCategories={taskCategories}
-            taskPriorities={taskPriorities}
-            assignableUsers={assignableUsers}
-          />
+  {/* Task Manager Block */}
+  <div style={{ order: blockOrder.TM }} className={`col-span-1 ${isTMFullView ? 'lg:col-span-12' : 'lg:col-span-4'} transition-all duration-300 ease-in-out`}>
+    <Card className="h-full flex flex-col">
+      <CardHeader className="space-y-3">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <CardTitle>{'מנהל משימות'}</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setIsTMFullView(v => { saveLayoutPref('dashboard_isTMFullView', !v); return !v; })} 
+              title={isTMFullView ? "עבור לתצוגה מקוצרת" : "עבור לתצוגת קנבן"}
+              className="w-full sm:w-auto"
+            >
+              {isTMFullView ? "תצוגה מוקטנת" : "תצוגה מלאה"}
+            </Button>
+            <Button 
+              size="xs" 
+              onClick={() => toggleBlockOrder("TM")} 
+              title="שנה מיקום בלוק"
+              className="w-full sm:w-auto"
+            >
+              {'מיקום: '}{blockOrder.TM}
+            </Button>
+          </div>
         </div>
+        
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button variant={taskFilter === 'הכל' ? 'default' : 'outline'} size="sm" onClick={() => setTaskFilter('הכל')}>{'הכל'}</Button>
+              <Button variant={taskFilter === 'שלי' ? 'default' : 'outline'} size="sm" onClick={() => setTaskFilter('שלי')}>{'שלי'}</Button>
+              <Button variant={taskFilter === 'אחרים' ? 'default' : 'outline'} size="sm" onClick={() => setTaskFilter('אחרים')}>{'אחרים'}</Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <IOSSwitch
+                  checked={showDoneTasks}
+                  onChange={(e) => setShowDoneTasks(e.target.checked)}
+                  inputProps={{ 'aria-label': 'הצג בוצעו' }}
+                />
+                <Label className="text-sm font-medium cursor-pointer select-none">{'הצג בוצעו'}</Label>
+              </div>
+              <div className="flex items-center gap-2 mr-4 pr-4 border-r">
+                <IOSSwitch
+                  checked={showOverdueEffects}
+                  onChange={(e) => setShowOverdueEffects(e.target.checked)}
+                  inputProps={{ 'aria-label': 'הצג חיווי איחור' }}
+                />
+                <Label className="text-sm font-medium cursor-pointer select-none">{'הצג חיווי איחור'}</Label>
+              </div>
+              {!isTMFullView && userHasSortedTasks && (
+                <Button variant="ghost" size="icon" className="w-8 h-8" title="אפס סדר ידני" onClick={() => setUserHasSortedTasks(false)}>
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
 
-  
-  {/* Residents/Leads Block */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-t pt-3">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <Select value={taskPriorityFilter} onValueChange={setTaskPriorityFilter}>
+                <SelectTrigger className="h-8 text-sm w-full sm:w-[100px]">
+                  <SelectValue placeholder="סינון עדיפות..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{'כל העדיפויות'}</SelectItem>
+                  {taskPriorities.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              
+              
+
+              <div className="relative w-full sm:w-auto">
+                <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Input 
+                  type="search" 
+                  placeholder="חפש משימות..." 
+                  className="h-8 text-sm pl-8 w-full sm:w-[180px]" 
+                  value={taskSearchTerm} 
+                  onChange={(e) => setTaskSearchTerm(e.target.value)} 
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <Button 
+                variant="outline" 
+                size="icon" 
+                className="w-8 h-8 text-red-600 hover:bg-red-50 hover:text-red-700" 
+                title="מחק משימות שבוצעו" 
+                onClick={handleClearDoneTasks} 
+                disabled={!tasks.some(task => task.done)}
+              >
+                <span role="img" aria-label="Clear Done">🧹</span>
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                title="היסטוריית משימות" 
+                onClick={() => setShowHistoryModal(true)}
+              >
+                <span role="img" aria-label="History">📜</span>
+              </Button>
+              <Button 
+                size="sm"
+                className="w-full sm:w-auto" 
+                onClick={() => {
+                  setNewTaskTitle("");
+                  setNewTaskSubtitle("");
+                  setNewTaskPriority("רגיל");
+                  setNewTaskCategory(taskCategories[0] || "");
+                  setNewTaskDueDate("");
+                  setNewTaskDueTime("");
+                  const myUser = assignableUsers.find(u => u.email === currentUser?.email || u.alias === currentUser?.alias);
+                  setNewTaskDepartment(myUser ? (myUser.alias || myUser.email) : (currentUser?.alias || currentUser?.email || ""));
+                  setShowTaskModal(true);
+                }}
+              >
+                {'+ משימה'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="flex-grow overflow-hidden">
+        {isTMFullView ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleCategoryDragEnd}
+          >
+            <SortableContext
+              items={taskCategories}
+              strategy={horizontalListSortingStrategy}
+            >
+              <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-${Math.min(6, Math.max(1, taskCategories.length))} gap-3 h-[calc(100vh-340px)] overflow-x-auto`}>
+                {taskCategories.map((category) => (
+                  <SortableCategoryColumn key={category} id={category} className="bg-gray-100 rounded-lg p-2 flex flex-col min-w-[280px] box-border w-full min-w-0">
+                    <div className="flex justify-between items-center mb-2 sticky top-0 bg-gray-100 py-1 px-1 z-10">
+                      {/* Collapse/expand chevron (RTL: left side) */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-6 h-6 text-gray-500 hover:text-blue-600 shrink-0 ml-2 rtl:ml-0 rtl:mr-2"
+                        title={kanbanCollapsed[category] ? 'הרחב קטגוריה' : 'צמצם קטגוריה'}
+                        onClick={() => handleToggleKanbanCollapse(category)}
+                        tabIndex={0}
+                        aria-label={kanbanCollapsed[category] ? 'הרחב קטגוריה' : 'צמצם קטגוריה'}
+                      >
+                        {/* Chevron points down when expanded, left when collapsed (RTL) */}
+                        {kanbanCollapsed[category] ? <ChevronLeft className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                      </Button>
+                      <h3 className="font-semibold text-center flex-grow">{category} ({sortedAndFilteredTasks.filter(task => task.category === category).length})</h3>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="w-6 h-6 text-gray-500 hover:text-blue-600 shrink-0" 
+                        title={`הוסף ל${category}`} 
+                        onClick={() => {
+                          setNewTaskCategory(category);
+                          setShowTaskModal(true);
+                        }}
+                      >
+                        <span role="img" aria-label="Add">➕</span>
+                      </Button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto w-full min-w-0 box-border" data-category={category} data-droppable="true">
+                      <div className="space-y-2 w-full min-w-0 box-border">
+                        {showTaskModal && newTaskCategory === category && renderTask(null)}
+                        {sortedAndFilteredTasks.filter(task => task.category === category).map((task) => (
+                          <SortableItem key={`task-${task.id}`} id={`task-${task.id}`}> 
+                            <div className="relative flex items-center group w-full min-w-0 box-border">
+                              {/* Per-task collapse chevron (RTL: left) - always visible */}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="w-6 h-6 text-gray-400 hover:text-blue-600 shrink-0 ml-2 rtl:ml-0 rtl:mr-2"
+                                title={kanbanTaskCollapsed[task.id] ? 'הרחב משימה' : 'צמצם משימה'}
+                                onClick={(e) => { e.stopPropagation(); handleToggleTaskCollapse(task.id); }}
+                                tabIndex={0}
+                                aria-label={kanbanTaskCollapsed[task.id] ? 'הרחב משימה' : 'צמצם משימה'}
+                              >
+                                {kanbanTaskCollapsed[task.id] ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                              {/* Category collapsed: always show collapsed block. Category expanded: show per-task state. */}
+                              {kanbanCollapsed[category] || kanbanTaskCollapsed[task.id] ? (
+                                <div className="flex-grow cursor-grab active:cursor-grabbing group w-full min-w-0 p-3 rounded-lg shadow-sm border bg-white flex items-center gap-2 min-h-[48px] box-border">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex-grow truncate text-right">
+                                        <div className={`font-medium truncate ${task.done ? 'line-through text-gray-500' : ''}`}>{task.title}</div>
+                                        {task.subtitle && (
+                                          <div className={`text-xs text-gray-600 truncate ${task.done ? 'line-through' : ''}`}>{task.subtitle}</div>
+                                        )}
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" align="end" className="max-w-xs text-xs text-right whitespace-pre-line">
+                                      {`🗓️ ${formatDateTime(task.dueDate)}\n🏢 ${task.department}\n${task.creatorAlias ? `📝 ${task.creatorAlias}\n` : ''}🏷️ ${task.category}\n${task.priority === 'דחוף' ? '🔥' : task.priority === 'נמוך' ? '⬇️' : '➖'} ${task.priority}`}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  {/* Action buttons remain visible */}
+                                  <div className="flex items-center gap-1">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8"
+                                          onClick={() => {
+                                            setEditingTaskId(task.id);
+                                            setEditingTitle(task.title);
+                                            setEditingSubtitle(task.subtitle || '');
+                                            setEditingPriority(task.priority);
+                                            setEditingCategory(task.category);
+                                            if (task.dueDate) {
+                                              const due = new Date(task.dueDate);
+                                              if (!isNaN(due.getTime())) {
+                                                setEditingDueDate(due.toLocaleDateString('en-CA'));
+                                                setEditingDueTime(due.toTimeString().slice(0, 5));
+                                              }
+                                            }
+                                            setEditingDepartment(task.department || '');
+                                          }}
+                                        >
+                                          <Pencil className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>ערוך משימה</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 relative"
+                                          onClick={() => {
+                                            setReplyingToTaskId(task.id);
+                                            setReplyInputValue("");
+                                          }}
+                                        >
+                                          <MessageCircle className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>הוסף תגובה</TooltipContent>
+                                    </Tooltip>
+                                    {!task.done && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="w-6 h-6 relative text-gray-400 hover:text-orange-600"
+                                            title="שלח תזכורת"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleNudgeTask(task.id);
+                                            }}
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                          >
+                                            <Bell className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>שלח תזכורת</TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex-grow w-full min-w-0 box-border">{renderTask(task)}</div>
+                              )}
+                            </div>
+                          </SortableItem>
+                        ))}
+                      </div>
+                    </div>
+                  </SortableCategoryColumn>
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        ) : (
+          <div className="h-[calc(100vh-340px)] overflow-y-auto pr-2">
+            <div className="space-y-2 w-full">
+              {showTaskModal && <div className="w-full">{renderTask(null)}</div>}
+              {sortedAndFilteredTasks.length === 0 && !showTaskModal && (
+                <div className="text-center text-gray-500 py-4 w-full">{'אין משימות להצגה'}</div>
+              )}
+              {sortedAndFilteredTasks.map((task) => {
+                const overdue = isTaskOverdue(task);
+                const overdue12h = isTaskOverdue12h(task);
+                return (
+                  <SortableItem key={task.uniqueId} id={`task-${task.id}`}>
+                    <div 
+                      className={`w-full flex items-start justify-between p-2 cursor-grab active:cursor-grabbing 
+                        ${task.done ? 'bg-gray-100 opacity-70' : ''} 
+                        ${overdue && showOverdueEffects ? 'after:content-[""] after:absolute after:top-0 after:bottom-0 after:right-0 after:w-1 after:bg-red-500 relative' : ''} 
+                        ${overdue12h && showOverdueEffects ? 'animate-pulse bg-yellow-50' : ''}`}
+                    >
+                      {renderTask(task)}
+                    </div>
+                  </SortableItem>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  </div>
 
   
   {/* Residents/Leads Block */}
@@ -4058,16 +3599,9 @@ const calculatedAnalytics = useMemo(() => {
         )}
         
         <div className="mt-2 pt-2 border-t">
-           <div className="flex gap-2">
-             <Button variant="secondary" size="sm" onClick={() => setShowAnalytics(!showAnalytics)}>
-                 {showAnalytics ? 'הסתר ניתוח תושבים' : 'הצג ניתוח תושבים'}
-             </Button>
-             {currentUser?.role === 'admin' && (
-               <Button variant="destructive" size="sm" onClick={clearResidentsCollection}>
-                   🗑️ נקה נתוני תושבים
-               </Button>
-             )}
-           </div>
+           <Button variant="secondary" size="sm" onClick={() => setShowAnalytics(!showAnalytics)}>
+               {showAnalytics ? 'הסתר ניתוח תושבים' : 'הצג ניתוח תושבים'}
+           </Button>
         </div>
       </CardHeader>
        <CardContent className="flex-grow flex flex-col overflow-hidden">
@@ -4076,8 +3610,6 @@ const calculatedAnalytics = useMemo(() => {
           residents={filteredResidents} 
           statusColorMap={residentStatusColorMap}
           statusKey="סטטוס"
-          currentUser={currentUser}
-          users={users}
         />
       </CardContent>
     </Card>
@@ -4158,7 +3690,6 @@ const calculatedAnalytics = useMemo(() => {
       departments={taskCategories}
       isAdmin={role === 'admin'}
       blockOrder={blockOrder.EventLog}
-      emergencyEventId={emergencyEventId}
       toggleBlockOrder={() => {
         const newOrder = { ...blockOrder };
         // Cycle TM, Calendar, Leads, EventLog order
@@ -4192,7 +3723,13 @@ const calculatedAnalytics = useMemo(() => {
       </CardHeader>
       <CardContent className="flex flex-col flex-grow h-full">
         <div className="flex-1 min-h-[600px] h-[60vh]">
-          <SimpleEmergencyLocator />
+          <iframe
+            src="https://emergency-locator-585a5.web.app/map.html"
+            title="מפת מיקומי חירום"
+            className="w-full h-full rounded-xl border"
+            style={{ minHeight: 600, height: '60vh' }}
+            allowFullScreen
+          />
         </div>
       </CardContent>
     </Card>
@@ -4625,84 +4162,6 @@ const calculatedAnalytics = useMemo(() => {
               </Button>
             </DialogFooter>
           </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Green Eyes Activation Dialog */}
-      <Dialog open={showGreenEyesDialog} onOpenChange={setShowGreenEyesDialog}>
-        <DialogContent className="bg-white rounded-xl shadow-xl p-8 max-w-xs w-full text-center" style={{ direction: 'rtl', textAlign: 'center' }}>
-          <DialogHeader className="text-center">
-            <DialogTitle className="text-lg font-semibold mb-6">הפעלת נוהל ירוק בעיניים</DialogTitle>
-          </DialogHeader>
-          <div className="text-lg font-semibold mb-6">האם אתה בטוח שאתה רוצה להפעיל נוהל ירוק בעיניים?</div>
-          <div className="flex justify-between gap-4">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowGreenEyesDialog(false)}
-              className="flex-1 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-bold"
-            >
-              לא
-            </Button>
-            <Button 
-              onClick={handleGreenEyesActivation}
-              className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold"
-            >
-              כן
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Emergency Event End Confirmation Dialog */}
-      <Dialog open={showEndEmergencyDialog} onOpenChange={setShowEndEmergencyDialog}>
-        <DialogContent className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full" style={{ direction: 'rtl', textAlign: 'right' }}>
-          <DialogHeader className="text-right">
-            <DialogTitle className="text-lg font-bold mb-4 text-right text-red-600">
-              סיום אירוע חירום
-            </DialogTitle>
-          </DialogHeader>
-          <div className="mb-6">
-            <p className="text-sm text-gray-700 mb-4">
-              האם אתה בטוח שאתה רוצה לסיים את אירוע החירום?
-            </p>
-            <p className="text-xs text-gray-600 mb-4">
-              <strong>מזהה אירוע:</strong> {emergencyEventId}
-            </p>
-            <p className="text-xs text-gray-600 mb-4">
-              <strong>שם אירוע:</strong> יומן אירועים - חמ"ל ({emergencyEventId})
-            </p>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <p className="text-xs text-yellow-800">
-                <strong>שים לב:</strong> פעולה זו תייצא את כל הנתונים לקובץ CSV ותנקה את המערכת לאירוע הבא:
-              </p>
-              <ul className="text-xs text-yellow-700 mt-2 space-y-1 list-disc list-inside">
-                <li>יומן אירועים</li>
-                <li>משימות שהוקצו והושלמו</li>
-                <li>שינויים בסטטוס תושבים</li>
-                <li>דיווחים ותגובות</li>
-                <li>כל הפעילות עם חותמות זמן</li>
-                <li><strong>ניקוי כל סטטוסי התושבים</strong></li>
-                <li><strong>מחיקת כל התושבים מהמערכת</strong></li>
-                <li><strong>מחיקת כל יומן האירועים</strong></li>
-                <li><strong>מחיקת כל המשימות והלידים</strong></li>
-              </ul>
-            </div>
-          </div>
-          <DialogFooter className="flex justify-end gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowEndEmergencyDialog(false)}
-            >
-              ביטול
-            </Button>
-            <Button 
-              variant="destructive" 
-              onClick={handleEndEmergencyEvent}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              סיים אירוע וייצא נתונים
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </TooltipProvider>

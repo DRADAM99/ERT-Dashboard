@@ -1,0 +1,58 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isERTUser() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/ert_users/$(request.auth.uid));
+    }
+
+    function isERTAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/ert_users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/ert_users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ERT Users Collection
+    match /ert_users/{userId} {
+      allow read, write: if isAuthenticated() && 
+        (request.auth.uid == userId || isERTAdmin());
+    }
+
+    // Emergency Locations Collection
+    match /emergency_locations/{locationId} {
+      allow read: if isERTUser();
+      allow create, update: if isERTUser();
+      allow delete: if isERTUser() && 
+        (resource.data.userId == request.auth.uid || isERTAdmin());
+    }
+
+    // Emergency Events Collection
+    match /emergency_events/{eventId} {
+      allow read: if isERTUser();
+      allow create: if isERTUser();
+      allow update: if isERTUser();
+      allow delete: if isERTUser() && 
+        (resource.data.createdBy == request.auth.uid || isERTAdmin());
+    }
+
+    // User Sessions Collection
+    match /user_sessions/{sessionId} {
+      allow read: if isERTUser();
+      allow create, update: if isERTUser();
+      allow delete: if isERTUser();
+    }
+
+    // Allow access to any collection for ERT users
+    match /{document=**} {
+      allow read: if isERTUser();
+      allow write: if isERTUser();
+    }
+  }
+} 

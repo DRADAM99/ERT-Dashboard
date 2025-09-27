@@ -12,12 +12,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { Edit2, MessageSquare, Bell } from "lucide-react";
+import { Edit2, MessageSquare, Bell, UserPlus } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/use-toast";
 
 // Task Categories and Priorities
 const TASK_CATEGORIES = ["לקבוע סדרה", "דוחות", "תשלומים", "להתקשר", "תוכנית טיפול", "אחר"];
+const RESIDENT_TASK_CATEGORIES = ["אוכלוסייה", "לוגיסטיקה", "תקשורת", "בריאות", "חינוך", "אחר"];
 const TASK_PRIORITIES = ["דחוף", "רגיל", "נמוך"];
 
 // Utility Functions
@@ -124,9 +125,7 @@ export default function TaskManager({ currentUser, alias, users, department }) {
     subtitle: "",
     priority: "רגיל",
     category: TASK_CATEGORIES[0],
-    assignTo: "",
-    dueDate: "",
-    dueTime: ""
+    assignTo: ""
   });
 
   // Initialize sensors for drag and drop
@@ -199,9 +198,6 @@ export default function TaskManager({ currentUser, alias, users, department }) {
     try {
       const taskRef = doc(collection(db, "tasks"));
       const now = new Date();
-      const dueDateTime = newTask.dueDate && newTask.dueTime
-        ? new Date(`${newTask.dueDate}T${newTask.dueTime}`)
-        : now;
 
       const taskData = {
         id: taskRef.id,
@@ -216,7 +212,7 @@ export default function TaskManager({ currentUser, alias, users, department }) {
         status: "פתוח",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        dueDate: dueDateTime,
+        dueDate: now, // Use creation time as due date
         replies: [],
         isRead: false,
         isArchived: false,
@@ -234,9 +230,7 @@ export default function TaskManager({ currentUser, alias, users, department }) {
         subtitle: "",
         priority: "רגיל",
         category: TASK_CATEGORIES[0],
-        assignTo: "",
-        dueDate: "",
-        dueTime: ""
+        assignTo: ""
       });
       setShowTaskModal(false);
     } catch (error) {
@@ -379,6 +373,80 @@ export default function TaskManager({ currentUser, alias, users, department }) {
     }
   };
 
+  // Handle resident status update from task
+  const handleUpdateResidentStatus = async (taskId, newStatus) => {
+    if (!currentUser) return;
+
+    try {
+      const taskRef = doc(db, 'tasks', taskId);
+      const taskDoc = await getDoc(taskRef);
+      const taskData = taskDoc.data();
+      
+      if (!taskData.residentId) {
+        toast({
+          title: "Error",
+          description: "This task is not linked to a resident",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const residentRef = doc(db, 'residents', taskData.residentId);
+      const residentDoc = await getDoc(residentRef);
+      const residentData = residentDoc.data();
+      
+      const now = new Date();
+      const oldStatus = residentData.סטטוס || '';
+
+      // Update resident status
+      await updateDoc(residentRef, {
+        סטטוס: newStatus,
+        updatedAt: now,
+        lastStatusChange: {
+          from: oldStatus,
+          to: newStatus,
+          timestamp: now,
+          userId: currentUser.uid,
+          userAlias: alias || currentUser.email,
+          updatedFromTask: taskId
+        },
+        statusHistory: arrayUnion({
+          from: oldStatus,
+          to: newStatus,
+          timestamp: now,
+          userId: currentUser.uid,
+          userAlias: alias || currentUser.email,
+          updatedFromTask: taskId
+        })
+      });
+
+      // Add comment to resident about status change
+      const comment = {
+        text: `סטטוס עודכן ל"${newStatus}" דרך משימה: ${taskData.title}`,
+        timestamp: now,
+        userId: currentUser.uid,
+        userAlias: alias || currentUser.email,
+        updatedFromTask: taskId
+      };
+
+      await updateDoc(residentRef, {
+        comments: arrayUnion(comment)
+      });
+
+      toast({
+        title: "Status Updated",
+        description: `Resident status updated to ${newStatus}`,
+      });
+    } catch (error) {
+      console.error('Error updating resident status:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update resident status",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Render Functions
   const renderTask = (task) => {
     const isAssignedToMe = task.assignTo === (alias || currentUser.email);
@@ -410,7 +478,15 @@ export default function TaskManager({ currentUser, alias, users, department }) {
               <p>נוצר ע&quot;י: {task.creatorAlias}</p>
               <p>קטגוריה: {task.category}</p>
               <p>עדיפות: {task.priority}</p>
-              <p>תאריך יעד: {task.dueDate?.toLocaleDateString()}</p>
+              <p>נוצר: {task.createdAt?.toLocaleDateString()}</p>
+              {task.residentId && (
+                <div className="mt-2 p-2 bg-blue-50 rounded border-l-4 border-blue-400">
+                  <p className="font-medium text-blue-800">תושב מקושר:</p>
+                  <p className="text-blue-700">{task.residentName}</p>
+                  <p className="text-blue-600">טלפון: {task.residentPhone}</p>
+                  <p className="text-blue-600">שכונה: {task.residentNeighborhood}</p>
+                </div>
+              )}
             </div>
 
             {task.replies?.length > 0 && (
@@ -452,6 +528,27 @@ export default function TaskManager({ currentUser, alias, users, department }) {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>שלח תזכורת</TooltipContent>
+              </Tooltip>
+            )}
+
+            {/* Resident status update button for task assignees */}
+            {isAssignedToMe && task.residentId && (
+              <Tooltip>
+                <TooltipTrigger>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    onClick={() => {
+                      const newStatus = prompt('עדכן סטטוס תושב (כולם בסדר/זקוקים לסיוע/לא בטוח):');
+                      if (newStatus && ['כולם בסדר', 'זקוקים לסיוע', 'לא בטוח'].includes(newStatus)) {
+                        handleUpdateResidentStatus(task.id, newStatus);
+                      }
+                    }}
+                  >
+                    <UserPlus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>עדכן סטטוס תושב</TooltipContent>
               </Tooltip>
             )}
           </div>
@@ -608,24 +705,7 @@ export default function TaskManager({ currentUser, alias, users, department }) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>תאריך יעד</Label>
-                <Input
-                  type="date"
-                  value={newTask.dueDate}
-                  onChange={(e) => setNewTask(prev => ({ ...prev, dueDate: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label>שעה</Label>
-                <Input
-                  type="time"
-                  value={newTask.dueTime}
-                  onChange={(e) => setNewTask(prev => ({ ...prev, dueTime: e.target.value }))}
-                />
-              </div>
-            </div>
+
             <DialogFooter>
               <Button type="submit">צור משימה</Button>
             </DialogFooter>

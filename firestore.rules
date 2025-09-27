@@ -106,18 +106,16 @@ service cloud.firestore {
       // Allow update by any authenticated user
       allow update: if isAuthenticated();
       
-      // Allow delete by admin or creator
-      allow delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        isAdmin()
-      );
+      // Allow all operations for Google Apps Script webhook (temporary for system clear)
+      allow read, write: if true;
     }
 
     // ────────────────
     // Tasks Collection
     // ────────────────
     match /tasks/{taskId} {
-      allow read, write: if isAuthenticated();
+      // Allow all operations for Google Apps Script webhook (temporary for system clear)
+      allow read, write: if true;
     }
 
     // ────────────────
@@ -213,9 +211,34 @@ service cloud.firestore {
     match /archivedTasks/{taskId} {
       // Allow read for all authenticated users
       allow read: if isAuthenticated();
-      // Allow create, update, delete only for admins
-      allow create, update, delete: if isAdmin();
+      // Allow all operations for Google Apps Script webhook (temporary for system clear)
+      allow read, write: if true;
+    }
+
+    // ────────────────
+    // Event Logs Collection
+    // ────────────────
+    match /eventLogs/{eventId} {
+      // Allow all authenticated users to read event logs
+      allow read: if isAuthenticated();
+      
+      // Allow all authenticated users to create event logs (simplified validation)
+      allow create: if isAuthenticated();
+      
+      // Allow all authenticated users to update event logs
+      allow update: if isAuthenticated();
+      
+      // Allow all operations for Google Apps Script webhook (temporary for system clear)
+      allow read, write: if true;
+    }
+
+    // ────────────────
+    // Residents Collection
+    // ────────────────
+    match /residents/{residentId} {
+      // Allow all operations for testing webhook
+      allow read, write: if true;
     }
 
   } // END documents
-} // END service 
+} // END service

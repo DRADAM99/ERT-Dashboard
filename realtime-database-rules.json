@@ -1,0 +1,30 @@
+{
+  "rules": {
+    ".read": "auth != null && root.child('ert_users').child(auth.uid).exists()",
+    ".write": "auth != null && root.child('ert_users').child(auth.uid).exists()",
+    "ert_users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid == $uid || root.child('ert_users').child(auth.uid).child('role').val() == 'admin')",
+        ".write": "auth != null && (auth.uid == $uid || root.child('ert_users').child(auth.uid).child('role').val() == 'admin')"
+      }
+    },
+    "emergency_locations": {
+      "$locationId": {
+        ".read": "auth != null && root.child('ert_users').child(auth.uid).exists()",
+        ".write": "auth != null && root.child('ert_users').child(auth.uid).exists()"
+      }
+    },
+    "emergency_events": {
+      "$eventId": {
+        ".read": "auth != null && root.child('ert_users').child(auth.uid).exists()",
+        ".write": "auth != null && root.child('ert_users').child(auth.uid).exists()"
+      }
+    },
+    "user_sessions": {
+      "$sessionId": {
+        ".read": "auth != null && root.child('ert_users').child(auth.uid).exists()",
+        ".write": "auth != null && root.child('ert_users').child(auth.uid).exists()"
+      }
+    }
+  }
+} 
