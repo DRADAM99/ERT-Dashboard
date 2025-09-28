@@ -701,7 +701,7 @@ const handleFollowUpClick = async (lead) => {
           }
           
           // Call Google Apps Script to clear all resident statuses and residents
-          const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzxb8tOKGjnmJpu3Cbvgy_1kqvZ0tnL0okkRzcTioEjUkN_Ak9lRZJrO9mkMPnkODPm/exec"; // Your actual Google Apps Script URL
+          const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzn4sgqomgZu0DQxd32u4aosx5yoFNdhvBIWKjrrxB9k3DzADJnVuh5DpSlglZDo9fF/exec"; // Your actual Google Apps Script URL
           
           console.log("🔄 Calling Google Apps Script webhook:", GOOGLE_APPS_SCRIPT_URL);
           
@@ -777,6 +777,7 @@ const handleFollowUpClick = async (lead) => {
 
   // Green Eyes Activation Function
   const handleGreenEyesActivation = async () => {
+    setShowGreenEyesDialog(false);
     try {
       console.log("🚨 Activating Green Eyes emergency procedure...");
       
@@ -800,7 +801,7 @@ const handleFollowUpClick = async (lead) => {
       });
 
       // Call Google Apps Script to trigger ירוק בעיניים
-      const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzxb8tOKGjnmJpu3Cbvgy_1kqvZ0tnL0okkRzcTioEjUkN_Ak9lRZJrO9mkMPnkODPm/exec";
+      const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzn4sgqomgZu0DQxd32u4aosx5yoFNdhvBIWKjrrxB9k3DzADJnVuh5DpSlglZDo9fF/exec";
       
       console.log("🔄 Calling Google Apps Script for ירוק בעיניים:", GOOGLE_APPS_SCRIPT_URL);
       
@@ -829,9 +830,6 @@ const handleFollowUpClick = async (lead) => {
         title: "נוהל ירוק בעיניים הופעל",
         description: "אירוע חירום נרשם במערכת",
       });
-
-      // Close dialog
-      setShowGreenEyesDialog(false);
 
     } catch (error) {
       console.error("❌ Error activating Green Eyes:", error);

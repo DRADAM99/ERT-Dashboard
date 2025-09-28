@@ -345,7 +345,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
   };
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-y-auto max-h-[70vh]">
       <table className="w-full table-fixed text-sm border-collapse">
         <thead className="sticky top-0 bg-gray-100 z-10">
           <tr>
@@ -402,7 +402,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                               <SelectValue placeholder="בחר סטטוס" />
                             </SelectTrigger>
                             <SelectContent className="bg-white border border-gray-200 shadow-lg">
-                              <SelectItem value="" className="hover:bg-gray-50">ללא סטטוס</SelectItem>
+                              <SelectItem value="NO_STATUS" className="hover:bg-gray-50">ללא סטטוס</SelectItem>
                               <SelectItem value="כולם בסדר" className="hover:bg-gray-50">כולם בסדר</SelectItem>
                               <SelectItem value="זקוקים לסיוע" className="hover:bg-gray-50">זקוקים לסיוע</SelectItem>
                               <SelectItem value="לא בטוח" className="hover:bg-gray-50">לא בטוח</SelectItem>
@@ -440,7 +440,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setEditingStatus(rowId);
-                                setNewStatus(status);
+                                setNewStatus(status || 'NO_STATUS');
                               }}
                               className="ml-2 hover:bg-gray-200 rounded p-1"
                             >
