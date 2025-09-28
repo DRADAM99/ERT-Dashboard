@@ -701,7 +701,7 @@ const handleFollowUpClick = async (lead) => {
           }
           
           // Call Google Apps Script to clear all resident statuses and residents
-          const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwwk6o4131UgGgjuXe0AxytYsOUSZ4FHi5Gt4cDgvcFvd_oHHNSK3-QuLEGDp16Zkt97g/exec"; // Your actual Google Apps Script URL
+          const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzxb8tOKGjnmJpu3Cbvgy_1kqvZ0tnL0okkRzcTioEjUkN_Ak9lRZJrO9mkMPnkODPm/exec"; // Your actual Google Apps Script URL
           
           console.log("🔄 Calling Google Apps Script webhook:", GOOGLE_APPS_SCRIPT_URL);
           
@@ -800,7 +800,7 @@ const handleFollowUpClick = async (lead) => {
       });
 
       // Call Google Apps Script to trigger ירוק בעיניים
-      const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwwk6o4131UgGgjuXe0AxytYsOUSZ4FHi5Gt4cDgvcFvd_oHHNSK3-QuLEGDp16Zkt97g/exec";
+      const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzxb8tOKGjnmJpu3Cbvgy_1kqvZ0tnL0okkRzcTioEjUkN_Ak9lRZJrO9mkMPnkODPm/exec";
       
       console.log("🔄 Calling Google Apps Script for ירוק בעיניים:", GOOGLE_APPS_SCRIPT_URL);
       
