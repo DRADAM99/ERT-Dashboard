@@ -80,42 +80,33 @@ service cloud.firestore {
         task.assignTo == userData.alias;
     }
 
-    // Allow read access to all collections for authenticated users
-    match /{document=**} {
-      allow read: if isAuthenticated();
-    }
-
     // ────────────────
     // Users Collection
     // ────────────────
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && (request.auth.uid == userId || request.auth.token.admin == true);
+      allow read, write: if isAuthenticated() && (isUser(userId) || isAdmin());
     }
 
     // ────────────────
     // Leads Collection
     // ────────────────
     match /leads/{leadId} {
-      // Allow create with basic validation, no auth required for API
-      allow create: if 
-        request.resource.data.fullName is string &&
-        request.resource.data.phoneNumber is string &&
-        request.resource.data.status is string;
-      
-      // Allow update by any authenticated user
-      allow update: if isAuthenticated();
-      
-      // Allow all operations for Google Apps Script webhook (temporary for system clear)
-      allow read, write: if true;
+      allow read, update: if isAuthenticated();
+      allow create, delete: if true; // Open for API and system clear
     }
 
     // ────────────────
     // Tasks Collection
     // ────────────────
     match /tasks/{taskId} {
-      // Allow all operations for Google Apps Script webhook (temporary for system clear)
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
+    }
+    
+    // ────────────────
+    // User Preferences Collection
+    // ────────────────
+    match /userPreferences/{userId} {
+      allow read, write: if isUser(userId);
     }
 
     // ────────────────
@@ -147,7 +138,6 @@ service cloud.firestore {
     // Notes Collection
     // ────────────────
     match /notes/{noteId} {
-      // Allow all operations if user is authenticated
       allow read, write: if isAuthenticated();
     }
 
@@ -161,21 +151,14 @@ service cloud.firestore {
                request.resource.data.addedBy is string;
       }
 
-      // Allow all authenticated users to read links
       allow read: if isAuthenticated();
-
-      // Allow create if user is authenticated and link data is valid
       allow create: if isAuthenticated() && isValidLink() && 
         request.resource.data.addedBy == request.auth.email;
-
-      // Allow all authenticated users to delete links
       allow delete: if isAuthenticated();
-
-      // Allow update only for the link owner
       allow update: if isAuthenticated() && 
         resource.data.addedBy == request.auth.email;
     }
-
+    
     // ────────────────
     // User Tabs Collection
     // ────────────────
@@ -187,7 +170,7 @@ service cloud.firestore {
         request.resource.data.color in ['red', 'blue', 'green', 'purple', 'yellow'];
       allow update: if isAuthenticated() && 
         resource.data.userId == request.auth.uid &&
-        request.resource.data.userId == resource.data.userId &&  // Prevent changing ownership
+        request.resource.data.userId == resource.data.userId &&
         request.resource.data.name is string &&
         request.resource.data.color in ['red', 'blue', 'green', 'purple', 'yellow'];
       allow delete: if isAuthenticated() && 
@@ -209,36 +192,22 @@ service cloud.firestore {
     // Archived Tasks Collection
     // ────────────────
     match /archivedTasks/{taskId} {
-      // Allow read for all authenticated users
-      allow read: if isAuthenticated();
-      // Allow all operations for Google Apps Script webhook (temporary for system clear)
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
     // ────────────────
     // Event Logs Collection
     // ────────────────
     match /eventLogs/{eventId} {
-      // Allow all authenticated users to read event logs
-      allow read: if isAuthenticated();
-      
-      // Allow all authenticated users to create event logs (simplified validation)
-      allow create: if isAuthenticated();
-      
-      // Allow all authenticated users to update event logs
-      allow update: if isAuthenticated();
-      
-      // Allow all operations for Google Apps Script webhook (temporary for system clear)
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
     // ────────────────
     // Residents Collection
     // ────────────────
     match /residents/{residentId} {
-      // Allow all operations for testing webhook
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
-  } // END documents
-} // END service
+  }
+}

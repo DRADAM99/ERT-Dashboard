@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, arrayUnion } from "firebase/firestore";
-import { db } from "../firebase";
+import { getAuth } from "firebase/auth";
+import { db, auth } from "../firebase";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,17 @@ import { Edit2, MessageSquare, Bell, UserPlus, Search, ChevronDown, ChevronLeft,
 import { TaskTabs } from "@/components/TaskTabs";
 import SortableCategoryColumn from "./ui/sortable-category-column";
 import SortableItem from "./ui/sortable-item";
+
+// Debounce utility
+const debounce = (func, delay) => {
+  let timeoutId;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      func.apply(this, args);
+    }, delay);
+  };
+};
 
 // Task Categories and Priorities
 const TASK_CATEGORIES = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", "חמ״ל", "אחר"];
@@ -73,6 +85,9 @@ export default function TaskManager2({
   taskPriorities = TASK_PRIORITIES,
   assignableUsers = []
 }) {
+  // Trim categories on initial render and when prop changes
+  const cleanTaskCategories = useMemo(() => taskCategories.map(c => c.trim()), [taskCategories]);
+
   // State Variables
   const [tasks, setTasks] = useState([]);
   const [replyingToTaskId, setReplyingToTaskId] = useState(null);
@@ -107,6 +122,7 @@ export default function TaskManager2({
   const [activeId, setActiveId] = useState(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [archivedTasks, setArchivedTasks] = useState([]);
+  const [isPersistenceLoading, setIsPersistenceLoading] = useState(true);
 
   // Initialize sensors for drag and drop
   const sensors = useSensors(
@@ -212,92 +228,99 @@ export default function TaskManager2({
     }
   };
 
+  // Load user preferences for collapsed states
+  useEffect(() => {
+    if (!currentUser) {
+      setIsPersistenceLoading(false);
+      return;
+    }
+    const prefRef = doc(db, "userPreferences", currentUser.uid);
+    getDoc(prefRef).then(docSnap => {
+      if (docSnap.exists()) {
+        const prefs = docSnap.data();
+        if (prefs.kanbanCollapsed) {
+          setKanbanCollapsed(prefs.kanbanCollapsed);
+        }
+        if (prefs.kanbanTaskCollapsed) {
+          setKanbanTaskCollapsed(prefs.kanbanTaskCollapsed);
+        }
+      }
+    }).catch(error => {
+      console.error("Error loading user preferences:", error);
+    }).finally(() => {
+      setIsPersistenceLoading(false);
+    });
+  }, [currentUser]);
+
+  // Debounced update function for persistence
+  const debouncedUpdateUserPrefs = useCallback(debounce((data) => {
+    if (!currentUser) {
+      console.error("User not authenticated. Cannot save preferences.");
+      return;
+    }
+    const prefRef = doc(db, "userPreferences", currentUser.uid);
+    setDoc(prefRef, data, { merge: true }).catch(err => {
+      console.error("Error updating user preferences:", err);
+    });
+  }, 1500), [currentUser]);
+
   // Task filtering and sorting logic
   const sortedAndFilteredTasks = useMemo(() => {
     const lowerSearchTerm = taskSearchTerm.toLowerCase();
+    const trimmedDepartment = department ? department.trim() : '';
 
     let filtered = tasks.filter((task) => {
-      // Department-based filtering
-      const departmentMatch =
-        taskFilter === "הכל" ||
-        (taskFilter === "שלי" && (task.department === department || task.assignTo === department)) ||
-        (taskFilter === "אחרים" && task.department !== department && task.assignTo !== department);
+        const taskDepartment = task.department ? task.department.trim() : '';
+        const taskAssignTo = task.assignTo ? task.assignTo.trim() : '';
+        
+        const departmentMatch =
+            taskFilter === "הכל" ||
+            (taskFilter === "שלי" && (taskDepartment === trimmedDepartment || taskAssignTo === trimmedDepartment)) ||
+            (taskFilter === "אחרים" && taskDepartment !== trimmedDepartment && taskAssignTo !== trimmedDepartment);
 
-      const doneMatch = showDoneTasks || !task.done;
-      const priorityMatch = taskPriorityFilter === 'all' || task.priority === taskPriorityFilter;
-      const categoryMatch = selectedTaskCategories.length === 0 || selectedTaskCategories.includes(task.category);
-      const searchTermMatch = !lowerSearchTerm ||
-                            task.title.toLowerCase().includes(lowerSearchTerm) ||
-                            (task.subtitle && task.subtitle.toLowerCase().includes(lowerSearchTerm));
+        const doneMatch = showDoneTasks || !task.done;
+        
+        const searchTermMatch = !lowerSearchTerm ||
+            (task.title && task.title.toLowerCase().includes(lowerSearchTerm)) ||
+            (task.subtitle && task.subtitle.toLowerCase().includes(lowerSearchTerm));
 
-      const shouldInclude = departmentMatch && doneMatch && priorityMatch && categoryMatch && searchTermMatch;
-      
-      // Temporary override: show event-linked tasks regardless of department filter
-      const finalShouldInclude = shouldInclude || (task.eventId && doneMatch && priorityMatch && categoryMatch && searchTermMatch);
-      
-      // Debug logging for tasks that don't match filters
-      if (!shouldInclude && task.title) {
-        console.log("Task filtered out:", {
-          title: task.title,
-          departmentMatch,
-          doneMatch,
-          priorityMatch,
-          categoryMatch,
-          searchTermMatch,
-          taskFilter,
-          department,
-          taskDepartment: task.department,
-          taskAssignTo: task.assignTo,
-          hasEventId: !!task.eventId,
-          finalShouldInclude
-        });
-      }
-      
-      // Debug logging for event-linked tasks only
-      if (task.title && task.eventId) {
-        console.log("Event task being processed:", {
-          title: task.title,
-          department: task.department,
-          assignTo: task.assignTo,
-          category: task.category,
-          priority: task.priority,
-          done: task.done,
-          eventId: task.eventId,
-          shouldInclude,
-          departmentMatch,
-          taskFilter,
-          finalShouldInclude
-        });
-      }
+        if (!departmentMatch || !doneMatch || !searchTermMatch) {
+            return false;
+        }
 
-      return finalShouldInclude;
+        // Additional filters for full view only
+        if (isTMFullView) {
+            const priorityMatch = taskPriorityFilter === 'all' || task.priority === taskPriorityFilter;
+            if (!priorityMatch) return false;
+        }
+
+        return true;
     });
 
-    if (!userHasSortedTasks || isTMFullView) {
-      filtered = filtered.sort((a, b) => {
-        const aIsDone = typeof a.done === 'boolean' ? a.done : false;
-        const bIsDone = typeof b.done === 'boolean' ? b.done : false;
-        if (aIsDone !== bIsDone) return aIsDone ? 1 : -1;
-
-        try {
-          const dateA = a.dueDate instanceof Date && !isNaN(a.dueDate) ? a.dueDate.getTime() : Infinity;
-          const dateB = b.dueDate instanceof Date && !isNaN(b.dueDate) ? b.dueDate.getTime() : Infinity;
-
-          if (dateA === Infinity && dateB === Infinity) return 0;
-          if (dateA === Infinity) return 1;
-          if (dateB === Infinity) return -1;
-          return dateA - dateB;
-        } catch(e) {
-          console.error("Error during task date sort:", e);
-          return 0;
-        }
-      });
+    // Sorting logic - should apply to both views if not manually sorted
+    if (!userHasSortedTasks) {
+        filtered = filtered.sort((a, b) => {
+            const aIsDone = typeof a.done === 'boolean' ? a.done : false;
+            const bIsDone = typeof b.done === 'boolean' ? b.done : false;
+            if (aIsDone !== bIsDone) return aIsDone ? 1 : -1;
+            try {
+                const dateA = a.dueDate instanceof Date && !isNaN(a.dueDate) ? a.dueDate.getTime() : Infinity;
+                const dateB = b.dueDate instanceof Date && !isNaN(b.dueDate) ? b.dueDate.getTime() : Infinity;
+                if (dateA === Infinity && dateB === Infinity) return 0;
+                if (dateA === Infinity) return 1;
+                if (dateB === Infinity) return -1;
+                return dateA - dateB;
+            } catch (e) {
+                console.error("Error during task date sort:", e);
+                return 0;
+            }
+        });
     }
 
     return filtered;
   }, [
     tasks, taskFilter, showDoneTasks, userHasSortedTasks, isTMFullView,
-    taskPriorityFilter, selectedTaskCategories, taskSearchTerm, currentUser, department, role
+    taskPriorityFilter, taskSearchTerm, department, cleanTaskCategories // Added cleanTaskCategories dependency
   ]);
 
   // Standardized task creation function for external components
@@ -319,13 +342,13 @@ export default function TaskManager2({
         title: taskData.title || "",
         subtitle: taskData.subtitle || "",
         priority: taskData.priority || "רגיל",
-        category: taskData.category || taskCategories[0],
+        category: taskData.category ? taskData.category.trim() : cleanTaskCategories[0],
         status: taskData.status || "פתוח",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         creatorAlias: alias || currentUser.email || "",
-        department: taskData.department || taskData.category || taskCategories[0],
-        assignTo: taskData.assignTo || taskData.department || taskData.category || taskCategories[0],
+        department: (taskData.department || taskData.category) ? (taskData.department || taskData.category).trim() : cleanTaskCategories[0],
+        assignTo: (taskData.assignTo || taskData.department || taskData.category) ? (taskData.assignTo || taskData.department || taskData.category).trim() : cleanTaskCategories[0],
         dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString() : null,
         replies: [],
         isRead: false,
@@ -375,7 +398,7 @@ export default function TaskManager2({
       });
       return null;
     }
-  }, [currentUser, alias, taskCategories]);
+  }, [currentUser, alias, cleanTaskCategories]);
 
   // Expose the createTaskFromExternal function for other components
   useEffect(() => {
@@ -626,7 +649,7 @@ export default function TaskManager2({
         const archiveAndDeletePromises = completedTasks.map(async task => {
           try {
             // Use the best available alias for archiving
-            const aliasToArchive = task.completedByAlias || task.completedBy || task.creatorAlias || task.creatorEmail || task.assignTo || alias || currentUser?.alias || currentUser?.email || '';
+            const aliasToArchive = task.completedByAlias || task.completedBy || task.creatorAlias || task.completedByEmail || task.assignTo || alias || currentUser?.alias || currentUser?.email || '';
             await setDoc(doc(db, 'archivedTasks', task.id), {
               ...task,
               completedByAlias: aliasToArchive,
@@ -666,8 +689,8 @@ export default function TaskManager2({
         title: editingTitle,
         subtitle: editingSubtitle,
         priority: editingPriority,
-        category: editingCategory,
-        department: editingDepartment,
+        category: editingCategory.trim(),
+        department: editingDepartment.trim(),
 
         updatedAt: serverTimestamp()
       };
@@ -739,18 +762,22 @@ export default function TaskManager2({
   };
 
   // Kanban collapse handlers
-  const handleToggleKanbanCollapse = async (category) => {
-    setKanbanCollapsed(prev => ({
-      ...prev,
-      [category]: !prev[category]
-    }));
+  const handleToggleKanbanCollapse = (category) => {
+    const newCollapsed = {
+      ...kanbanCollapsed,
+      [category]: !kanbanCollapsed[category]
+    };
+    setKanbanCollapsed(newCollapsed);
+    debouncedUpdateUserPrefs({ kanbanCollapsed: newCollapsed });
   };
 
-  const handleToggleTaskCollapse = async (taskId) => {
-    setKanbanTaskCollapsed(prev => ({
-      ...prev,
-      [taskId]: !prev[taskId]
-    }));
+  const handleToggleTaskCollapse = (taskId) => {
+    const newCollapsed = {
+      ...kanbanTaskCollapsed,
+      [taskId]: !kanbanTaskCollapsed[taskId]
+    };
+    setKanbanTaskCollapsed(newCollapsed);
+    debouncedUpdateUserPrefs({ kanbanTaskCollapsed: newCollapsed });
   };
 
   // Drag and drop handlers
@@ -834,10 +861,10 @@ export default function TaskManager2({
   const handleCategoryDragEnd = (event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = taskCategories.indexOf(active.id);
-    const newIndex = taskCategories.indexOf(over.id);
+    const oldIndex = cleanTaskCategories.indexOf(active.id);
+    const newIndex = cleanTaskCategories.indexOf(over.id);
     if (oldIndex === -1 || newIndex === -1) return;
-    const newOrder = arrayMove(taskCategories, oldIndex, newIndex);
+    const newOrder = arrayMove(cleanTaskCategories, oldIndex, newIndex);
     // TODO: Update category order in Firestore
     console.log("Category order updated:", newOrder);
   };
@@ -864,7 +891,7 @@ export default function TaskManager2({
         title: newTaskTitle,
         subtitle: newTaskSubtitle,
         priority: newTaskPriority,
-        category: newTaskCategory,
+        category: newTaskCategory.trim(),
         status: "פתוח",
         residentStatus: "",
         eventStatus: "",
@@ -872,9 +899,9 @@ export default function TaskManager2({
         updatedAt: serverTimestamp(),
         creatorAlias: alias || currentUser.email || "",
         // Assign to department instead of individual user
-        department: newTaskDepartment,
+        department: newTaskDepartment.trim(),
         // Keep assignTo for backward compatibility but it should be the department
-        assignTo: newTaskDepartment,
+        assignTo: newTaskDepartment.trim(),
         dueDate: newTaskDueDate && newTaskDueTime
           ? new Date(`${newTaskDueDate}T${newTaskDueTime}`).toISOString()
           : null,
@@ -893,10 +920,10 @@ export default function TaskManager2({
       setNewTaskTitle("");
       setNewTaskSubtitle("");
       setNewTaskPriority("רגיל");
-      setNewTaskCategory(taskCategories[0] || "");
+      setNewTaskCategory(cleanTaskCategories[0] || "");
       setNewTaskDueDate("");
       setNewTaskDueTime("");
-      setNewTaskDepartment(taskCategories[0] || "");
+      setNewTaskDepartment(cleanTaskCategories[0] || "");
       setShowTaskModal(false);
     } catch (error) {
       console.error("Error creating task:", error);
@@ -924,7 +951,7 @@ export default function TaskManager2({
                   <SelectValue placeholder="בחר מחלקה" />
                 </SelectTrigger>
                 <SelectContent>
-                  {taskCategories.map((dep) => (
+                  {cleanTaskCategories.map((dep) => (
                     <SelectItem key={dep} value={dep}>
                       {dep}
                     </SelectItem>
@@ -972,7 +999,7 @@ export default function TaskManager2({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {taskCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                    {cleanTaskCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -1027,7 +1054,7 @@ export default function TaskManager2({
                   <SelectValue placeholder="בחר מחלקה" />
                 </SelectTrigger>
                 <SelectContent>
-                  {taskCategories.map((dep) => (
+                  {cleanTaskCategories.map((dep) => (
                     <SelectItem key={dep} value={dep}>
                       {dep}
                     </SelectItem>
@@ -1075,7 +1102,7 @@ export default function TaskManager2({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {taskCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {cleanTaskCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -1403,6 +1430,7 @@ export default function TaskManager2({
 
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-t pt-3">
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {isTMFullView && (
             <Select value={taskPriorityFilter} onValueChange={setTaskPriorityFilter}>
               <SelectTrigger className="h-8 text-sm w-full sm:w-[100px]">
                 <SelectValue placeholder="סינון עדיפות..." />
@@ -1412,6 +1440,7 @@ export default function TaskManager2({
                 {taskPriorities.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
               </SelectContent>
             </Select>
+            )}
             
             <div className="relative w-full sm:w-auto">
               <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -1451,7 +1480,7 @@ export default function TaskManager2({
                 setNewTaskTitle("");
                 setNewTaskSubtitle("");
                 setNewTaskPriority("רגיל");
-                setNewTaskCategory(taskCategories[0] || "");
+                setNewTaskCategory(cleanTaskCategories[0] || "");
                 setNewTaskDueDate("");
                 setNewTaskDueTime("");
                 const myUser = assignableUsers.find(u => u.email === currentUser?.email || u.alias === currentUser?.alias);
@@ -1473,11 +1502,11 @@ export default function TaskManager2({
           onDragEnd={handleCategoryDragEnd}
         >
           <SortableContext
-            items={taskCategories}
+            items={cleanTaskCategories}
             strategy={horizontalListSortingStrategy}
           >
-            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-${Math.min(6, Math.max(1, taskCategories.length))} gap-3 h-[calc(100vh-340px)] overflow-x-auto`}>
-              {taskCategories.map((category) => (
+            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-${Math.min(6, Math.max(1, cleanTaskCategories.length))} gap-3 h-[calc(100vh-340px)] overflow-x-auto`}>
+              {cleanTaskCategories.map((category) => (
                 <SortableCategoryColumn key={category} id={category} className="bg-gray-100 rounded-lg p-2 flex flex-col min-w-[280px] box-border w-full min-w-0">
                   <div className="flex justify-between items-center mb-2 sticky top-0 bg-gray-100 py-1 px-1 z-10">
                     {/* Collapse/expand chevron (RTL: left side) */}
@@ -1650,13 +1679,37 @@ export default function TaskManager2({
               const overdue12h = isTaskOverdue12h(task);
               return (
                 <SortableItem key={task.id} id={`task-${task.id}`}>
-                  <div 
-                    className={`w-full flex items-start justify-between p-2 cursor-grab active:cursor-grabbing 
-                      ${task.done ? 'bg-gray-100 opacity-70' : ''} 
-                      ${overdue && showOverdueEffects ? 'after:content-[""] after:absolute after:top-0 after:bottom-0 after:right-0 after:w-1 after:bg-red-500 relative' : ''} 
-                      ${overdue12h && showOverdueEffects ? 'animate-pulse bg-yellow-50' : ''}`}
-                  >
-                    {renderTask(task)}
+                  <div className="relative flex items-center group w-full min-w-0 box-border">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-6 h-6 text-gray-400 hover:text-blue-600 shrink-0 ml-2 rtl:ml-0 rtl:mr-2"
+                      title={kanbanTaskCollapsed[task.id] ? 'הרחב משימה' : 'צמצם משימה'}
+                      onClick={(e) => { e.stopPropagation(); handleToggleTaskCollapse(task.id); }}
+                      tabIndex={0}
+                      aria-label={kanbanTaskCollapsed[task.id] ? 'הרחב משימה' : 'צמצם משימה'}
+                    >
+                      {kanbanTaskCollapsed[task.id] ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                    {kanbanTaskCollapsed[task.id] ? (
+                      <div className="flex-grow cursor-grab active:cursor-grabbing group w-full min-w-0 p-3 rounded-lg shadow-sm border bg-white flex items-center gap-2 min-h-[48px] box-border">
+                        <div className="flex-grow truncate text-right">
+                          <div className={`font-medium truncate ${task.done ? 'line-through text-gray-500' : ''}`}>{task.title}</div>
+                          {task.subtitle && (
+                            <div className={`text-xs text-gray-600 truncate ${task.done ? 'line-through' : ''}`}>{task.subtitle}</div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div 
+                        className={`flex-grow w-full min-w-0 box-border flex items-start justify-between p-2 cursor-grab active:cursor-grabbing 
+                          ${task.done ? 'bg-gray-100 opacity-70' : ''} 
+                          ${overdue && showOverdueEffects ? 'after:content-[""] after:absolute after:top-0 after:bottom-0 after:right-0 after:w-1 after:bg-red-500 relative' : ''} 
+                          ${overdue12h && showOverdueEffects ? 'animate-pulse bg-yellow-50' : ''}`}
+                      >
+                        {renderTask(task)}
+                      </div>
+                    )}
                   </div>
                 </SortableItem>
               );

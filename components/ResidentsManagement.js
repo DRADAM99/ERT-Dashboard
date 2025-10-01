@@ -1,17 +1,18 @@
-import React, { useState } from "react";
-import { ChevronDown, ChevronRight, Edit2, UserPlus, MessageSquare } from 'lucide-react';
+import React, { useState, useMemo } from "react";
+import { ChevronDown, ChevronRight, Edit2, UserPlus, MessageSquare, ArrowUpDown, X, Phone } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { doc, updateDoc, arrayUnion, serverTimestamp, collection, setDoc, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 
 // Task categories for resident assignments - using the same categories as the main page
 const RESIDENT_TASK_CATEGORIES = ["לוגיסטיקה ", "אוכלוסיה", "רפואה", "חוסן", "חמ״ל ", "אחר"];
 
-function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סטטוס', currentUser, users = [] }) {
+function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סטטוס', currentUser, users = [], viewMode = 'full' }) {
   const [expandedRows, setExpandedRows] = useState({});
   const [editingStatus, setEditingStatus] = useState(null);
   const [newStatus, setNewStatus] = useState('');
@@ -23,6 +24,15 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
   });
   const [newComment, setNewComment] = useState('');
   const [commentingResident, setCommentingResident] = useState(null);
+
+  // New states for filtering and sorting
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("הכל");
+  const [sortBy, setSortBy] = useState("syncedAt"); // 'syncedAt' or 'status'
+  const [sortDirection, setSortDirection] = useState("desc"); // 'asc' or 'desc'
+  const [advancedFilters, setAdvancedFilters] = useState([]); // e.g., [{field: 'שכונה', value: 'נופים'}]
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [currentAdvancedFilter, setCurrentAdvancedFilter] = useState({ field: '', value: '' });
 
   // Helper to get color for a status
   const getStatusColor = (status) => {
@@ -102,42 +112,109 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
     return fieldMap[fieldName] || row[fieldName] || '';
   };
 
-  // Main fields to display in the table (right to left order)
-  // סטטוס must be first for proper color coding and filtering
-  const mainFields = ['סטטוס', 'שם משפחה', 'שם פרטי', 'טלפון', 'שכונה'];
+  const ADVANCED_FILTER_FIELDS = ['שכונה', 'הורה/ילד', 'סטטוס מגורים'];
 
-  // Debug logging
-  console.log("🏠 ResidentsManagement received:", {
-    residentsCount: residents?.length || 0,
-    statusKey: statusKey,
-    currentUser: currentUser?.uid
-  });
-  
-  // Debug first resident data
-  if (residents && residents.length > 0) {
-    console.log("📋 First resident data:", residents[0]);
-    console.log("🔍 Field mapping test:");
-    console.log("  שם משפחה:", getFieldValue(residents[0], 'שם משפחה'));
-    console.log("  שם פרטי:", getFieldValue(residents[0], 'שם פרטי'));
-    console.log("  טלפון:", getFieldValue(residents[0], 'טלפון'));
-    console.log("  שכונה:", getFieldValue(residents[0], 'שכונה'));
-    console.log("  סטטוס:", getFieldValue(residents[0], 'סטטוס'));
-  }
+  const advancedFilterOptions = useMemo(() => {
+    const options = {};
+    ADVANCED_FILTER_FIELDS.forEach(field => {
+      const values = new Set(residents.map(r => getFieldValue(r, field)).filter(Boolean));
+      options[field] = [...values];
+    });
+    return options;
+  }, [residents]);
 
-  if (!residents || !residents.length) {
-    console.log("❌ No residents data to display");
-    return <div className="text-center text-gray-500 py-6">אין נתונים להצגה</div>;
-  }
-  
-  // Extended fields to display in expanded view (ordered by priority)
-  const extendedFields = [
-    { field: 'מספר בית', priority: 1, column: 'B1' },
-    { field: 'הורה/ילד', priority: 2, column: 'N1' },
-    { field: 'מסגרת', priority: 3, column: 'H1' },
-    { field: 'מקום מסגרת', priority: 4, column: 'I1' },
-    { field: 'תאריך לידה', priority: 5, column: 'F1' },
-    { field: 'סטטוס מגורים', priority: 6, column: 'M1' }
-  ];
+  const filteredAndSortedResidents = useMemo(() => {
+    let filtered = [...residents];
+
+    // 1. Search filter (first name or last name)
+    if (searchQuery) {
+      const lowercasedQuery = searchQuery.toLowerCase();
+      filtered = filtered.filter(r =>
+        getFieldValue(r, 'שם פרטי').toLowerCase().includes(lowercasedQuery) ||
+        getFieldValue(r, 'שם משפחה').toLowerCase().includes(lowercasedQuery)
+      );
+    }
+
+    // 2. Status filter
+    if (statusFilter !== 'הכל') {
+      if (statusFilter === 'ללא סטטוס') {
+        filtered = filtered.filter(r => !getFieldValue(r, 'סטטוס'));
+      } else {
+        filtered = filtered.filter(r => getFieldValue(r, 'סטטוס') === statusFilter);
+      }
+    }
+
+    // 3. Advanced filters
+    advancedFilters.forEach(filter => {
+      filtered = filtered.filter(r => getFieldValue(r, filter.field) === filter.value);
+    });
+
+    // 4. Sorting
+    const statusPriority = {
+      'זקוקים לסיוע': 1,
+      'לא בטוח': 2,
+      'כולם בסדר': 3,
+      '': 4, // for ללא סטטוס
+    };
+
+    filtered.sort((a, b) => {
+      if (sortBy === 'status') {
+        const statusA = getFieldValue(a, 'סטטוס');
+        const statusB = getFieldValue(b, 'סטטוס');
+        const priorityA = statusPriority[statusA] ?? (statusA === '' ? 4 : 99);
+        const priorityB = statusPriority[statusB] ?? (statusB === '' ? 4 : 99);
+        
+        if (priorityA !== priorityB) {
+          return sortDirection === 'asc' ? priorityA - priorityB : priorityB - priorityA;
+        }
+      }
+
+      // Default/secondary sort by time (using syncedAt as זמן תגובה)
+      const dateA = a.syncedAt?.seconds || a.createdAt?.seconds || 0;
+      const dateB = b.syncedAt?.seconds || b.createdAt?.seconds || 0;
+      return sortDirection === 'asc' ? dateA - dateB : dateB - dateA;
+    });
+
+    return filtered;
+  }, [residents, searchQuery, statusFilter, advancedFilters, sortBy, sortDirection]);
+
+
+  const handleAddAdvancedFilter = () => {
+    if (currentAdvancedFilter.field && currentAdvancedFilter.value) {
+      if (!advancedFilters.some(f => f.field === currentAdvancedFilter.field && f.value === currentAdvancedFilter.value)) {
+        setAdvancedFilters(prev => [...prev, currentAdvancedFilter]);
+      }
+      setCurrentAdvancedFilter({ field: '', value: '' });
+      setPopoverOpen(false);
+    }
+  };
+
+  const handleRemoveAdvancedFilter = (filterToRemove) => {
+    setAdvancedFilters(prev => prev.filter(f => !(f.field === filterToRemove.field && f.value === filterToRemove.value)));
+  };
+
+
+  const mainFields = useMemo(() => {
+    if (viewMode === 'compact') {
+      return ['סטטוס', 'שם משפחה', 'שם פרטי', 'טלפון'];
+    }
+    return ['סטטוס', 'שם משפחה', 'שם פרטי', 'טלפון', 'שכונה'];
+  }, [viewMode]);
+
+  const extendedFields = useMemo(() => {
+    const baseFields = [
+      { field: 'מספר בית', priority: 1, column: 'B1' },
+      { field: 'הורה/ילד', priority: 2, column: 'N1' },
+      { field: 'מסגרת', priority: 3, column: 'H1' },
+      { field: 'מקום מסגרת', priority: 4, column: 'I1' },
+      { field: 'תאריך לידה', priority: 5, column: 'F1' },
+      { field: 'סטטוס מגורים', priority: 6, column: 'M1' }
+    ];
+    if (viewMode === 'compact') {
+      return [...baseFields, { field: 'שכונה', priority: 0 }].sort((a, b) => a.priority - b.priority);
+    }
+    return baseFields;
+  }, [viewMode]);
 
   // Toggle row expansion
   const toggleRowExpansion = (rowId) => {
@@ -148,8 +225,10 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
   };
 
   // Handle status change
-  const handleStatusChange = async (residentId, oldStatus, newStatus) => {
+  const handleStatusChange = async (residentId, oldStatus, rawNewStatus) => {
     if (!currentUser || !residentId) return;
+
+    const newStatus = rawNewStatus === 'NO_STATUS' ? '' : rawNewStatus;
 
     try {
       const residentRef = doc(db, 'residents', residentId);
@@ -343,9 +422,258 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
       alert('שגיאה בהוספת הערה. נסה שוב.');
     }
   };
+  
+  if (residents.length === 0) {
+    return (
+      <div>
+        {/* Render controls even when there are no residents, but disable some */}
+        <div className="p-4 bg-gray-50 border-b flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 text-sm">
+           <div className="flex-grow grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+              <Input
+                placeholder="חפש תושב..."
+                disabled
+                className="bg-gray-200"
+              />
+              <Select disabled dir="rtl">
+                <SelectTrigger className="bg-gray-200 text-right">
+                  <SelectValue placeholder="כל הסטטוסים" />
+                </SelectTrigger>
+              </Select>
+               <Button variant="outline" className="bg-gray-200 justify-end" disabled>
+                <span>סנן לפי</span>
+              </Button>
+               <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-500">סדר לפי:</label>
+                <Select disabled dir="rtl">
+                  <SelectTrigger className="bg-gray-200 w-auto text-right">
+                    <SelectValue placeholder="זמן תגובה" />
+                  </SelectTrigger>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="bg-gray-200"
+                  disabled
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                </Button>
+              </div>
+           </div>
+        </div>
+        <div className="text-center text-gray-500 py-6">אין נתונים להצגה</div>
+      </div>
+    );
+  }
+
 
   return (
-    <div className="overflow-y-auto max-h-[70vh]">
+    <div>
+      {/* Filters and Sorting Controls */}
+      <div className="p-4 bg-gray-50 border-b">
+        {viewMode === 'full' ? (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 text-sm">
+            <div className="flex-grow grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+              <Input
+                placeholder="חפש תושב..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-white"
+              />
+              <Select value={statusFilter} onValueChange={setStatusFilter} dir="rtl">
+                <SelectTrigger className="bg-white text-right">
+                  <SelectValue placeholder="סנן לפי סטטוס" />
+                </SelectTrigger>
+                <SelectContent className="text-right">
+                  <SelectItem value="הכל">כל הסטטוסים</SelectItem>
+                  <SelectItem value="זקוקים לסיוע">זקוקים לסיוע</SelectItem>
+                  <SelectItem value="לא בטוח">לא בטוח</SelectItem>
+                  <SelectItem value="כולם בסדר">כולם בסדר</SelectItem>
+                  <SelectItem value="ללא סטטוס">ללא סטטוס</SelectItem>
+                </SelectContent>
+              </Select>
+              <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="bg-white justify-end">
+                    <span>סנן לפי</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64" align="end">
+                  <div className="grid gap-4">
+                    <div className="space-y-2">
+                      <h4 className="font-medium leading-none">הוסף פילטר</h4>
+                      <p className="text-sm text-muted-foreground">
+                        סנן תושבים לפי קטגוריות.
+                      </p>
+                    </div>
+                    <div className="grid gap-2">
+                      <Select
+                        onValueChange={(field) => setCurrentAdvancedFilter({ field, value: '' })}
+                        value={currentAdvancedFilter.field}
+                        dir="rtl"
+                      >
+                        <SelectTrigger className="text-right">
+                          <SelectValue placeholder="בחר שדה" />
+                        </SelectTrigger>
+                        <SelectContent className="text-right">
+                          {ADVANCED_FILTER_FIELDS.map(field => (
+                            <SelectItem key={field} value={field}>{field}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {currentAdvancedFilter.field && (
+                        <Select
+                          onValueChange={(value) => setCurrentAdvancedFilter(prev => ({ ...prev, value }))}
+                          value={currentAdvancedFilter.value}
+                          dir="rtl"
+                        >
+                          <SelectTrigger className="text-right">
+                            <SelectValue placeholder="בחר ערך" />
+                          </SelectTrigger>
+                          <SelectContent className="text-right">
+                            {advancedFilterOptions[currentAdvancedFilter.field]?.map(option => (
+                              <SelectItem key={option} value={option}>{option}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Button onClick={handleAddAdvancedFilter} disabled={!currentAdvancedFilter.field || !currentAdvancedFilter.value}>הוסף</Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium">סדר לפי:</label>
+                <Select value={sortBy} onValueChange={setSortBy} dir="rtl">
+                  <SelectTrigger className="bg-white w-auto text-right">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="text-right">
+                    <SelectItem value="syncedAt">זמן תגובה</SelectItem>
+                    <SelectItem value="status">סטטוס</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="bg-white"
+                  onClick={() => setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 text-sm">
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                placeholder="חפש תושב..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-white"
+              />
+              <Select value={statusFilter} onValueChange={setStatusFilter} dir="rtl">
+                <SelectTrigger className="bg-white text-right">
+                  <SelectValue placeholder="סנן לפי סטטוס" />
+                </SelectTrigger>
+                <SelectContent className="text-right">
+                  <SelectItem value="הכל">כל הסטטוסים</SelectItem>
+                  <SelectItem value="זקוקים לסיוע">זקוקים לסיוע</SelectItem>
+                  <SelectItem value="לא בטוח">לא בטוח</SelectItem>
+                  <SelectItem value="כולם בסדר">כולם בסדר</SelectItem>
+                  <SelectItem value="ללא סטטוס">ללא סטטוס</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-between items-center gap-2">
+               <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="bg-white justify-end">
+                    <span>סנן לפי</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64" align="end">
+                  <div className="grid gap-4">
+                    <div className="space-y-2">
+                      <h4 className="font-medium leading-none">הוסף פילטר</h4>
+                      <p className="text-sm text-muted-foreground">
+                        סנן תושבים לפי קטגוריות.
+                      </p>
+                    </div>
+                    <div className="grid gap-2">
+                      <Select
+                        onValueChange={(field) => setCurrentAdvancedFilter({ field, value: '' })}
+                        value={currentAdvancedFilter.field}
+                        dir="rtl"
+                      >
+                        <SelectTrigger className="text-right">
+                          <SelectValue placeholder="בחר שדה" />
+                        </SelectTrigger>
+                        <SelectContent className="text-right">
+                          {ADVANCED_FILTER_FIELDS.map(field => (
+                            <SelectItem key={field} value={field}>{field}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {currentAdvancedFilter.field && (
+                        <Select
+                          onValueChange={(value) => setCurrentAdvancedFilter(prev => ({ ...prev, value }))}
+                          value={currentAdvancedFilter.value}
+                          dir="rtl"
+                        >
+                          <SelectTrigger className="text-right">
+                            <SelectValue placeholder="בחר ערך" />
+                          </SelectTrigger>
+                          <SelectContent className="text-right">
+                            {advancedFilterOptions[currentAdvancedFilter.field]?.map(option => (
+                              <SelectItem key={option} value={option}>{option}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Button onClick={handleAddAdvancedFilter} disabled={!currentAdvancedFilter.field || !currentAdvancedFilter.value}>הוסף</Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium">סדר לפי:</label>
+                <Select value={sortBy} onValueChange={setSortBy} dir="rtl">
+                  <SelectTrigger className="bg-white w-auto text-right">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="text-right">
+                    <SelectItem value="syncedAt">זמן תגובה</SelectItem>
+                    <SelectItem value="status">סטטוס</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="bg-white"
+                  onClick={() => setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+       {/* Active Advanced Filters */}
+       {advancedFilters.length > 0 && (
+        <div className="p-2 bg-gray-100 border-b flex flex-wrap gap-2 items-center justify-end">
+          {advancedFilters.map((filter, index) => (
+            <div key={index} className="flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+              <span>{filter.field}: {filter.value}</span>
+              <button onClick={() => handleRemoveAdvancedFilter(filter)} className="ml-1">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="overflow-y-auto max-h-[70vh]">
       <table className="w-full table-fixed text-sm border-collapse">
         <thead className="sticky top-0 bg-gray-100 z-10">
           <tr>
@@ -364,7 +692,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
           </tr>
         </thead>
         <tbody>
-          {residents.map((row, idx) => {
+          {filteredAndSortedResidents.map((row, idx) => {
             const status = getFieldValue(row, statusKey) || '';
             const colorClass = getStatusColor(status);
             const rowId = row.id || `row-${idx}`;
@@ -397,11 +725,11 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                     <td key={field} className="px-2 py-2 align-top">
                       {field === 'סטטוס' && isEditingStatus ? (
                         <div className="flex items-center gap-2">
-                          <Select value={newStatus} onValueChange={setNewStatus}>
-                            <SelectTrigger className="w-32 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                          <Select value={newStatus} onValueChange={setNewStatus} dir="rtl">
+                            <SelectTrigger className="w-32 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-right">
                               <SelectValue placeholder="בחר סטטוס" />
                             </SelectTrigger>
-                            <SelectContent className="bg-white border border-gray-200 shadow-lg">
+                            <SelectContent className="bg-white border border-gray-200 shadow-lg text-right">
                               <SelectItem value="NO_STATUS" className="hover:bg-gray-50">ללא סטטוס</SelectItem>
                               <SelectItem value="כולם בסדר" className="hover:bg-gray-50">כולם בסדר</SelectItem>
                               <SelectItem value="זקוקים לסיוע" className="hover:bg-gray-50">זקוקים לסיוע</SelectItem>
@@ -428,13 +756,19 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                             ביטול
                           </Button>
                         </div>
+                      ) : field === 'טלפון' && viewMode === 'compact' ? (
+                        <a href={`tel:${getFieldValue(row, 'טלפון')}`} className="flex justify-center items-center h-full">
+                          <Phone className="h-4 w-4 text-gray-600" />
+                        </a>
                       ) : (
                         <div className="flex items-center justify-between">
-                          <span className={row.assignedTasks && row.assignedTasks.length > 0 ? 'font-semibold text-blue-600' : ''}>
-                            {field === 'סטטוס' && (!getFieldValue(row, field) || getFieldValue(row, field).trim() === '') 
-                              ? 'ללא סטטוס' 
-                              : formatCellValue(getFieldValue(row, field))}
-                          </span>
+                           {viewMode === 'full' || field !== 'סטטוס' ? (
+                            <span className={row.assignedTasks && row.assignedTasks.length > 0 ? 'font-semibold text-blue-600' : ''}>
+                              {field === 'סטטוס' && (!getFieldValue(row, field) || getFieldValue(row, field).trim() === '') 
+                                ? 'ללא סטטוס' 
+                                : formatCellValue(getFieldValue(row, field))}
+                            </span>
+                          ) : <span />}
                           {field === 'סטטוס' && currentUser && (
                             <button
                               onClick={(e) => {
@@ -610,6 +944,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
           })}
         </tbody>
       </table>
+      </div>
 
       {/* Task Assignment Dialog */}
       <Dialog open={!!showAssignDialog} onOpenChange={() => setShowAssignDialog(null)}>
@@ -635,11 +970,12 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                 <Select
                   value={assignTaskData.category}
                   onValueChange={(value) => setAssignTaskData(prev => ({ ...prev, category: value }))}
+                  dir="rtl"
                 >
-                  <SelectTrigger className="bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                  <SelectTrigger className="bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-right">
                     <SelectValue placeholder="בחר קטגוריה" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-200 shadow-lg">
+                  <SelectContent className="bg-white border border-gray-200 shadow-lg text-right">
                     {RESIDENT_TASK_CATEGORIES.map(category => (
                       <SelectItem key={category} value={category} className="hover:bg-gray-50">
                         {category}
@@ -653,11 +989,12 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                 <Select
                   value={assignTaskData.priority}
                   onValueChange={(value) => setAssignTaskData(prev => ({ ...prev, priority: value }))}
+                  dir="rtl"
                 >
-                  <SelectTrigger className="bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                  <SelectTrigger className="bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-right">
                     <SelectValue placeholder="בחר עדיפות" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-200 shadow-lg">
+                  <SelectContent className="bg-white border border-gray-200 shadow-lg text-right">
                     <SelectItem value="דחוף" className="hover:bg-gray-50">דחוף</SelectItem>
                     <SelectItem value="רגיל" className="hover:bg-gray-50">רגיל</SelectItem>
                     <SelectItem value="נמוך" className="hover:bg-gray-50">נמוך</SelectItem>
