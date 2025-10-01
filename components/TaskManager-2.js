@@ -1372,7 +1372,7 @@ export default function TaskManager2({
       onDragStart={handleDragStart} 
       onDragEnd={handleDragEnd}
     >
-      <div className="space-y-4">
+      <div className="space-y-4 p-4 bg-white rounded-lg shadow-md">
         {/* Header with title and controls */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <h2 className="text-xl font-bold">מנהל משימות</h2>
@@ -1505,7 +1505,7 @@ export default function TaskManager2({
             items={cleanTaskCategories}
             strategy={horizontalListSortingStrategy}
           >
-            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-${Math.min(6, Math.max(1, cleanTaskCategories.length))} gap-3 h-[calc(100vh-340px)] overflow-x-auto`}>
+            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-${Math.min(6, Math.max(1, cleanTaskCategories.length))} gap-3 h-full overflow-y-auto`}>
               {cleanTaskCategories.map((category) => (
                 <SortableCategoryColumn key={category} id={category} className="bg-gray-100 rounded-lg p-2 flex flex-col min-w-[280px] box-border w-full min-w-0">
                   <div className="flex justify-between items-center mb-2 sticky top-0 bg-gray-100 py-1 px-1 z-10">
@@ -1668,7 +1668,7 @@ export default function TaskManager2({
           </SortableContext>
         </DndContext>
       ) : (
-        <div className="h-[calc(100vh-340px)] overflow-y-auto pr-2">
+        <div className="h-full overflow-y-auto pr-2">
           <div className="space-y-2 w-full">
             {showTaskModal && <div className="w-full">{renderTask(null)}</div>}
             {sortedAndFilteredTasks.length === 0 && !showTaskModal && (
