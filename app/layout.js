@@ -15,10 +15,25 @@ const geistMono = Geist_Mono({
 
 export const metadata = {
   title: "ניהול אירוע חירום",
-  description: "Task and Lead Management System",
+  description: "מערכת ניהול אירועי חירום",
   icons: {
-    icon: '/favicon.svg',
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512x512.png', sizes: '512x512', type: 'image/png' }
+    ],
+    apple: [
+      { url: '/icon-192x192.png', sizes: '192x192', type: 'image/png' }
+    ]
   },
+  manifest: '/manifest.json',
+  themeColor: '#007AFF',
+  viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'ERT Dashboard'
+  }
 };
 
 export default function RootLayout({ children }) {

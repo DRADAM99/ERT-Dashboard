@@ -1,22 +1,25 @@
 {
-    "name": "My CRM PWA",
-    "short_name": "CRM",
-    "description": "A lightweight, fast CRM system",
+    "name": "ניהול אירוע חירום",
+    "short_name": "ERT",
+    "description": "מערכת ניהול אירועי חירום",
     "icons": [
       {
         "src": "/icon-192x192.png",
         "type": "image/png",
-        "sizes": "192x192"
+        "sizes": "192x192",
+        "purpose": "any maskable"
       },
       {
         "src": "/icon-512x512.png",
         "type": "image/png",
-        "sizes": "512x512"
+        "sizes": "512x512",
+        "purpose": "any maskable"
       }
     ],
     "start_url": "/",
     "display": "standalone",
     "background_color": "#ffffff",
-    "theme_color": "#007AFF"
+    "theme_color": "#007AFF",
+    "orientation": "portrait"
   }
   
