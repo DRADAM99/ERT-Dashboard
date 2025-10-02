@@ -2846,7 +2846,7 @@ useEffect(() => {
           </div>
 
           <div className="w-48 text-left text-sm text-gray-500">
-            <span>{'Version 7.2'}</span>
+            <span>{'Version 7.3'}</span>
             <div className="flex flex-col gap-2 mt-2">
               {(currentUser?.role === 'admin' || role === 'admin') && (
                 <Button 
