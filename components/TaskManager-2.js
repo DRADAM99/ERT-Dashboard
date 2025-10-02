@@ -1375,14 +1375,36 @@ export default function TaskManager2({
       <div className="space-y-4 p-4 bg-white rounded-lg shadow-md">
         {/* Header with title and controls */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-          <h2 className="text-xl font-bold">מנהל משימות</h2>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center justify-between w-full sm:w-auto">
+            <h2 className="text-xl font-bold">מנהל משימות</h2>
+            {/* Mobile: Show buttons next to title */}
+            <div className="flex items-center gap-2 sm:hidden">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setIsTMFullView(!isTMFullView)} 
+                title={isTMFullView ? "עבור לתצוגה מקוצרת" : "עבור לתצוגת קנבן"}
+                className="text-xs px-2 py-1"
+              >
+                {isTMFullView ? "תצוגה מוקטנת" : "תצוגה מלאה"}
+              </Button>
+              <Button 
+                size="xs" 
+                onClick={() => toggleBlockOrder("TM")} 
+                title="שנה מיקום בלוק"
+                className="text-xs px-2 py-1"
+              >
+                {'מיקום: '}{blockOrder.TM}
+              </Button>
+            </div>
+          </div>
+          {/* Desktop: Show buttons on the right */}
+          <div className="hidden sm:flex flex-wrap items-center gap-2">
             <Button 
               variant="outline" 
               size="sm" 
               onClick={() => setIsTMFullView(!isTMFullView)} 
               title={isTMFullView ? "עבור לתצוגה מקוצרת" : "עבור לתצוגת קנבן"}
-              className="w-full sm:w-auto"
             >
               {isTMFullView ? "תצוגה מוקטנת" : "תצוגה מלאה"}
             </Button>
@@ -1390,7 +1412,6 @@ export default function TaskManager2({
               size="xs" 
               onClick={() => toggleBlockOrder("TM")} 
               title="שנה מיקום בלוק"
-              className="w-full sm:w-auto"
             >
               {'מיקום: '}{blockOrder.TM}
             </Button>
@@ -1428,12 +1449,12 @@ export default function TaskManager2({
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-t pt-3">
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 border-t pt-3">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             {isTMFullView && (
             <Select value={taskPriorityFilter} onValueChange={setTaskPriorityFilter}>
-              <SelectTrigger className="h-8 text-sm w-full sm:w-[100px]">
-                <SelectValue placeholder="סינון עדיפות..." />
+              <SelectTrigger className="h-8 text-sm w-[80px]">
+                <SelectValue placeholder="עדיפות" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{'כל העדיפויות'}</SelectItem>
@@ -1442,23 +1463,23 @@ export default function TaskManager2({
             </Select>
             )}
             
-            <div className="relative w-full sm:w-auto">
+            <div className="relative flex-1 min-w-0">
               <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input 
                 type="search" 
                 placeholder="חפש משימות..." 
-                className="h-8 text-sm pl-8 w-full sm:w-[180px]" 
+                className="h-8 text-sm pl-8 w-full" 
                 value={taskSearchTerm} 
                 onChange={(e) => setTaskSearchTerm(e.target.value)} 
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-1 flex-shrink-0">
             <Button 
               variant="outline" 
               size="icon" 
-              className="w-8 h-8 text-red-600 hover:bg-red-50 hover:text-red-700" 
+              className="w-7 h-7 text-red-600 hover:bg-red-50 hover:text-red-700" 
               title="מחק משימות שבוצעו" 
               onClick={handleClearDoneTasks} 
               disabled={!tasks.some(task => task.done)}
@@ -1467,15 +1488,17 @@ export default function TaskManager2({
             </Button>
             <Button 
               variant="outline" 
-              size="sm" 
+              size="icon"
+              className="w-7 h-7"
               title="היסטוריית משימות" 
               onClick={() => setShowHistoryModal(true)}
             >
               <span role="img" aria-label="History">📜</span>
             </Button>
             <Button 
+              variant="outline"
               size="sm"
-              className="w-full sm:w-auto" 
+              className="bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200 text-xs px-2 py-1" 
               onClick={() => {
                 setNewTaskTitle("");
                 setNewTaskSubtitle("");
