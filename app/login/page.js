@@ -18,6 +18,7 @@ export default function LoginPage() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setError(""); // Clear any previous errors
   
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -32,9 +33,21 @@ export default function LoginPage() {
         router.push("/"); // or "/dashboard" — depending on your setup
       } else {
         console.warn("❌ No user document found for this UID.");
+        setError("משתמש לא נמצא במערכת");
       }
     } catch (error) {
       console.error("🔥 Login error:", error.code, error.message);
+      
+      // Set user-friendly error messages based on Firebase error codes
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-email' || error.code === 'auth/invalid-credential') {
+        setError("אימייל או סיסמה שגויים");
+      } else if (error.code === 'auth/too-many-requests') {
+        setError("יותר מדי ניסיונות התחברות. נסה שוב מאוחר יותר");
+      } else if (error.code === 'auth/user-disabled') {
+        setError("חשבון זה הושבת");
+      } else {
+        setError("אירעה שגיאה בהתחברות. נסה שוב");
+      }
     }
   };
   
@@ -56,11 +69,11 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
       <Image
-        src="/dashboard-graphic.jpg"
-        alt="Dashboard Visual"
-        width={300}
+        src="/logo.png"
+        alt="Logo"
+        width={320}
         height={160}
-        className="mb-6 rounded"
+        className="mb-4"
       />
       <form onSubmit={handleLogin} className="bg-white p-6 rounded shadow-md w-full max-w-sm space-y-4">
         <h1 className="text-xl font-bold text-center">התחברות למערכת</h1>
@@ -94,13 +107,6 @@ export default function LoginPage() {
 </button>
 
       </form>
-      <Image
-        src="/logo.png"
-        alt="Logo"
-        width={320}
-        height={160}
-        className="mb-4"
-      />
     </div>
   );
 }
