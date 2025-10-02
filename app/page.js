@@ -1,4 +1,4 @@
-// Version 7.2 - fixed Task Manager Compact view and filters
+// Version 7.3 - Fixed Login page and Task Manager Compact view
 "use client";
 
 // Utility functions for layout persistence
@@ -2729,77 +2729,161 @@ useEffect(() => {
     <TooltipProvider>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         
-      <header dir="rtl" className="flex flex-col sm:flex-row items-center justify-between p-2 sm:p-4 border-b bg-white shadow-sm sticky top-0 z-20 min-h-[90px]">
-  <div className="w-full sm:w-48 text-center sm:text-right text-sm text-gray-600 flex flex-col items-center sm:items-start sm:mr-0">
-    <div className="w-full text-center sm:text-right">{currentDateTime || 'טוען תאריך...'}</div>
-    {alias && (
-      <div className="text-xs text-gray-700 w-full text-center sm:text-right">
-        {`שלום, ${alias}`}
-        {department && (
-          <div className="text-xs text-blue-600 mt-1">{`מחלקה: ${department}`}</div>
-        )}
-      </div>
-    )}
-    {/* Admin-only: Add User Button */}
-    {(currentUser?.role === 'admin' || role === 'admin') && (
-      <Button size="sm" className="mt-2 w-full" variant="outline" onClick={() => setShowAddUserModal(true)}>
-        הוסף משתמש חדש
-      </Button>
-    )}
-  </div>
+      <header dir="rtl" className="border-b bg-white shadow-sm sticky top-0 z-20">
+        {/* Mobile Layout */}
+        <div className="block sm:hidden">
+          {/* Top row - Date and user info */}
+          <div className="flex items-center justify-between p-2 text-xs text-gray-600">
+            <div className="flex items-center gap-2">
+              <span>{currentDateTime || 'טוען תאריך...'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {alias && (
+                <span className="text-gray-700">{`שלום, ${alias}`}</span>
+              )}
+              <span className="text-gray-500">{'Version 7.3'}</span>
+            </div>
+          </div>
+          
+          {/* Logo row */}
+          <div className="flex items-center justify-center py-2">
+            <Image
+              src="/logo.png"
+              alt="Logo"
+              width={160}
+              height={64}
+              className="h-14 w-auto inline-block object-contain"
+            />
+          </div>
+          
+          {/* Action buttons row */}
+          <div className="flex items-center justify-between p-2 gap-2">
+            <div className="flex gap-1">
+              {(currentUser?.role === 'admin' || role === 'admin') && (
+                <Button 
+                  size="sm" 
+                  onClick={() => setShowGreenEyesDialog(true)}
+                  className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium px-2 py-1"
+                >
+                  ירוק בעיניים
+                </Button>
+              )}
+              {(currentUser?.role === 'admin' || role === 'admin') && (
+                <Button 
+                  size="sm" 
+                  onClick={() => setShowEndEmergencyDialog(true)}
+                  className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium px-2 py-1"
+                >
+                  סיים אירוע
+                </Button>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {/* Admin-only: Add User Button */}
+              {(currentUser?.role === 'admin' || role === 'admin') && (
+                <Button size="sm" variant="outline" onClick={() => setShowAddUserModal(true)} className="text-xs px-2 py-1">
+                  הוסף משתמש
+                </Button>
+              )}
+              <button
+                className="text-xs text-red-600 underline"
+                onClick={() => {
+                  import("firebase/auth").then(({ signOut }) =>
+                    signOut(auth).then(() => router.push("/login"))
+                  );
+                }}
+              >
+                התנתק
+              </button>
+            </div>
+          </div>
+          
+          {/* Department info row */}
+          {department && (
+            <div className="text-center pb-2">
+              <span className="text-xs text-blue-600">{`מחלקה: ${department}`}</span>
+            </div>
+          )}
+        </div>
 
-  <div className="flex-1 flex items-center justify-center relative px-4">
-    <div className="absolute right-2 hidden sm:flex gap-2">
-      <NotesAndLinks section="links" />
-    </div>
+        {/* Desktop Layout */}
+        <div className="hidden sm:flex items-center justify-between p-2 sm:p-4 min-h-[90px]">
+          <div className="w-48 text-right text-sm text-gray-600">
+            <div className="text-right">{currentDateTime || 'טוען תאריך...'}</div>
+            {alias && (
+              <div className="text-xs text-gray-700 text-right">
+                {`שלום, ${alias}`}
+                {department && (
+                  <div className="text-xs text-blue-600 mt-1">{`מחלקה: ${department}`}</div>
+                )}
+              </div>
+            )}
+            {/* Admin-only: Add User Button */}
+            {(currentUser?.role === 'admin' || role === 'admin') && (
+              <Button size="sm" className="mt-2 w-full" variant="outline" onClick={() => setShowAddUserModal(true)}>
+                הוסף משתמש חדש
+              </Button>
+            )}
+          </div>
 
-    <Image
-      src="/logo.png"
-      alt="Logo"
-      width={140}
-      height={56}
-      className="h-10 sm:h-14 inline-block"
-    />
+          <div className="flex-1 flex items-center justify-center relative px-4">
+            <div className="absolute right-2 flex gap-2">
+              <NotesAndLinks section="links" />
+            </div>
 
-    <div className="absolute left-0 hidden sm:flex gap-2">
-      <NotesAndLinks section="notes" />
-    </div>
-  </div>
+            <Image
+              src="/logo.png"
+              alt="Logo"
+              width={180}
+              height={72}
+              className="h-16 w-auto inline-block object-contain"
+            />
 
-  <div className="w-full sm:w-48 text-center sm:text-left text-sm text-gray-500 flex flex-col items-center sm:items-end sm:ml-0">
-    <span>{'Version 7.2'}</span>
-    <div className="flex flex-col gap-2 mt-2">
-      <Button 
-        size="sm" 
-        onClick={() => setShowGreenEyesDialog(true)}
-        className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium border border-red-600"
-      >
-        הפעלת ירוק בעיניים
-      </Button>
-      <Button 
-        size="sm" 
-        onClick={() => setShowEndEmergencyDialog(true)}
-        className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium border border-green-600"
-      >
-        סיים אירוע חירום
-      </Button>
-      <button
-        className="text-xs text-red-600 underline"
-        onClick={() => {
-          import("firebase/auth").then(({ signOut }) =>
-            signOut(auth).then(() => router.push("/login"))
-          );
-        }}
-      >
-        התנתק
-      </button>
-    </div>
-  </div>
-</header>
+            <div className="absolute left-0 flex gap-2">
+              <NotesAndLinks section="notes" />
+            </div>
+          </div>
+
+          <div className="w-48 text-left text-sm text-gray-500">
+            <span>{'Version 7.2'}</span>
+            <div className="flex flex-col gap-2 mt-2">
+              {(currentUser?.role === 'admin' || role === 'admin') && (
+                <Button 
+                  size="sm" 
+                  onClick={() => setShowGreenEyesDialog(true)}
+                  className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium border border-red-600"
+                >
+                  הפעלת ירוק בעיניים
+                </Button>
+              )}
+              {(currentUser?.role === 'admin' || role === 'admin') && (
+                <Button 
+                  size="sm" 
+                  onClick={() => setShowEndEmergencyDialog(true)}
+                  className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium border border-green-600"
+                >
+                  סיים אירוע חירום
+                </Button>
+              )}
+              <button
+                className="text-xs text-red-600 underline"
+                onClick={() => {
+                  import("firebase/auth").then(({ signOut }) =>
+                    signOut(auth).then(() => router.push("/login"))
+                  );
+                }}
+              >
+                התנתק
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
 
 
         
-<div dir="rtl" className="grid grid-cols-1 lg:grid-cols-12 gap-2 sm:gap-4 p-2 sm:p-4 bg-gray-50 min-h-[calc(100vh-90px)]">
+<div dir="rtl" className="grid grid-cols-1 lg:grid-cols-12 gap-2 sm:gap-4 p-2 sm:p-4 bg-gray-50 min-h-[calc(100vh-120px)] sm:min-h-[calc(100vh-90px)]">
           {/* Task Manager Block */}
         <div style={{ order: blockOrder.TM }} className={`col-span-1 ${isTMFullView ? 'lg:col-span-12' : 'lg:col-span-4'} transition-all duration-300 ease-in-out`}>
           <TaskManager2 
