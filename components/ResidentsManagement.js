@@ -12,7 +12,7 @@ import { db } from "../firebase";
 // Task categories for resident assignments - using the same categories as the main page
 const RESIDENT_TASK_CATEGORIES = ["לוגיסטיקה ", "אוכלוסיה", "רפואה", "חוסן", "חמ״ל ", "אחר"];
 
-function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סטטוס', currentUser, users = [], viewMode = 'full' }) {
+function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סטטוס', currentUser, alias, users = [], viewMode = 'full' }) {
   const [expandedRows, setExpandedRows] = useState({});
   const [editingStatus, setEditingStatus] = useState(null);
   const [newStatus, setNewStatus] = useState('');
@@ -40,6 +40,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
       'כולם בסדר': 'bg-green-500',
       'זקוקים לסיוע': 'bg-red-500',
       'לא בטוח': 'bg-orange-400',
+      'פצוע': 'bg-purple-500',
       'חדש': 'bg-blue-400',
       'בטיפול': 'bg-yellow-400',
       'הושלם': 'bg-green-600',
@@ -151,18 +152,19 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
 
     // 4. Sorting
     const statusPriority = {
-      'זקוקים לסיוע': 1,
-      'לא בטוח': 2,
-      'כולם בסדר': 3,
-      '': 4, // for ללא סטטוס
+      'פצוע': 1,
+      'זקוקים לסיוע': 2,
+      'לא בטוח': 3,
+      'כולם בסדר': 4,
+      '': 5, // for ללא סטטוס
     };
 
     filtered.sort((a, b) => {
       if (sortBy === 'status') {
         const statusA = getFieldValue(a, 'סטטוס');
         const statusB = getFieldValue(b, 'סטטוס');
-        const priorityA = statusPriority[statusA] ?? (statusA === '' ? 4 : 99);
-        const priorityB = statusPriority[statusB] ?? (statusB === '' ? 4 : 99);
+        const priorityA = statusPriority[statusA] ?? (statusA === '' ? 5 : 99);
+        const priorityB = statusPriority[statusB] ?? (statusB === '' ? 5 : 99);
         
         if (priorityA !== priorityB) {
           return sortDirection === 'asc' ? priorityA - priorityB : priorityB - priorityA;
@@ -243,14 +245,14 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
           to: newStatus,
           timestamp: now,
           userId: currentUser.uid,
-          userAlias: currentUser.alias || currentUser.email
+          userAlias: alias || currentUser.email
         },
         statusHistory: arrayUnion({
           from: oldStatus,
           to: newStatus,
           timestamp: now,
           userId: currentUser.uid,
-          userAlias: currentUser.alias || currentUser.email
+          userAlias: alias || currentUser.email
         })
       });
 
@@ -326,7 +328,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
               title: assignTaskData.title,
               category: assignTaskData.category,
               assignedAt: now,
-              assignedBy: currentUser.alias || currentUser.email
+              assignedBy: alias || currentUser.email || 'Unknown User'
             }),
             updatedAt: now
           });
@@ -340,7 +342,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
           id: taskRef.id,
           userId: currentUser.uid,
           creatorId: currentUser.uid,
-          creatorAlias: currentUser.alias || currentUser.email,
+          creatorAlias: alias || currentUser.email,
           assignTo: assignTaskData.category, // Use category as assignTo
           title: assignTaskData.title,
           subtitle: `תושב: ${residentData['שם פרטי']} ${residentData['שם משפחה']} - ${residentData['שכונה']}`,
@@ -376,7 +378,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
             title: assignTaskData.title,
             category: assignTaskData.category,
             assignedAt: now,
-            assignedBy: currentUser.alias || currentUser.email
+            assignedBy: alias || currentUser.email || 'Unknown User'
           }),
           updatedAt: now
         });
@@ -407,7 +409,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
         text: newComment,
         timestamp: now,
         userId: currentUser.uid,
-        userAlias: currentUser.alias || currentUser.email
+        userAlias: alias || currentUser.email
       };
 
       await updateDoc(residentRef, {
@@ -487,6 +489,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                   <SelectItem value="הכל">כל הסטטוסים</SelectItem>
                   <SelectItem value="זקוקים לסיוע">זקוקים לסיוע</SelectItem>
                   <SelectItem value="לא בטוח">לא בטוח</SelectItem>
+                  <SelectItem value="פצוע">פצוע</SelectItem>
                   <SelectItem value="כולם בסדר">כולם בסדר</SelectItem>
                   <SelectItem value="ללא סטטוס">ללא סטטוס</SelectItem>
                 </SelectContent>
@@ -580,6 +583,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                   <SelectItem value="הכל">כל הסטטוסים</SelectItem>
                   <SelectItem value="זקוקים לסיוע">זקוקים לסיוע</SelectItem>
                   <SelectItem value="לא בטוח">לא בטוח</SelectItem>
+                  <SelectItem value="פצוע">פצוע</SelectItem>
                   <SelectItem value="כולם בסדר">כולם בסדר</SelectItem>
                   <SelectItem value="ללא סטטוס">ללא סטטוס</SelectItem>
                 </SelectContent>
@@ -734,6 +738,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                               <SelectItem value="כולם בסדר" className="hover:bg-gray-50">כולם בסדר</SelectItem>
                               <SelectItem value="זקוקים לסיוע" className="hover:bg-gray-50">זקוקים לסיוע</SelectItem>
                               <SelectItem value="לא בטוח" className="hover:bg-gray-50">לא בטוח</SelectItem>
+                              <SelectItem value="פצוע" className="hover:bg-gray-50">פצוע</SelectItem>
                             </SelectContent>
                           </Select>
                           <Button 

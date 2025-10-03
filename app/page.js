@@ -22,8 +22,7 @@ import { auth, db } from "../firebase";
 import { FaWhatsapp, FaCodeBranch } from "react-icons/fa";
 import { or, query, where, orderBy, arrayUnion } from "firebase/firestore";
 import { useAuth } from "./context/AuthContext";  // Updated import path
-// ואז ברנדר:
-// <FullCalendarDemo />
+import EventStatus from "@/components/EventStatus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -273,7 +272,7 @@ export default function Dashboard() {
   
   // Green Eyes functionality
   const [showGreenEyesDialog, setShowGreenEyesDialog] = useState(false);
-  
+  const [showEventStatus, setShowEventStatus] = useState(false);
 // Add this handler for category drag end
 const handleCategoryDragEnd = (event) => {
   const { active, over } = event;
@@ -2759,6 +2758,7 @@ useEffect(() => {
           {/* Action buttons row */}
           <div className="flex items-center justify-between p-2 gap-2">
             <div className="flex gap-1">
+              <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs px-2 py-1">תמונת מצב</Button>
               {(currentUser?.role === 'admin' || role === 'admin') && (
                 <Button 
                   size="sm" 
@@ -2825,6 +2825,10 @@ useEffect(() => {
                 הוסף משתמש חדש
               </Button>
             )}
+            <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-s px-4 py-4">תמונת מצב</Button>
+
+             
+              
           </div>
 
           <div className="flex-1 flex items-center justify-center relative px-4">
@@ -2928,6 +2932,7 @@ useEffect(() => {
           statusColorMap={leadStatusConfig}
           statusKey="סטטוס"
           currentUser={currentUser}
+          alias={alias}
           users={users}
           viewMode={isLeadsFullView ? 'full' : 'compact'}
         />
@@ -3209,7 +3214,7 @@ useEffect(() => {
           </form>
         </DialogContent>
       </Dialog>
-
+      {showEventStatus && <EventStatus onClose={() => setShowEventStatus(false)} />}
       {/* Green Eyes Activation Dialog */}
       <Dialog open={showGreenEyesDialog} onOpenChange={setShowGreenEyesDialog}>
         <DialogContent className="bg-white rounded-xl shadow-xl p-8 max-w-xs w-full text-center" style={{ direction: 'rtl', textAlign: 'center' }}>

@@ -1,8 +1,8 @@
 # Product Requirements Document (PRD)
 ## Emergency Response Team (ERT) Management System
 
-**Version:** 6.7  
-**Date:** January 2025  
+**Version:** 7.5
+**Date:** October 2025
 **Project:** ERT Dashboard - Emergency Management Platform
 
 ---
@@ -140,12 +140,12 @@ The ERT (Emergency Response Team) Management System is a comprehensive web-based
   - בית (House Number)
   - הערות (Notes)
   - סטטוס (Status)
-- **Status Options**: כולם בסדר (All OK), זקוקים לסיוע (Need Help), לא בטוח (Uncertain)
+- **Status Options**: כולם בסדר (All OK), זקוקים לסיוע (Need Help), לא בטוח (Uncertain), פצוע (Injured)
 
 #### Resident Features
 - **Real-time Updates**: Live status updates from Google Sheets
 - **Task Assignment**: Create tasks directly for residents with department assignment
-- **Status Management**: Update resident status with dropdown interface (כולם בסדר, זקוקים לסיוע, לא בטוח)
+- **Status Management**: Update resident status with dropdown interface (כולם בסדר, זקוקים לסיוע, לא בטוח, פצוע)
 - **Comments**: Add notes and comments to resident records
 - **Status History**: Track all status changes with timestamps and user attribution
 - **Assigned Tasks**: View and manage tasks assigned to specific residents
@@ -177,7 +177,45 @@ The ERT (Emergency Response Team) Management System is a comprehensive web-based
 #### File References
 - `components/EventLogBlock.js` - Main event logging component
 
-### 4. Emergency Locator Integration
+### 4. Real-time Situation Dashboard (תמונת מצב)
+
+The Situation Dashboard provides a high-level, real-time overview of an ongoing emergency event, compiling data from various sources into a single, comprehensive view for managers. It is accessible via a "תמונת מצב" button in the application header.
+
+#### Dashboard Components
+- **Event Clock**: A ticking digital clock at the top of the dashboard displays the elapsed time since the emergency event was initiated.
+- **Resident Status Summary**: An infographic that shows the count and percentage of residents in each status category: 'הכל בסדר' (All OK), 'זקוקים לסיוע' (Need Help), 'לא בטוח' (Uncertain), 'פצוע' (Injured), and 'ללא סטטוס' (No Status). It includes a specific section to list details of injured residents.
+- **Task Metrics Summary**: Provides key performance indicators for task management, including a breakdown of open vs. closed tasks per category, the average task completion time, and the average response time.
+- **Dynamic Event Narrative**: A text summary that interprets the "story" of the event based on the event log. This narrative updates in real-time as new logs are added, with a history of previous summaries saved for post-event analysis.
+- **Interactive Live Timeline**: A visual timeline of all key activities during the event.
+  - **Event-Types**: Displays resident status changes, task creations, task completions, and event log updates, each represented by a different color.
+  - **Layout Toggle**: Users can switch between a vertical and a horizontal timeline layout.
+  - **Interactive Events**: Clicking on an event on the timeline opens a modal with detailed information.
+  - **Filtering**: A dropdown menu allows users to filter which event types are displayed on the timeline.
+  - **Zoom Control**: In the horizontal view, users can zoom in and out to adjust the spacing between events.
+
+#### File References
+- `components/EventStatus.js` - The main component for the Situation Dashboard.
+
+### 5. Leads and Candidate Management
+
+#### Lead & Candidate Tracking
+- **Lead Pipeline**: Manages potential clients/candidates from creation to resolution using a Kanban-style board, a customer journey timeline, and a funnel view.
+- **Status Management**: Customizable statuses for tracking lead progress (e.g., 'חדש', 'נקבע יעוץ', 'לא מעוניינים').
+- **Data Persistence**: Filters, sorting preferences, and view states are saved locally for user convenience.
+- **Real-time Updates**: Listens to the 'leads' collection in Firestore for live data.
+
+#### Lead Interaction & Actions
+- **Click-to-Call**: Integration with an external PBX system to initiate calls directly from the interface.
+- **WhatsApp Integration**: Quick links to open WhatsApp chats.
+- **Conversation History**: Log and view conversation summaries for each lead.
+- **Follow-up Tracking**: A dedicated system to mark, count, and reset follow-up calls.
+- **Task Creation**: Create new tasks in the main Task Management System directly from a lead's details.
+
+#### File References
+- `components/CandidatesBlock.js` - Main component for managing treatment program candidates.
+- `components/NewLeadsManager.js` - Component offering multiple views (Kanban, Timeline, Funnel) for lead management.
+
+### 6. Emergency Locator Integration
 
 #### Map Services
 - **Embedded Map**: iframe integration with emergency locator service
@@ -189,7 +227,7 @@ The ERT (Emergency Response Team) Management System is a comprehensive web-based
 - `components/SimpleEmergencyLocator.js` - Emergency locator component
 - `components/EmergencyLocatorIntegration.js` - Advanced integration component
 
-### 5. WhatsApp Emergency Communication System
+### 7. WhatsApp Emergency Communication System
 
 #### Emergency Messaging
 - **Twilio Integration**: WhatsApp Business API via Twilio
@@ -217,7 +255,7 @@ The ERT (Emergency Response Team) Management System is a comprehensive web-based
 - `combined-whatsapp-firebase-script-v2.js` - Enhanced WhatsApp integration
 - `combined-whatsapp-firebase-script.js` - Basic WhatsApp + Firebase integration
 
-### 6. Notes & Links Management - allows users to save links at the header and make notes for themselves or others.
+### 8. Notes & Links Management - allows users to save links at the header and make notes for themselves or others.
 
 #### Information Management
 - **Notes System**: Add and manage notes
@@ -228,7 +266,7 @@ The ERT (Emergency Response Team) Management System is a comprehensive web-based
 #### File References
 - `components/NotesAndLinks.js` - Notes and links management
 
-### 7. Emergency Event Wrap-up & Analysis System
+### 9. Emergency Event Wrap-up & Analysis System
 
 #### Post-Event Analysis
 - **Event Timeline**: Complete chronological timeline of all activities
@@ -259,7 +297,7 @@ The ERT (Emergency Response Team) Management System is a comprehensive web-based
 - `app/api/event-analysis/route.js` - Event analysis API endpoint
 - `lib/eventAnalytics.js` - Event analytics and reporting utilities
 
-### 8. User Management & Authentication
+### 10. User Management & Authentication
 
 #### Authentication System
 - **Firebase Auth**: Google OAuth integration
@@ -434,7 +472,8 @@ The ERT (Emergency Response Team) Management System is a comprehensive web-based
   source: string,
   status: string,
   createdAt: timestamp,
-  conversationSummary: array
+  conversationSummary: array,
+  followUpCall: { active: boolean, count: number }
 }
 ```
 
@@ -616,6 +655,7 @@ The ERT (Emergency Response Team) Management System is a comprehensive web-based
 │   ├── DroppableCalendar.js      # Calendar with drag-and-drop
 │   ├── EmergencyLocatorIntegration.js # Emergency locator
 │   ├── EventLogBlock.js          # Event logging
+│   ├── EventStatus.js            # Real-time situation dashboard
 │   ├── FullCalendarDemo.js       # Calendar demo
 │   ├── NewLeadsManager.js        # Leads management
 │   ├── NotesAndLinks.js          # Notes and links
@@ -664,6 +704,18 @@ The ERT (Emergency Response Team) Management System is a comprehensive web-based
 - **Features**: Event creation, department filtering, import/export
 - **Dependencies**: Firebase, CSV/Excel parsing
 - **State**: Event data, filters, import states
+
+##### EventStatus.js
+- **Purpose**: Real-time situation dashboard
+- **Features**: Resident/task/log summaries, interactive timeline, event clock.
+- **Dependencies**: Firebase, lucide-react, UI components
+- **State**: Resident data, task data, event logs, timeline state (filters, layout, zoom), selected event for modal.
+
+##### CandidatesBlock.js & NewLeadsManager.js
+- **Purpose**: Leads and candidate pipeline management
+- **Features**: Kanban board, timeline/funnel views, status tracking, conversation history, click-to-call, task creation from leads.
+- **Dependencies**: Firebase, dnd-kit (for Kanban), UI components
+- **State**: Leads data, filters, sorting, view states (e.g., collapsed columns), editing states.
 
 ##### SimpleEmergencyLocator.js
 - **Purpose**: Emergency location services
@@ -874,6 +926,6 @@ This PRD serves as the definitive reference for the ERT Management System, provi
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: Sep 2025  
-**Next Review**: Oct 2025
+**Document Version**: 7.5
+**Last Updated**: Oct 2025
+**Next Review**: Nov 2025
