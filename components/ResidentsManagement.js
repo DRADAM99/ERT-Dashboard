@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { doc, updateDoc, arrayUnion, serverTimestamp, collection, setDoc, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
+import { createUserNotification } from "@/lib/notifications";
 
 // Task categories for resident assignments - using the same categories as the main page
 const RESIDENT_TASK_CATEGORIES = ["לוגיסטיקה ", "אוכלוסיה", "רפואה", "חוסן", "חמ״ל ", "אחר"];
@@ -285,6 +286,24 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
         }
       }
 
+      // Send notification if status is critical
+      if (newStatus === 'זקוקים לסיוע' || newStatus === 'לא בטוח') {
+        const residentName = `${getFieldValue(residents.find(r => r.id === residentId), 'שם פרטי')} ${getFieldValue(residents.find(r => r.id === residentId), 'שם משפחה')}`;
+        // This should ideally notify all relevant users, not just the current one.
+        // For now, let's assume we notify the current user as an example.
+        // A better implementation would be to get a list of subscribed users.
+        const usersToNotifyQuery = query(collection(db, "users"));
+        const usersToNotifySnapshot = await getDocs(usersToNotifyQuery);
+        usersToNotifySnapshot.forEach(userDoc => {
+          createUserNotification(userDoc.id, {
+            message: `סטטוס תושב התעדכן: ${residentName} - ${newStatus}`,
+            type: 'resident',
+            subType: 'statusChange',
+            link: `/` // Or a more specific link
+          });
+        });
+      }
+
       setEditingStatus(null);
       setNewStatus('');
     } catch (error) {
@@ -369,6 +388,18 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
         };
 
         await setDoc(taskRef, taskData);
+
+        // Notify users in the assigned department
+        const usersInDepartmentQuery = query(collection(db, "users"), where("department", "==", taskData.department.trim()));
+        const usersInDepartmentSnapshot = await getDocs(usersInDepartmentQuery);
+        usersInDepartmentSnapshot.forEach(userDoc => {
+          createUserNotification(userDoc.id, {
+            message: `משימה חדשה מתושב: ${taskData.title}`,
+            type: 'task',
+            subType: 'created',
+            link: `/`
+          });
+        });
 
         // Update resident with task assignment
         const residentRef = doc(db, 'residents', residentId);

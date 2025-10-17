@@ -85,6 +85,22 @@ service cloud.firestore {
     // ────────────────
     match /users/{userId} {
       allow read, write: if isAuthenticated() && (isUser(userId) || isAdmin());
+
+      // Allow users to manage their own notification settings, tokens, and notifications
+      match /notificationSettings/{docId} {
+        allow read, write: if isUser(userId);
+      }
+      match /fcmTokens/{token} {
+        allow read, write: if isUser(userId);
+      }
+      match /notifications/{notificationId} {
+        allow read, update: if isUser(userId);
+        // Allow a logged-in user to create a notification for themselves.
+        allow create: if isUser(userId) &&
+                      request.resource.data.message is string &&
+                      request.resource.data.type is string &&
+                      request.resource.data.read == false;
+      }
     }
 
     // ────────────────

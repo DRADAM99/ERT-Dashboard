@@ -4,6 +4,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getMessaging } from "firebase/messaging";
 // TODO: Add SDKs for Firebase products that you want to use later if needed
 // https://firebase.google.com/docs/web/setup#available-libraries
 // e.g. import { getFunctions } from "firebase/functions";
@@ -37,11 +38,14 @@ const db = getFirestore(app);
 // Get Auth instance
 const auth = getAuth(app);
 
+// Get Messaging instance
+const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
+
 // Get Google Auth Provider instance
 const googleProvider = new GoogleAuthProvider();
 
 // Export the instances for use in other parts of your app
-export { db, auth, googleProvider };
+export { db, auth, googleProvider, app, messaging };
 
 // You can also export 'app' if needed elsewhere
 // export default app;

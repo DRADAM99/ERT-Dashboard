@@ -95,6 +95,7 @@ import { useToast } from "@/components/ui/use-toast"
 
 // Add to imports
 import { TaskTabs } from "@/components/TaskTabs";
+import NotificationBell from "@/components/NotificationBell";
 
 // Add this import at the top with other imports
 import { Switch as MuiSwitch } from '@mui/material';
@@ -2796,6 +2797,7 @@ useEffect(() => {
               >
                 התנתק
               </button>
+              <NotificationBell />
             </div>
           </div>
           
@@ -2880,6 +2882,7 @@ useEffect(() => {
               >
                 התנתק
               </button>
+              <NotificationBell />
             </div>
           </div>
         </div>

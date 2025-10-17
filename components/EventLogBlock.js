@@ -14,6 +14,7 @@ import { Search, ChevronDown, Upload, ChevronLeft, ChevronRight, Flame } from "l
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "@/components/ui/use-toast";
+import { createUserNotification } from "@/lib/notifications";
 
 function statusColor(status) {
   if (status === "מחכה") return "text-red-600 font-bold";
@@ -159,6 +160,19 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
     try {
       await addDoc(collection(db, "eventLogs"), eventData);
       console.log("Event log created successfully");
+
+      // Notify all users about the new event
+      const usersToNotifyQuery = query(collection(db, "users"));
+      const usersToNotifySnapshot = await getDocs(usersToNotifyQuery);
+      usersToNotifySnapshot.forEach(userDoc => {
+        createUserNotification(userDoc.id, {
+          message: `אירוע חדש ביומן: ${form.description}`,
+          type: 'event',
+          subType: 'newEvent',
+          link: `/`
+        });
+      });
+
       setForm({ reporter: "", recipient: userFullName || alias || "", description: "", department: "", status: "מחכה" });
       setShowAddEventModal(false);
     } catch (error) {
@@ -259,6 +273,21 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
         title: "Event Status Updated",
         description: `Event status updated to ${newStatus}`,
       });
+
+      // Notify users about the status change
+      const eventDoc = await getDoc(eventRef);
+      const eventData = eventDoc.data();
+      const usersToNotifyQuery = query(collection(db, "users"));
+      const usersToNotifySnapshot = await getDocs(usersToNotifyQuery);
+      usersToNotifySnapshot.forEach(userDoc => {
+        createUserNotification(userDoc.id, {
+          message: `סטטוס אירוע התעדכן: ${eventData.description} - ${newStatus}`,
+          type: 'event',
+          subType: 'statusChange',
+          link: `/`
+        });
+      });
+
     } catch (error) {
       console.error('Error updating event status:', error);
       toast({
@@ -318,7 +347,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
       } else {
         // Fallback to direct task creation with proper field validation
         const taskRef = doc(collection(db, 'tasks'));
-        await setDoc(taskRef, {
+        const taskData = {
           id: taskRef.id,
           userId: currentUser?.uid || '',
           creatorId: currentUser?.uid || '',
@@ -341,6 +370,19 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
           completedAt: null,
           eventId: taskEvent.id,
           eventStatus: taskEvent.status || 'מחכה',
+        };
+        await setDoc(taskRef, taskData);
+
+        // Notify users in the assigned department
+        const usersInDepartmentQuery = query(collection(db, "users"), where("department", "==", taskDepartment.trim()));
+        const usersInDepartmentSnapshot = await getDocs(usersInDepartmentQuery);
+        usersInDepartmentSnapshot.forEach(userDoc => {
+          createUserNotification(userDoc.id, {
+            message: `משימה חדשה מאירוע: ${taskEvent.description || ''}`,
+            type: 'task',
+            subType: 'created',
+            link: `/`
+          });
         });
         
         toast({
