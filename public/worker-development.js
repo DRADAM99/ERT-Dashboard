@@ -11166,7 +11166,7 @@ __webpack_require__.r(__webpack_exports__);
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyADV9_C-i0F91jr8TcOq2zItMsnjag6oyE",
+  apiKey: "AIzaSyBHeb_AS_Iyfc8K7z2T01tLYfhFfGAs_wk",
   authDomain: "emergency-dashboard-a3842.firebaseapp.com",
   projectId: "emergency-dashboard-a3842",
   storageBucket: "emergency-dashboard-a3842.firebasestorage.app",

@@ -295,8 +295,12 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
         const usersToNotifyQuery = query(collection(db, "users"));
         const usersToNotifySnapshot = await getDocs(usersToNotifyQuery);
         usersToNotifySnapshot.forEach(userDoc => {
-          // This function is now centralized, so we call it directly.
-          // The original notification logic for status changes is removed.
+          createUserNotification(userDoc.id, {
+            message: `סטטוס תושב התעדכן: ${residentName} - ${newStatus}`,
+            type: 'resident',
+            subType: 'statusChange',
+            link: `/` // Or a more specific link
+          });
         });
       }
 

@@ -15,7 +15,7 @@
 
 ### 3. **Google Apps Script Configuration**
 - **Project ID**: `emergency-dashboard-a3842` ✅
-- **API Key**: `AIzaSyADV9_C-i0F91jr8TcOq2zItMsnjag6oyE` ✅
+- **API Key**: `AIzaSyBHeb_AS_Iyfc8K7z2T01tLYfhFfGAs_wk` ✅
 - **Collection**: `residents` ✅
 - **Sheet Name**: `גליון1` ✅
 
@@ -33,7 +33,7 @@ Make sure your Google Apps Script has these exact values:
 
 ```javascript
 const FIREBASE_PROJECT_ID = "emergency-dashboard-a3842";
-const FIREBASE_WEB_API_KEY = "AIzaSyADV9_C-i0F91jr8TcOq2zItMsnjag6oyE";
+const FIREBASE_WEB_API_KEY = "AIzaSyBHeb_AS_Iyfc8K7z2T01tLYfhFfGAs_wk";
 const SHEET_NAME = "גליון1";
 const DATA_RANGE = "A1:Z500";
 ```

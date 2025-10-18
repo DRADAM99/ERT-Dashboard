@@ -16,7 +16,7 @@
 
 // ===== CONFIGURATION =====
 const FIREBASE_PROJECT_ID = "emergency-dashboard-a3842";
-const FIREBASE_WEB_API_KEY = "AIzaSyADV9_C-i0F91jr8TcOq2zItMsnjag6oyE";
+const FIREBASE_WEB_API_KEY = "AIzaSyBHeb_AS_Iyfc8K7z2T01tLYfhFfGAs_wk";
 const SHEET_NAME = "2025"; // Change this to your actual sheet name
 const DATA_RANGE = "A1:Z500";
 

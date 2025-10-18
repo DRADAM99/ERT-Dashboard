@@ -21,7 +21,7 @@ The system now works as follows:
 In the script, update these values:
 ```javascript
 const FIREBASE_PROJECT_ID = "emergency-dashboard-a3842"; // Your Firebase project ID
-const FIREBASE_WEB_API_KEY = "AIzaSyADV9_C-i0F91jr8TcOq2zItMsnjag6oyE"; // Your Firebase Web API Key
+const FIREBASE_WEB_API_KEY = "AIzaSyBHeb_AS_Iyfc8K7z2T01tLYfhFfGAs_wk"; // Your Firebase Web API Key
 const SHEET_NAME = "גליון1"; // Your sheet name
 const DATA_RANGE = "A1:Z500"; // Adjust range as needed
 ```

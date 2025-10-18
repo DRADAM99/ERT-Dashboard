@@ -11,7 +11,7 @@
 
 // Firebase configuration - UPDATE THESE VALUES
 const FIREBASE_PROJECT_ID = "emergency-dashboard-a3842";
-const FIREBASE_WEB_API_KEY = "AIzaSyADV9_C-i0F91jr8TcOq2zItMsnjag6oyE";
+const FIREBASE_WEB_API_KEY = "AIzaSyBHeb_AS_Iyfc8K7z2T01tLYfhFfGAs_wk";
 
 // Sheet configuration
 const SHEET_NAME = "גליון1";
