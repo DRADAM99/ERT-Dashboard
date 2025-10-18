@@ -1,4 +1,4 @@
-// Version 7.3 - Fixed Login page and Task Manager Compact view
+// Version 7.5 - added notification system and modified Task Manager
 "use client";
 
 // Utility functions for layout persistence
@@ -2738,12 +2738,12 @@ useEffect(() => {
               <span>{currentDateTime || 'טוען תאריך...'}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-gray-500">{'Version 7.3'}</span>
+              <span className="text-gray-500">{'Version 7.5'}</span>
               <NotificationBell />
             </div>
           </div>
           <div className="flex justify-between items-center mb-4">
-      <h1 className="text-lg text-gray-500">Version 7.3</h1>
+      <h1 className="text-lg text-gray-500">Version 7.5</h1>
       <NotificationBell />
     </div>
           {/* Logo row */}
@@ -2852,7 +2852,7 @@ useEffect(() => {
           </div>
 
           <div className="w-48 text-left text-sm text-gray-500 flex items-center gap-2">
-            <span>{'Version 7.3'}</span>
+            <span>{'Version 7.5'}</span>
             <NotificationBell />
             <div className="flex flex-col gap-2 mt-2">
               {(currentUser?.role === 'admin' || role === 'admin') && (

@@ -1502,7 +1502,7 @@ export default function TaskManager2({
               <Input 
                 type="search" 
                 placeholder="חפש משימות..." 
-                className="h-8 text-sm pr-8 w-[250px]" 
+                className={`h-8 text-sm pr-8 ${isTMFullView ? 'w-[250px]' : 'w-[180px]'}`} 
                 value={taskSearchTerm} 
                 onChange={(e) => setTaskSearchTerm(e.target.value)} 
               />

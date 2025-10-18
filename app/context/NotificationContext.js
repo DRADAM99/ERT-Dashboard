@@ -16,9 +16,51 @@ export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [settings, setSettings] = useState(null);
-  const [user, setUser] = useState(null); // Add a state for the user
-  const notificationSound = useMemo(() => typeof window !== 'undefined' ? new Audio('/notification.mp3') : null, []);
+  const [user, setUser] = useState(null);
+  const notificationSound = useRef(typeof window !== 'undefined' ? new Audio('/notification.wav') : null);
+  const isAudioUnlocked = useRef(false);
   const isInitialLoad = useRef(true);
+
+  const playNotificationSound = useCallback(() => {
+    if (notificationSound.current && isAudioUnlocked.current) {
+      notificationSound.current.currentTime = 0;
+      notificationSound.current.play().catch(e => console.error("Error playing notification sound:", e));
+    } else if (!isAudioUnlocked.current) {
+      console.log("Audio not unlocked by user interaction yet. Sound will not play.");
+    }
+  }, []);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (notificationSound.current && !isAudioUnlocked.current) {
+        notificationSound.current.muted = true;
+        notificationSound.current.play()
+          .then(() => {
+            notificationSound.current.pause();
+            notificationSound.current.currentTime = 0;
+            notificationSound.current.muted = false;
+            isAudioUnlocked.current = true;
+            console.log("Notification sound engine unlocked successfully.");
+            window.removeEventListener('click', unlockAudio);
+            window.removeEventListener('keydown', unlockAudio);
+            window.removeEventListener('touchstart', unlockAudio);
+          })
+          .catch(error => {
+            console.warn("Could not unlock audio on first interaction:", error);
+          });
+      }
+    };
+
+    window.addEventListener('click', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio);
+
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+  }, []);
 
   const requestPermission = useCallback(async (currentUser) => { // Accept user as argument
     if (!currentUser || typeof window === 'undefined' || !('Notification' in window)) {
@@ -79,7 +121,7 @@ export function NotificationProvider({ children }) {
               const notificationData = change.doc.data();
               const { type, subType } = notificationData;
               if (settings && settings[type] && settings[type][subType] && settings[type][subType].sound) {
-                notificationSound.play().catch(e => console.error("Error playing notification sound:", e));
+                playNotificationSound();
               }
             }
           });
@@ -101,7 +143,22 @@ export function NotificationProvider({ children }) {
       const settingsRef = doc(db, `users/${user.uid}/notificationSettings`, 'settings');
       const unsubscribe = onSnapshot(settingsRef, (doc) => {
         if (doc.exists()) {
-          setSettings(doc.data());
+          const rawSettings = doc.data();
+          const normalizedSettings = {};
+
+          for (const categoryKey in rawSettings) {
+            if (Object.prototype.hasOwnProperty.call(rawSettings, categoryKey)) {
+              const category = rawSettings[categoryKey];
+              const newCategory = {};
+              for (const subTypeKey in category) {
+                if (Object.prototype.hasOwnProperty.call(category, subTypeKey)) {
+                  newCategory[subTypeKey.toLowerCase()] = category[subTypeKey];
+                }
+              }
+              normalizedSettings[categoryKey] = newCategory;
+            }
+          }
+          setSettings(normalizedSettings);
         } else {
           // Create default settings if they don't exist
           const defaultSettings = {
@@ -118,19 +175,19 @@ export function NotificationProvider({ children }) {
   }, [user]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && notificationSound) {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && notificationSound.current) {
       const messaging = getMessaging(app);
       const unsubscribe = onMessage(messaging, (payload) => {
         console.log('Message received. ', payload);
         // Handle foreground message
         const { type, subType } = payload.data;
-        if (notificationSound && settings && settings[type] && settings[type][subType] && settings[type][subType].sound) {
-          notificationSound.play();
+        if (settings && settings[type] && settings[type][subType] && settings[type][subType].sound) {
+          playNotificationSound();
         }
       });
       return () => unsubscribe();
     }
-  }, [settings, notificationSound]);
+  }, [settings]);
 
   const markAsRead = async (notificationId) => {
     if (user) {
