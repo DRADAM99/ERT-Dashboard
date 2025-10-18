@@ -206,7 +206,7 @@ export default function TaskManager2({
   const restoreTask = async (archivedTask) => {
     if (!currentUser || role !== 'admin') {
       toast({
-        title: "Error",
+        title: "שגיאה",
         description: "רק אדמין יכול לשחזר משימות",
         variant: "destructive"
       });
@@ -225,13 +225,13 @@ export default function TaskManager2({
       // Remove from archive
       await deleteDoc(doc(db, 'archivedTasks', archivedTask.id));
       toast({
-        title: "Task Restored",
+        title: "משימה שוחזרה",
         description: "המשימה שוחזרה בהצלחה",
       });
     } catch (error) {
       console.error('Error restoring task:', error);
       toast({
-        title: "Error",
+        title: "שגיאה",
         description: "שגיאה בשחזור המשימה",
         variant: "destructive"
       });
@@ -402,16 +402,16 @@ export default function TaskManager2({
       });
       
       toast({
-        title: "Task Created",
-        description: "Task has been created successfully",
+        title: "משימה נוצרה",
+        description: "המשימה נוצרה בהצלחה",
       });
       
       return taskRef.id;
     } catch (error) {
       console.error("Error creating standardized task:", error);
       toast({
-        title: "Error",
-        description: "Failed to create task",
+        title: "שגיאה",
+        description: "שגיאה ביצירת המשימה",
         variant: "destructive"
       });
       return null;
@@ -476,14 +476,14 @@ export default function TaskManager2({
       }
 
       toast({
-        title: "Status Updated",
-        description: `Task status updated to ${newStatus}`,
+        title: "סטטוס עודכן",
+        description: `סטטוס המשימה עודכן ל: ${newStatus}`,
       });
     } catch (error) {
       console.error('Error updating task status:', error);
       toast({
-        title: "Error",
-        description: "Failed to update task status",
+        title: "שגיאה",
+        description: "שגיאה בעדכון סטטוס המשימה",
         variant: "destructive"
       });
     }
@@ -522,8 +522,8 @@ export default function TaskManager2({
       }
 
       toast({
-        title: checked ? "Task Completed" : "Task Reopened",
-        description: `Task has been ${checked ? 'marked as completed' : 'reopened'}`,
+        title: checked ? "משימה הושלמה" : "משימה נפתחה מחדש",
+        description: `המשימה ${checked ? 'סומנה כהושלמה' : 'נפתחה מחדש'}`,
       });
 
       // Notify creator that task is done
@@ -538,8 +538,8 @@ export default function TaskManager2({
     } catch (error) {
       console.error('Error toggling task:', error);
       toast({
-        title: "Error",
-        description: "Failed to update task status",
+        title: "שגיאה",
+        description: "שגיאה בעדכון סטטוס המשימה",
         variant: "destructive"
       });
     }
@@ -579,7 +579,7 @@ export default function TaskManager2({
           alias: alias
         });
         toast({
-          title: "Error",
+          title: "שגיאה",
           description: "אין לך הרשאה להוסיף תגובה למשימה זו",
           variant: "destructive"
         });
@@ -605,8 +605,8 @@ export default function TaskManager2({
       });
 
       toast({
-        title: "Reply Sent",
-        description: "Your reply has been sent successfully",
+        title: "תגובה נשלחה",
+        description: "התגובה שלך נשלחה בהצלחה",
       });
 
       // Notify creator about the reply
@@ -619,8 +619,8 @@ export default function TaskManager2({
     } catch (error) {
       console.error('Error adding reply:', error);
       toast({
-        title: "Error",
-        description: "Failed to send reply",
+        title: "שגיאה",
+        description: "שגיאה בשליחת התגובה",
         variant: "destructive"
       });
     }
@@ -647,14 +647,14 @@ export default function TaskManager2({
       });
 
       toast({
-        title: "Nudge Sent",
-        description: "A reminder has been sent to the task assignee",
+        title: "תזכורת נשלחה",
+        description: "נשלחה תזכורת למבצע המשימה",
       });
     } catch (error) {
       console.error('Error nudging task:', error);
       toast({
-        title: "Error",
-        description: "Failed to send nudge",
+        title: "שגיאה",
+        description: "שגיאה בשליחת התזכורת",
         variant: "destructive"
       });
     }
@@ -772,14 +772,14 @@ export default function TaskManager2({
       setEditingDepartment("");
 
       toast({
-        title: "Task Updated",
-        description: "Task has been updated successfully",
+        title: "משימה עודכנה",
+        description: "המשימה עודכנה בהצלחה",
       });
     } catch (error) {
       console.error('Error updating task:', error);
       toast({
-        title: "Error",
-        description: "Failed to update task",
+        title: "שגיאה",
+        description: "שגיאה בעדכון המשימה",
         variant: "destructive"
       });
     }
@@ -881,7 +881,7 @@ export default function TaskManager2({
       } catch (error) {
         console.error("Error updating task category:", error);
         toast({
-          title: "Error",
+          title: "שגיאה",
           description: "שגיאה בעדכון קטגוריית המשימה",
           variant: "destructive"
         });
@@ -968,7 +968,7 @@ export default function TaskManager2({
     } catch (error) {
       console.error("Error creating task:", error);
       toast({
-        title: "Error",
+        title: "שגיאה",
         description: "שגיאה ביצירת המשימה. נסה שוב.",
         variant: "destructive"
       });
