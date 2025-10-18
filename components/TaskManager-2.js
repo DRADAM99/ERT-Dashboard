@@ -115,8 +115,6 @@ export default function TaskManager2({
   const [newTaskSubtitle, setNewTaskSubtitle] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState("רגיל");
   const [newTaskCategory, setNewTaskCategory] = useState(taskCategories[0] || "");
-  const [newTaskDueDate, setNewTaskDueDate] = useState("");
-  const [newTaskDueTime, setNewTaskDueTime] = useState("");
   const [newTaskDepartment, setNewTaskDepartment] = useState(taskCategories[0] || "");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -940,9 +938,7 @@ export default function TaskManager2({
         department: newTaskDepartment.trim(),
         // Keep assignTo for backward compatibility but it should be the department
         assignTo: newTaskDepartment.trim(),
-        dueDate: newTaskDueDate && newTaskDueTime
-          ? new Date(`${newTaskDueDate}T${newTaskDueTime}`).toISOString()
-          : null,
+        dueDate: new Date().toISOString(),
         replies: [],
         isRead: false,
         isArchived: false,
@@ -967,8 +963,6 @@ export default function TaskManager2({
       setNewTaskSubtitle("");
       setNewTaskPriority("רגיל");
       setNewTaskCategory(cleanTaskCategories[0] || "");
-      setNewTaskDueDate("");
-      setNewTaskDueTime("");
       setNewTaskDepartment(cleanTaskCategories[0] || "");
       setShowTaskModal(false);
     } catch (error) {
@@ -981,6 +975,15 @@ export default function TaskManager2({
     }
   };
 
+  const openNewTaskModal = () => {
+    setNewTaskTitle("");
+    setNewTaskSubtitle("");
+    setNewTaskPriority("רגיל");
+    setNewTaskCategory(cleanTaskCategories[0] || "");
+    setNewTaskDepartment(department || cleanTaskCategories[0] || "");
+    setShowTaskModal(true);
+  };
+
   // Render task function
   const renderTask = (task) => {
     if (!task) {
@@ -988,7 +991,7 @@ export default function TaskManager2({
         <div className="p-3 border rounded bg-blue-50 shadow-md">
           <form onSubmit={handleCreateTask} className="space-y-2">
             <div>
-              <Label className="text-xs">מחלקה ל:</Label>
+              <Label className="text-xs">המחלקה שלי:</Label>
               <Select 
                 value={newTaskDepartment} 
                 onValueChange={setNewTaskDepartment}
@@ -1039,7 +1042,7 @@ export default function TaskManager2({
                 </Select>
               </div>
               <div className="flex-1">
-                <Label className="text-xs">קטגוריה:</Label>
+                <Label className="text-xs">עבור מחלקה:</Label>
                 <Select value={newTaskCategory} onValueChange={setNewTaskCategory}>
                   <SelectTrigger className="h-8 text-sm">
                     <SelectValue />
@@ -1051,34 +1054,19 @@ export default function TaskManager2({
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <Label className="text-xs">תאריך:</Label>
-                <Input 
-                  type="date" 
-                  value={newTaskDueDate} 
-                  onChange={(e) => setNewTaskDueDate(e.target.value)} 
-                  className="h-8 text-sm" 
-                  required 
-                />
-              </div>
-              <div className="flex-1">
-                <Label className="text-xs">שעה:</Label>
-                <Input 
-                  type="time" 
-                  value={newTaskDueTime} 
-                  onChange={(e) => setNewTaskDueTime(e.target.value)} 
-                  className="h-8 text-sm" 
-                />
-              </div>
-            </div>
-            <div className="flex justify-end space-x-2 space-x-reverse pt-1">
-              <Button type="submit" size="sm">{'צור משימה'}</Button>
+            <div className="flex justify-start space-x-2 space-x-reverse pt-1">
+              <Button 
+                type="submit" 
+                size="sm"
+                className="bg-green-200 hover:bg-green-300"
+              >
+                {'צור משימה'}
+              </Button>
               <Button 
                 type="button" 
-                variant="outline" 
                 size="sm" 
                 onClick={() => setShowTaskModal(false)}
+                className="bg-red-200 hover:bg-red-300"
               >
                 {'ביטול'}
               </Button>
@@ -1498,8 +1486,8 @@ export default function TaskManager2({
         <div className="flex items-center gap-2 border-t pt-3">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             {isTMFullView && (
-            <Select value={taskPriorityFilter} onValueChange={setTaskPriorityFilter}>
-              <SelectTrigger className="h-8 text-sm w-[80px]">
+            <Select value={taskPriorityFilter} onValue-change={setTaskPriorityFilter}>
+              <SelectTrigger className="h-8 text-sm w-[120px] [&>svg]:hidden">
                 <SelectValue placeholder="עדיפות" />
               </SelectTrigger>
               <SelectContent>
@@ -1510,15 +1498,30 @@ export default function TaskManager2({
             )}
             
             <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Search className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input 
                 type="search" 
                 placeholder="חפש משימות..." 
-                className="h-8 text-sm pl-8 w-full" 
+                className="h-8 text-sm pr-8 w-[250px]" 
                 value={taskSearchTerm} 
                 onChange={(e) => setTaskSearchTerm(e.target.value)} 
               />
             </div>
+            <Button 
+              variant="outline"
+              size="sm"
+              className="bg-blue-200 hover:bg-blue-300 text-gray-700 border-gray-200 text-xs px-4 py-1 font-bold" 
+              onClick={() => {
+                setNewTaskTitle("");
+                setNewTaskSubtitle("");
+                setNewTaskPriority("רגיל");
+                setNewTaskCategory(cleanTaskCategories[0] || "");
+                setNewTaskDepartment(department || cleanTaskCategories[0] || "");
+                setShowTaskModal(true);
+              }}
+            >
+              {'+ משימה'}
+            </Button>
           </div>
 
           <div className="flex items-center gap-1 flex-shrink-0">
@@ -1540,23 +1543,6 @@ export default function TaskManager2({
               onClick={() => setShowHistoryModal(true)}
             >
               <span role="img" aria-label="History">📜</span>
-            </Button>
-            <Button 
-              variant="outline"
-              size="sm"
-              className="bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200 text-xs px-2 py-1" 
-              onClick={() => {
-                setNewTaskTitle("");
-                setNewTaskSubtitle("");
-                setNewTaskPriority("רגיל");
-                setNewTaskCategory(cleanTaskCategories[0] || "");
-                setNewTaskDueDate("");
-                setNewTaskDueTime("");
-                setNewTaskDepartment(department || cleanTaskCategories[0] || "");
-                setShowTaskModal(true);
-              }}
-            >
-              {'+ משימה'}
             </Button>
           </div>
         </div>
