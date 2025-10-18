@@ -19,7 +19,7 @@ import { Edit2, MessageSquare, Bell, UserPlus, Search, ChevronDown, ChevronLeft,
 import { TaskTabs } from "@/components/TaskTabs";
 import SortableCategoryColumn from "./ui/sortable-category-column";
 import SortableItem from "./ui/sortable-item";
-import { createUserNotification } from "@/lib/notifications";
+import { createUserNotification, notifyUsersInDepartment } from "@/lib/notifications";
 
 // Debounce utility
 const debounce = (func, delay) => {
@@ -33,7 +33,7 @@ const debounce = (func, delay) => {
 };
 
 // Task Categories and Priorities
-const TASK_CATEGORIES = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", "חמ״ל", "אחר"];
+const TASK_CATEGORIES = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"];
 const TASK_PRIORITIES = ["דחוף", "רגיל", "נמוך"];
 
 // Utility Functions
@@ -128,15 +128,11 @@ export default function TaskManager2({
 
   const sendTaskCreationNotification = async (newTask) => {
     // Send notification to the assigned department
-    const usersInDepartmentQuery = query(collection(db, "users"), where("department", "==", newTask.department.trim()));
-    const usersInDepartmentSnapshot = await getDocs(usersInDepartmentQuery);
-    usersInDepartmentSnapshot.forEach(userDoc => {
-      createUserNotification(userDoc.id, {
-        message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
-        type: 'task',
-        subType: 'created',
-        link: `/`
-      });
+    await notifyUsersInDepartment(newTask.department, {
+      message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
+      type: 'task',
+      subType: 'created',
+      link: `/`
     });
   };
 
@@ -400,15 +396,11 @@ export default function TaskManager2({
       console.log("Task saved to Firestore with ID:", taskRef.id);
       
       // Send notification to the assigned department
-      const usersInDepartmentQuery = query(collection(db, "users"), where("department", "==", newTask.department.trim()));
-      const usersInDepartmentSnapshot = await getDocs(usersInDepartmentQuery);
-      usersInDepartmentSnapshot.forEach(userDoc => {
-        createUserNotification(userDoc.id, {
-          message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
-          type: 'task',
-          subType: 'created',
-          link: `/`
-        });
+      await notifyUsersInDepartment(newTask.department, {
+        message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
+        type: 'task',
+        subType: 'created',
+        link: `/`
       });
       
       toast({
@@ -963,15 +955,11 @@ export default function TaskManager2({
       await setDoc(taskRef, newTask);
 
       // Send notification to the assigned department
-      const usersInDepartmentQuery = query(collection(db, "users"), where("department", "==", newTask.department.trim()));
-      const usersInDepartmentSnapshot = await getDocs(usersInDepartmentQuery);
-      usersInDepartmentSnapshot.forEach(userDoc => {
-        createUserNotification(userDoc.id, {
-          message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
-          type: 'task',
-          subType: 'created',
-          link: `/`
-        });
+      await notifyUsersInDepartment(newTask.department, {
+        message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
+        type: 'task',
+        subType: 'created',
+        link: `/`
       });
 
       // Reset form
@@ -1564,8 +1552,7 @@ export default function TaskManager2({
                 setNewTaskCategory(cleanTaskCategories[0] || "");
                 setNewTaskDueDate("");
                 setNewTaskDueTime("");
-                const myUser = assignableUsers.find(u => u.email === currentUser?.email || u.alias === currentUser?.alias);
-                setNewTaskDepartment(myUser ? (myUser.alias || myUser.email) : (currentUser?.alias || currentUser?.email || ""));
+                setNewTaskDepartment(department || cleanTaskCategories[0] || "");
                 setShowTaskModal(true);
               }}
             >

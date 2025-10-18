@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { db, app } from '../../firebase'; // Import 'app' from firebase
 import { collection, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
@@ -17,7 +17,7 @@ export function NotificationProvider({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [settings, setSettings] = useState(null);
   const [user, setUser] = useState(null); // Add a state for the user
-  const notificationSound = typeof Audio !== "undefined" && new Audio('/notification.mp3');
+  const notificationSound = useMemo(() => typeof window !== 'undefined' ? new Audio('/notification.mp3') : null, []);
   const isInitialLoad = useRef(true);
 
   const requestPermission = useCallback(async (currentUser) => { // Accept user as argument
@@ -94,7 +94,7 @@ export function NotificationProvider({ children }) {
     } else {
       isInitialLoad.current = true;
     }
-  }, [user, settings, notificationSound]);
+  }, [user, settings]);
 
   useEffect(() => {
     if (user) {
@@ -118,7 +118,7 @@ export function NotificationProvider({ children }) {
   }, [user]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && notificationSound) {
       const messaging = getMessaging(app);
       const unsubscribe = onMessage(messaging, (payload) => {
         console.log('Message received. ', payload);

@@ -14,7 +14,7 @@ import { Search, ChevronDown, Upload, ChevronLeft, ChevronRight, Flame } from "l
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "@/components/ui/use-toast";
-import { createUserNotification } from "@/lib/notifications";
+import { notifyUsersInDepartment } from "@/lib/notifications";
 
 function statusColor(status) {
   if (status === "מחכה") return "text-red-600 font-bold";
@@ -161,16 +161,12 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
       await addDoc(collection(db, "eventLogs"), eventData);
       console.log("Event log created successfully");
 
-      // Notify all users about the new event
-      const usersToNotifyQuery = query(collection(db, "users"));
-      const usersToNotifySnapshot = await getDocs(usersToNotifyQuery);
-      usersToNotifySnapshot.forEach(userDoc => {
-        createUserNotification(userDoc.id, {
-          message: `אירוע חדש ביומן: ${form.description}`,
-          type: 'event',
-          subType: 'newEvent',
-          link: `/`
-        });
+      // Notify users in the assigned department
+      await notifyUsersInDepartment(form.department, {
+        message: `אירוע חדש ביומן: ${form.description}`,
+        type: 'event',
+        subType: 'newEvent',
+        link: `/`
       });
 
       setForm({ reporter: "", recipient: userFullName || alias || "", description: "", department: "", status: "מחכה" });
@@ -274,18 +270,14 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
         description: `Event status updated to ${newStatus}`,
       });
 
-      // Notify users about the status change
+      // Notify users in the assigned department
       const eventDoc = await getDoc(eventRef);
       const eventData = eventDoc.data();
-      const usersToNotifyQuery = query(collection(db, "users"));
-      const usersToNotifySnapshot = await getDocs(usersToNotifyQuery);
-      usersToNotifySnapshot.forEach(userDoc => {
-        createUserNotification(userDoc.id, {
-          message: `סטטוס אירוע התעדכן: ${eventData.description} - ${newStatus}`,
-          type: 'event',
-          subType: 'statusChange',
-          link: `/`
-        });
+      await notifyUsersInDepartment(eventData.department, {
+        message: `סטטוס אירוע התעדכן: ${eventData.description} - ${newStatus}`,
+        type: 'event',
+        subType: 'statusChange',
+        link: `/`
       });
 
     } catch (error) {
@@ -374,15 +366,11 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
         await setDoc(taskRef, taskData);
 
         // Notify users in the assigned department
-        const usersInDepartmentQuery = query(collection(db, "users"), where("department", "==", taskDepartment.trim()));
-        const usersInDepartmentSnapshot = await getDocs(usersInDepartmentQuery);
-        usersInDepartmentSnapshot.forEach(userDoc => {
-          createUserNotification(userDoc.id, {
-            message: `משימה חדשה מאירוע: ${taskEvent.description || ''}`,
-            type: 'task',
-            subType: 'created',
-            link: `/`
-          });
+        await notifyUsersInDepartment(taskDepartment, {
+          message: `משימה חדשה מאירוע: ${taskEvent.description || ''}`,
+          type: 'task',
+          subType: 'created',
+          link: `/`
         });
         
         toast({

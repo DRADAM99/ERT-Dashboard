@@ -246,7 +246,7 @@ const taskPriorities = ["דחוף", "רגיל", "נמוך"];
 
 
 export default function Dashboard() {
-  const defaultTaskCategories = ["לוגיסטיקה ", "אוכלוסיה", "רפואה", "חוסן", "חמ״ל ", "אחר"];
+  const defaultTaskCategories = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"];
   const [taskCategories, setTaskCategories] = useState(defaultTaskCategories);
   const { currentUser } = useAuth();
   const { toast } = useToast();
@@ -342,7 +342,7 @@ useEffect(() => {
     if (snap.exists()) {
       const data = snap.data();
       if (Array.isArray(data.kanbanCategoryOrder) && data.kanbanCategoryOrder.length > 0) {
-        setTaskCategories(data.kanbanCategoryOrder);
+        setTaskCategories(data.kanbanCategoryOrder.map(c => c.trim()));
       } else {
         setTaskCategories(defaultTaskCategories);
       }
@@ -970,16 +970,16 @@ const updateKanbanCategoryOrder = async (newOrder) => {
           setAlias(data.alias || currentUser.email || "");
           setRole(data.role || "staff");
           
-          // Check if user has department assigned
-          if (data.department && taskCategories.includes(data.department)) {
-            setDepartment(data.department);
+          // Check if user has department assigned and trim it
+          if (data.department && taskCategories.includes(data.department.trim())) {
+            setDepartment(data.department.trim());
           } else {
             // If no department or invalid department, assign default
             console.warn(`User ${currentUser.email} has no department or invalid department: ${data.department}`);
             setDepartment("אחר"); // Default department
           }
         } else {
-          // Create new user with default department
+          // Create new user with default Department
           console.log("Creating new user with default department");
           await setDoc(userRef, {
             email: currentUser.email,
@@ -1107,13 +1107,13 @@ useEffect(() => {
         email: currentUser.email,
         alias: alias,
         role: "staff", // Default role for new users
-        department: department || "אחר", // Ensure department is set
+        department: (department || "אחר").trim(), // Ensure department is set
         createdAt: new Date()
       });
     } else {
       await updateDoc(ref, {
         alias: alias,
-        department: department || "אחר" // Update department if needed
+        department: (department || "אחר").trim() // Update department if needed
       });
     }
   };
@@ -1174,7 +1174,7 @@ useEffect(() => {
         email: newUserEmail,
         alias: newUserFullName,
         fullName: newUserFullName,
-        department: newUserDepartment,
+        department: newUserDepartment.trim(),
         role: newUserRole,
         createdAt: serverTimestamp(),
         createdBy: currentUser.uid,
@@ -2738,13 +2738,14 @@ useEffect(() => {
               <span>{currentDateTime || 'טוען תאריך...'}</span>
             </div>
             <div className="flex items-center gap-2">
-              {alias && (
-                <span className="text-gray-700">{`שלום, ${alias}`}</span>
-              )}
               <span className="text-gray-500">{'Version 7.3'}</span>
+              <NotificationBell />
             </div>
           </div>
-          
+          <div className="flex justify-between items-center mb-4">
+      <h1 className="text-lg text-gray-500">Version 7.3</h1>
+      <NotificationBell />
+    </div>
           {/* Logo row */}
           <div className="flex items-center justify-center py-2">
             <Image
@@ -2796,8 +2797,7 @@ useEffect(() => {
                 }}
               >
                 התנתק
-              </button>
-              <NotificationBell />
+              </button> 
             </div>
           </div>
           
@@ -2851,8 +2851,9 @@ useEffect(() => {
             </div>
           </div>
 
-          <div className="w-48 text-left text-sm text-gray-500">
+          <div className="w-48 text-left text-sm text-gray-500 flex items-center gap-2">
             <span>{'Version 7.3'}</span>
+            <NotificationBell />
             <div className="flex flex-col gap-2 mt-2">
               {(currentUser?.role === 'admin' || role === 'admin') && (
                 <Button 
@@ -2882,7 +2883,7 @@ useEffect(() => {
               >
                 התנתק
               </button>
-              <NotificationBell />
+              
             </div>
           </div>
         </div>
@@ -3171,7 +3172,7 @@ useEffect(() => {
             
             <div>
               <Label htmlFor="department" className="text-sm font-medium">מחלקה</Label>
-              <Select value={newUserDepartment} onValueChange={setNewUserDepartment}>
+              <Select value={newUserDepartment} onValueChange={(value) => setNewUserDepartment(value.trim())}>
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="בחר מחלקה" />
                 </SelectTrigger>
