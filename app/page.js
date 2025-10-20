@@ -34,7 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, RotateCcw, Bell, ChevronDown, Pencil, MessageCircle, Check, X, ChevronLeft, UserPlus } from 'lucide-react';
+import { Search, RotateCcw, Bell, ChevronDown, Pencil, MessageCircle, Check, X, ChevronLeft, UserPlus, Menu } from 'lucide-react';
 import NotesAndLinks from "@/components/NotesAndLinks";
 import {
   collection,
@@ -2732,81 +2732,77 @@ useEffect(() => {
       <header dir="rtl" className="border-b bg-white shadow-sm sticky top-0 z-20">
         {/* Mobile Layout */}
         <div className="block sm:hidden">
-          {/* Top row - Date and user info */}
-          <div className="flex items-center justify-between p-2 text-xs text-gray-600">
+          {/* Top row: Logo, Info, Notifications */}
+          <div className="flex items-center justify-between p-1">
             <div className="flex items-center gap-2">
-              <span>{currentDateTime || 'טוען תאריך...'}</span>
+              <Image
+                src="/logo.png"
+                alt="Logo"
+                width={128}
+                height={51}
+                className="h-10 w-auto"
+              />
+              {alias && <div className="text-xs text-gray-700">{`שלום, ${alias}`}</div>}
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500">{'Version 7.5'}</span>
-              <NotificationBell />
+            <div className="flex items-center gap-2 text-xs text-gray-600">
+                <div className="text-right">
+                    <div>{currentDateTime || 'טוען תאריך...'}</div>
+                    <div className="text-gray-500">{'Version 7.5'}</div>
+                    {department && <div className="text-xs text-blue-600">{`מחלקה: ${department}`}</div>}
+                </div>
+                <NotificationBell />
             </div>
           </div>
-          <div className="flex justify-between items-center mb-4">
-      <h1 className="text-lg text-gray-500">Version 7.5</h1>
-      <NotificationBell />
-    </div>
-          {/* Logo row */}
-          <div className="flex items-center justify-center py-2">
-            <Image
-              src="/logo.png"
-              alt="Logo"
-              width={160}
-              height={64}
-              className="h-14 w-auto inline-block object-contain"
-            />
-          </div>
-          
-          {/* Action buttons row */}
-          <div className="flex items-center justify-between p-2 gap-2">
+
+          {/* Bottom row: Actions */}
+          <div className="flex items-center justify-between p-1 gap-1 bg-gray-50 border-y">
             <div className="flex gap-1">
-              <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs px-2 py-1">תמונת מצב</Button>
-              {(currentUser?.role === 'admin' || role === 'admin') && (
+                <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs px-2 py-1 h-8">תמונת מצב</Button>
+                {(currentUser?.role === 'admin' || role === 'admin') && (
                 <Button 
-                  size="sm" 
-                  onClick={() => setShowGreenEyesDialog(true)}
-                  className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium px-2 py-1"
+                    size="sm" 
+                    onClick={() => setShowGreenEyesDialog(true)}
+                    className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium px-2 py-1 h-8"
                 >
-                  ירוק בעיניים
+                    ירוק בעיניים
                 </Button>
-              )}
-              {(currentUser?.role === 'admin' || role === 'admin') && (
+                )}
+                {(currentUser?.role === 'admin' || role === 'admin') && (
                 <Button 
-                  size="sm" 
-                  onClick={() => setShowEndEmergencyDialog(true)}
-                  className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium px-2 py-1"
+                    size="sm" 
+                    onClick={() => setShowEndEmergencyDialog(true)}
+                    className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium px-2 py-1 h-8"
                 >
-                  סיים אירוע
+                    סיים אירוע
                 </Button>
-              )}
+                )}
             </div>
             
-            <div className="flex items-center gap-2">
-              {/* Admin-only: Add User Button */}
-              {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button size="sm" variant="outline" onClick={() => setShowAddUserModal(true)} className="text-xs px-2 py-1">
-                  הוסף משתמש
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-8 w-8">
+                    <Menu className="h-4 w-4" />
                 </Button>
-              )}
-              <button
-                className="text-xs text-red-600 underline"
-                onClick={() => {
-                  import("firebase/auth").then(({ signOut }) =>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                {(currentUser?.role === 'admin' || role === 'admin') && (
+                    <DropdownMenuCheckboxItem onSelect={() => setShowAddUserModal(true)}>
+                    הוסף משתמש
+                    </DropdownMenuCheckboxItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem onSelect={() => {
+                    import("firebase/auth").then(({ signOut }) =>
                     signOut(auth).then(() => router.push("/login"))
-                  );
-                }}
-              >
-                התנתק
-              </button> 
-            </div>
+                    );
+                }}>
+                    <span className="text-red-600">התנתק</span>
+                </DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          
-          {/* Department info row */}
-          {department && (
-            <div className="text-center pb-2">
-              <span className="text-xs text-blue-600">{`מחלקה: ${department}`}</span>
-            </div>
-          )}
+            
+            
         </div>
 
         {/* Desktop Layout */}

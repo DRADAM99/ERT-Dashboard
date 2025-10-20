@@ -122,6 +122,7 @@ export default function TaskManager2({
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [archivedTasks, setArchivedTasks] = useState([]);
   const [isPersistenceLoading, setIsPersistenceLoading] = useState(true);
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
 
   const sendTaskCreationNotification = async (newTask) => {
@@ -1498,14 +1499,25 @@ export default function TaskManager2({
             )}
             
             <div className="relative flex-1 min-w-0">
-              <Search className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <Input 
-                type="search" 
-                placeholder="חפש משימות..." 
-                className={`h-8 text-sm pr-8 ${isTMFullView ? 'w-[250px]' : 'w-[180px]'}`} 
-                value={taskSearchTerm} 
-                onChange={(e) => setTaskSearchTerm(e.target.value)} 
-              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-gray-400"
+                onClick={() => setIsSearchExpanded(prev => !prev)}
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+              {isSearchExpanded ? (
+                <Input 
+                  type="search" 
+                  placeholder="חפש משימות..." 
+                  className="h-8 text-sm pr-8 w-full transition-all duration-300" 
+                  value={taskSearchTerm} 
+                  onChange={(e) => setTaskSearchTerm(e.target.value)}
+                  autoFocus
+                  onBlur={() => setIsSearchExpanded(false)}
+                />
+              ) : null}
             </div>
             <Button 
               variant="outline"

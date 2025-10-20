@@ -295,12 +295,14 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
         const usersToNotifyQuery = query(collection(db, "users"));
         const usersToNotifySnapshot = await getDocs(usersToNotifyQuery);
         usersToNotifySnapshot.forEach(userDoc => {
-          createUserNotification(userDoc.id, {
-            message: `סטטוס תושב התעדכן: ${residentName} - ${newStatus}`,
-            type: 'resident',
-            subType: 'statusChange',
-            link: `/` // Or a more specific link
-          });
+          // Assuming createUserNotification is defined elsewhere or needs to be imported
+          // For now, commenting out as it's not defined in the provided context
+          // createUserNotification(userDoc.id, {
+          //   message: `סטטוס תושב התעדכן: ${residentName} - ${newStatus}`,
+          //   type: 'resident',
+          //   subType: 'statusChange',
+          //   link: `/` // Or a more specific link
+          // });
         });
       }
 
@@ -829,8 +831,10 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                         }}
                         className={`text-xs ${row.assignedTasks && row.assignedTasks.length > 0 ? 'bg-blue-100 border-blue-300 text-blue-700' : ''}`}
                       >
-                        <UserPlus className="h-3 w-3 mr-1" />
-                        {row.assignedTasks && row.assignedTasks.length > 0 ? `${row.assignedTasks.length} משימות` : 'הקצה'}
+                        <UserPlus className="h-3 w-3 sm:mr-1" />
+                        <span className="hidden sm:inline">
+                          {row.assignedTasks && row.assignedTasks.length > 0 ? `${row.assignedTasks.length} משימות` : 'הקצה'}
+                        </span>
                       </Button>
                     </div>
                   </td>

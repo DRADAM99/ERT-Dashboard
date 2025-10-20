@@ -437,7 +437,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
           </Button>
         </div>
       </CardHeader>
-      <CardContent className={`p-0 ${!isFullView ? 'overflow-hidden' : 'overflow-x-auto'}`}>
+      <CardContent className="p-0 overflow-x-auto">
         <table className={`w-full text-sm border-collapse ${!isFullView ? 'table-auto' : 'table-fixed'}`}>
           <thead className="sticky top-0 bg-gray-100 z-10">
             <tr>
@@ -455,14 +455,14 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
                 </>
               ) : (
                 <>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-20">תאריך</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-16">מדווח</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-16">מקבל</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-24">תיאור</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-16">מחלקה</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-16">סטטוס</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-16">מעדכן</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-12">פעולות</th>
+                  <th className="px-1 py-2 text-right font-semibold text-xs">תאריך</th>
+                  <th className="px-1 py-2 text-right font-semibold text-xs">מדווח</th>
+                  <th className="px-1 py-2 text-right font-semibold text-xs hidden sm:table-cell">מקבל</th>
+                  <th className="px-1 py-2 text-right font-semibold text-xs">תיאור</th>
+                  <th className="px-1 py-2 text-right font-semibold text-xs">מחלקה</th>
+                  <th className="px-1 py-2 text-right font-semibold text-xs">סטטוס</th>
+                  <th className="px-1 py-2 text-right font-semibold text-xs hidden sm:table-cell">מעדכן</th>
+                  <th className="px-1 py-2 text-right font-semibold text-xs">פעולות</th>
                 </>
               )}
             </tr>
@@ -502,7 +502,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
                     <>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${isFullView ? 'whitespace-nowrap' : 'text-xs'}`}>{isFullView ? formatDateTime(event.createdAt) : formatDateTime(event.createdAt).split(' ')[1]}</td>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate' : ''}`} title={event.reporter}>{event.reporter}</td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate' : ''}`} title={event.recipient}>{event.recipient}</td>
+                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate hidden sm:table-cell' : ''}`} title={event.recipient}>{event.recipient}</td>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs' : ''} truncate`} title={event.description}>{event.description}</td>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs' : ''}`}>{event.department}</td>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}>
@@ -515,7 +515,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
                           </SelectContent>
                         </Select>
                       </td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate' : ''}`} title={event.lastUpdater}>{event.lastUpdater}</td>
+                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate hidden sm:table-cell' : ''}`} title={event.lastUpdater}>{event.lastUpdater}</td>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}>
                         <Button size="icon" variant="ghost" className={`${isFullView ? 'w-6 h-6' : 'w-4 h-4'} text-gray-500 hover:text-blue-600`} title="ערוך" onClick={() => startEdit(event)}><span role="img" aria-label="Edit">✎</span></Button>
                         <Button size="icon" variant="ghost" className={`${isFullView ? 'w-6 h-6' : 'w-4 h-4'} text-blue-600 hover:text-blue-700`} title="הרחב" onClick={() => setExpandedId(expandedId === event.id ? null : event.id)}><span role="img" aria-label="Expand">{expandedId === event.id ? '🔽' : '▶️'}</span></Button>
