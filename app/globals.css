@@ -77,6 +77,27 @@
     --sidebar-accent-foreground: oklch(0.216 0.006 56.043);
     --sidebar-border: oklch(0.923 0.003 48.717);
     --sidebar-ring: oklch(0.709 0.01 56.259);
+
+    /* Status Colors for Residents */
+    --status-safe: #10B981;
+    --status-needs-help: #EF4444;
+    --status-unsure: #F59E0B;
+    --status-injured: #8B5CF6;
+    --status-none: #9CA3AF;
+
+    /* Department/Category Colors for Tasks */
+    --dept-logistics: #3B82F6;
+    --dept-population: #EC4899;
+    --dept-medical: #EF4444;
+    --dept-resilience: #10B981;
+    --dept-command: #8B5CF6;
+    --dept-other: #6B7280;
+
+    /* Action Colors */
+    --action-primary: #3B82F6;
+    --action-secondary: #6B7280;
+    --action-destructive: #EF4444;
+    --action-success: #10B981;
   }
 
   .dark {
@@ -124,6 +145,8 @@
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-geist-sans);
     background: #abd3d4 !important;
+    overflow-x: hidden;
+    max-width: 100vw;
   }
 
   .dark * {

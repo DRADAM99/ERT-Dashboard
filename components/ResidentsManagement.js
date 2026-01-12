@@ -38,21 +38,21 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
   // Helper to get color for a status
   const getStatusColor = (status) => {
     const colorMap = {
-      'כולם בסדר': 'bg-green-500',
-      'זקוקים לסיוע': 'bg-red-500',
-      'לא בטוח': 'bg-orange-400',
-      'פצוע': 'bg-purple-500',
-      'חדש': 'bg-blue-400',
-      'בטיפול': 'bg-yellow-400',
-      'הושלם': 'bg-green-600',
-      'ללא סטטוס': 'bg-gray-400',
+      'כולם בסדר': 'bg-[#10B981]',
+      'זקוקים לסיוע': 'bg-[#EF4444]',
+      'לא בטוח': 'bg-[#F59E0B]',
+      'פצוע': 'bg-[#8B5CF6]',
+      'חדש': 'bg-[#3B82F6]',
+      'בטיפול': 'bg-[#F59E0B]',
+      'הושלם': 'bg-[#10B981]',
+      'ללא סטטוס': 'bg-[#9CA3AF]',
       ...statusColorMap
     };
     // Handle blank/empty status
     if (!status || status.trim() === '') {
-      return 'bg-gray-400';
+      return 'bg-[#9CA3AF]';
     }
-    return colorMap[status] || 'bg-gray-300';
+    return colorMap[status] || 'bg-[#9CA3AF]';
   };
 
   // Helper to format cell values for display
@@ -706,22 +706,31 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
           ))}
         </div>
       )}
-      <div className="overflow-y-auto max-h-[70vh]">
-      <table className="w-full table-fixed text-sm border-collapse">
+      <div className="overflow-x-auto overflow-y-auto max-h-[70vh] max-w-full">
+      <table className="w-full table-fixed text-sm border-collapse min-w-[600px]">
         <thead className="sticky top-0 bg-gray-100 z-10">
           <tr>
             {/* Expand/collapse column */}
-            <th className="w-8"></th>
+            <th className="w-10 flex-shrink-0"></th>
             {/* Color tab column */}
-            <th className="w-2"></th>
-            {/* Main fields in order */}
-            {mainFields.map((field) => (
-              <th key={field} className="px-2 py-2 text-right font-semibold">
-                {field}
-              </th>
-            ))}
+            <th className="w-3 flex-shrink-0"></th>
+            {/* Main fields with explicit widths */}
+            {mainFields.map((field) => {
+              let width = 'w-auto';
+              if (field === 'סטטוס') width = viewMode === 'compact' ? 'w-12' : 'w-28';
+              else if (field === 'שם משפחה') width = 'w-32';
+              else if (field === 'שם פרטי') width = 'w-32';
+              else if (field === 'טלפון') width = viewMode === 'compact' ? 'w-12' : 'w-28';
+              else if (field === 'שכונה') width = 'w-24';
+              
+              return (
+                <th key={field} className={`${width} px-2 py-2 text-right font-semibold`}>
+                  {field}
+                </th>
+              );
+            })}
             {/* Actions column */}
-            <th className="w-24 px-2 py-2 text-right font-semibold">פעולות</th>
+            <th className="w-28 px-2 py-2 text-right font-semibold flex-shrink-0">פעולות</th>
           </tr>
         </thead>
         <tbody>
@@ -755,26 +764,25 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                   </td>
                   {/* Main fields */}
                   {mainFields.map((field) => (
-                    <td key={field} className="px-2 py-2 align-top">
+                    <td key={field} className="px-2 py-2 align-top max-w-0">
                       {field === 'סטטוס' && isEditingStatus ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <Select value={newStatus} onValueChange={setNewStatus} dir="rtl">
                             <SelectTrigger className="w-32 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-right">
                               <SelectValue placeholder="בחר סטטוס" />
                             </SelectTrigger>
                             <SelectContent className="bg-white border border-gray-200 shadow-lg text-right">
-                              <SelectItem value="NO_STATUS" className="hover:bg-gray-50">ללא סטטוס</SelectItem>
-                              <SelectItem value="כולם בסדר" className="hover:bg-gray-50">כולם בסדר</SelectItem>
-                              <SelectItem value="זקוקים לסיוע" className="hover:bg-gray-50">זקוקים לסיוע</SelectItem>
-                              <SelectItem value="לא בטוח" className="hover:bg-gray-50">לא בטוח</SelectItem>
-                              <SelectItem value="פצוע" className="hover:bg-gray-50">פצוע</SelectItem>
+                              <SelectItem value="NO_STATUS">ללא סטטוס</SelectItem>
+                              <SelectItem value="כולם בסדר">כולם בסדר</SelectItem>
+                              <SelectItem value="זקוקים לסיוע">זקוקים לסיוע</SelectItem>
+                              <SelectItem value="לא בטוח">לא בטוח</SelectItem>
+                              <SelectItem value="פצוע">פצוע</SelectItem>
                             </SelectContent>
                           </Select>
                           <Button 
                             size="sm" 
                             onClick={() => handleStatusChange(row.id, status, newStatus)}
                             disabled={newStatus === undefined}
-                            className="bg-blue-600 hover:bg-blue-700 text-white"
                           >
                             שמור
                           </Button>
@@ -785,7 +793,6 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                               setEditingStatus(null);
                               setNewStatus('');
                             }}
-                            className="border-gray-300 hover:bg-gray-50"
                           >
                             ביטול
                           </Button>
@@ -795,9 +802,9 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                           <Phone className="h-4 w-4 text-gray-600" />
                         </a>
                       ) : (
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between min-w-0 gap-1">
                            {viewMode === 'full' || field !== 'סטטוס' ? (
-                            <span className={row.assignedTasks && row.assignedTasks.length > 0 ? 'font-semibold text-blue-600' : ''}>
+                            <span className={`truncate ${row.assignedTasks && row.assignedTasks.length > 0 ? 'font-semibold text-blue-600' : ''}`}>
                               {field === 'סטטוס' && (!getFieldValue(row, field) || getFieldValue(row, field).trim() === '') 
                                 ? 'ללא סטטוס' 
                                 : formatCellValue(getFieldValue(row, field))}
@@ -810,7 +817,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                                 setEditingStatus(rowId);
                                 setNewStatus(status || 'NO_STATUS');
                               }}
-                              className="ml-2 hover:bg-gray-200 rounded p-1"
+                              className="ml-2 hover:bg-gray-200 rounded p-1 flex-shrink-0"
                             >
                               <Edit2 className="h-3 w-3 text-gray-500" />
                             </button>
@@ -1042,7 +1049,6 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
               <Button 
                 onClick={() => handleAssignTask(showAssignDialog.id, showAssignDialog)}
                 disabled={!assignTaskData.title}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
               >
                 צור משימה
               </Button>

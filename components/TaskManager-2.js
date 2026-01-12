@@ -72,6 +72,19 @@ const formatDuration = (ms) => {
   return "< דקה";
 };
 
+// Helper to get department color
+const getDepartmentColor = (category) => {
+  const colorMap = {
+    'לוגיסטיקה': 'bg-blue-50 border-blue-200',
+    'אוכלוסיה': 'bg-pink-50 border-pink-200',
+    'רפואה': 'bg-red-50 border-red-200',
+    'חוסן': 'bg-green-50 border-green-200',
+    'חמ"ל': 'bg-purple-50 border-purple-200',
+    'אחר': 'bg-gray-50 border-gray-200'
+  };
+  return colorMap[category] || 'bg-gray-50 border-gray-200';
+};
+
 export default function TaskManager2({ 
   currentUser, 
   alias, 
@@ -1573,8 +1586,8 @@ export default function TaskManager2({
           >
             <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-${Math.min(6, Math.max(1, cleanTaskCategories.length))} gap-3 h-full overflow-y-auto`}>
               {cleanTaskCategories.map((category) => (
-                <SortableCategoryColumn key={category} id={category} className="bg-gray-100 rounded-lg p-2 flex flex-col min-w-[280px] box-border w-full min-w-0">
-                  <div className="flex justify-between items-center mb-2 sticky top-0 bg-gray-100 py-1 px-1 z-10">
+                <SortableCategoryColumn key={category} id={category} className={`${getDepartmentColor(category)} rounded-lg p-2 flex flex-col min-w-[280px] box-border w-full min-w-0 border`}>
+                  <div className={`flex justify-between items-center mb-2 sticky top-0 ${getDepartmentColor(category).split(' ')[0]} py-1 px-1 z-10`}>
                     {/* Collapse/expand chevron (RTL: left side) */}
                     <Button
                       variant="ghost"

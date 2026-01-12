@@ -70,6 +70,27 @@ module.exports = {
           3: "hsl(var(--chart-3))",
           4: "hsl(var(--chart-4))",
           5: "hsl(var(--chart-5))",
+        },
+        status: {
+          safe: "#10B981",
+          needsHelp: "#EF4444",
+          unsure: "#F59E0B",
+          injured: "#8B5CF6",
+          none: "#9CA3AF",
+        },
+        department: {
+          logistics: "#3B82F6",
+          population: "#EC4899",
+          medical: "#EF4444",
+          resilience: "#10B981",
+          command: "#8B5CF6",
+          other: "#6B7280",
+        },
+        action: {
+          primary: "#3B82F6",
+          secondary: "#6B7280",
+          destructive: "#EF4444",
+          success: "#10B981",
         }
       },
       borderRadius: {

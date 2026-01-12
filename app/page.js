@@ -2806,30 +2806,31 @@ useEffect(() => {
         </div>
 
         {/* Desktop Layout */}
-        <div className="hidden sm:flex items-center justify-between p-2 sm:p-4 min-h-[90px]">
-          <div className="w-48 text-right text-sm text-gray-600">
-            <div className="text-right">{currentDateTime || 'טוען תאריך...'}</div>
+        <div className="hidden sm:flex items-center justify-between p-2 sm:p-4 min-h-[90px] max-w-full overflow-x-hidden">
+          <div className="min-w-0 max-w-[200px] text-right text-sm text-gray-600 flex-shrink-0">
+            <div className="text-right truncate">{currentDateTime || 'טוען תאריך...'}</div>
             {alias && (
-              <div className="text-xs text-gray-700 text-right">
+              <div className="text-xs text-gray-700 text-right truncate">
                 {`שלום, ${alias}`}
                 {department && (
-                  <div className="text-xs text-blue-600 mt-1">{`מחלקה: ${department}`}</div>
+                  <div className="text-xs text-blue-600 mt-1 truncate">{`מחלקה: ${department}`}</div>
                 )}
               </div>
             )}
-            {/* Admin-only: Add User Button */}
-            {(currentUser?.role === 'admin' || role === 'admin') && (
-              <Button size="sm" className="mt-2 w-full" variant="outline" onClick={() => setShowAddUserModal(true)}>
-                הוסף משתמש חדש
+            <div className="flex flex-col gap-1 mt-2">
+              {/* Admin-only: Add User Button */}
+              {(currentUser?.role === 'admin' || role === 'admin') && (
+                <Button size="sm" className="w-full text-xs" variant="outline" onClick={() => setShowAddUserModal(true)}>
+                  <span className="truncate">הוסף משתמש</span>
+                </Button>
+              )}
+              <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs w-full">
+                <span className="truncate">תמונת מצב</span>
               </Button>
-            )}
-            <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-s px-4 py-4">תמונת מצב</Button>
-
-             
-              
+            </div>
           </div>
 
-          <div className="flex-1 flex items-center justify-center relative px-4">
+          <div className="flex-1 flex items-center justify-center relative px-4 min-w-0">
             <div className="absolute right-2 flex gap-2">
               <NotesAndLinks section="links" />
             </div>
@@ -2847,30 +2848,34 @@ useEffect(() => {
             </div>
           </div>
 
-          <div className="w-48 text-left text-sm text-gray-500 flex items-center gap-2">
-            <span>{'Version 7.5'}</span>
-            <NotificationBell />
-            <div className="flex flex-col gap-2 mt-2">
+          <div className="min-w-0 max-w-[200px] text-left text-sm text-gray-500 flex-shrink-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs">{'Version 7.5'}</span>
+              <NotificationBell />
+            </div>
+            <div className="flex flex-col gap-1">
               {(currentUser?.role === 'admin' || role === 'admin') && (
                 <Button 
                   size="sm" 
                   onClick={() => setShowGreenEyesDialog(true)}
-                  className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium border border-red-600"
+                  variant="destructive"
+                  className="text-xs w-full"
                 >
-                  הפעלת ירוק בעיניים
+                  <span className="truncate">ירוק בעיניים</span>
                 </Button>
               )}
               {(currentUser?.role === 'admin' || role === 'admin') && (
                 <Button 
                   size="sm" 
                   onClick={() => setShowEndEmergencyDialog(true)}
-                  className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium border border-green-600"
+                  variant="success"
+                  className="text-xs w-full"
                 >
-                  סיים אירוע חירום
+                  <span className="truncate">סיים אירוע</span>
                 </Button>
               )}
               <button
-                className="text-xs text-red-600 underline"
+                className="text-xs text-red-600 underline truncate text-center"
                 onClick={() => {
                   import("firebase/auth").then(({ signOut }) =>
                     signOut(auth).then(() => router.push("/login"))
@@ -2879,7 +2884,6 @@ useEffect(() => {
               >
                 התנתק
               </button>
-              
             </div>
           </div>
         </div>
@@ -2887,7 +2891,7 @@ useEffect(() => {
 
 
         
-<div dir="rtl" className="grid grid-cols-1 lg:grid-cols-12 gap-2 sm:gap-4 p-2 sm:p-4 bg-gray-50 min-h-[calc(100vh-120px)] sm:min-h-[calc(100vh-90px)]">
+<div dir="rtl" className="grid grid-cols-1 lg:grid-cols-12 gap-2 sm:gap-4 p-2 sm:p-4 bg-gray-50 min-h-[calc(100vh-120px)] sm:min-h-[calc(100vh-90px)] overflow-x-hidden max-w-full">
           {/* Task Manager Block */}
         <div style={{ order: blockOrder.TM }} className={`col-span-1 ${isTMFullView ? 'lg:col-span-12' : 'lg:col-span-4'} transition-all duration-300 ease-in-out`}>
           <TaskManager2 
@@ -2908,14 +2912,15 @@ useEffect(() => {
 
   
   {/* Residents/Leads Block */}
-  <div style={{ order: blockOrder.Leads }} className={`col-span-1 ${isLeadsFullView ? 'lg:col-span-8' : 'lg:col-span-4'} transition-all duration-300 ease-in-out`}>
-    <Card className="h-full flex flex-col">
+  <div style={{ order: blockOrder.Leads }} className={`col-span-1 ${isLeadsFullView ? 'lg:col-span-8' : 'lg:col-span-4'} transition-all duration-300 ease-in-out min-w-0`}>
+    <Card className="h-full flex flex-col max-w-full">
       <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle>ניהול תושבים</CardTitle>
-          <div className="flex gap-2">
+        <div className="flex flex-wrap justify-between items-center gap-2 min-w-0">
+          <CardTitle className="min-w-0">ניהול תושבים</CardTitle>
+          <div className="flex gap-2 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => setIsLeadsFullView(v => !v)}>
-              {isLeadsFullView ? 'תצוגה מקוצרת' : 'תצוגה מלאה'}
+              <span className="hidden sm:inline">{isLeadsFullView ? 'תצוגה מקוצרת' : 'תצוגה מלאה'}</span>
+              <span className="sm:hidden">{isLeadsFullView ? 'מקוצרת' : 'מלאה'}</span>
             </Button>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -2964,14 +2969,15 @@ useEffect(() => {
   </div>
 
   {/* Map Block */}
-  <div style={{ order: blockOrder.Map }} className={`col-span-1 ${isMapFullView ? 'lg:col-span-12' : 'lg:col-span-4'} transition-all duration-300 ease-in-out`}>
-    <Card className="h-full flex flex-col">
+  <div style={{ order: blockOrder.Map }} className={`col-span-1 ${isMapFullView ? 'lg:col-span-12' : 'lg:col-span-4'} transition-all duration-300 ease-in-out min-w-0`}>
+    <Card className="h-full flex flex-col max-w-full">
       <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle>{'מפת מיקומי חירום'}</CardTitle>
-          <div className="flex gap-2">
+        <div className="flex flex-wrap justify-between items-center gap-2 min-w-0">
+          <CardTitle className="min-w-0">{'מפת מיקומי חירום'}</CardTitle>
+          <div className="flex gap-2 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => setIsMapFullView(v => !v)}>
-              {isMapFullView ? 'תצוגה מקוצרת' : 'תצוגה מלאה'}
+              <span className="hidden sm:inline">{isMapFullView ? 'תצוגה מקוצרת' : 'תצוגה מלאה'}</span>
+              <span className="sm:hidden">{isMapFullView ? 'מקוצרת' : 'מלאה'}</span>
             </Button>
             <Tooltip>
               <TooltipTrigger asChild>

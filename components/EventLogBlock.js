@@ -33,6 +33,19 @@ const departmentOptions = [
   "לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"
 ];
 
+// Department color map
+const getDepartmentBadgeColor = (dept) => {
+  const colorMap = {
+    'לוגיסטיקה': 'bg-blue-100 text-blue-800',
+    'אוכלוסיה': 'bg-pink-100 text-pink-800',
+    'רפואה': 'bg-red-100 text-red-800',
+    'חוסן': 'bg-green-100 text-green-800',
+    'חמ"ל': 'bg-purple-100 text-purple-800',
+    'אחר': 'bg-gray-100 text-gray-800'
+  };
+  return colorMap[dept] || 'bg-gray-100 text-gray-800';
+};
+
 function formatDateTime(ts) {
   if (!ts) return "";
   if (ts.seconds) ts = new Date(ts.seconds * 1000);
@@ -420,7 +433,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
             )}
           </div>
           <div className="flex w-full mt-2 mb-1">
-            <Button size="xs" onClick={() => setShowAddEventModal(true)} className="bg-blue-200 text-blue-900 hover:bg-blue-300 border-blue-200 w-full sm:w-auto">
+            <Button size="xs" onClick={() => setShowAddEventModal(true)} className="w-full sm:w-auto">
               + עדכון
             </Button>
           </div>
@@ -504,7 +517,11 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate' : ''}`} title={event.reporter}>{event.reporter}</td>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate hidden sm:table-cell' : ''}`} title={event.recipient}>{event.recipient}</td>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs' : ''} truncate`} title={event.description}>{event.description}</td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs' : ''}`}>{event.department}</td>
+                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs' : ''}`}>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getDepartmentBadgeColor(event.department)}`}>
+                          {event.department}
+                        </span>
+                      </td>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}>
                         <Select value={event.status || "מחכה"} onValueChange={(newStatus) => handleEventStatusChange(event.id, newStatus)}>
                           <SelectTrigger className={`${isFullView ? 'h-6 text-xs' : 'h-5 text-xs'} border-0 p-0 bg-transparent`}>
@@ -604,7 +621,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
                 </Select>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setShowAddEventModal(false)} className="ml-2">ביטול</Button>
-                  <Button type="submit" className="bg-blue-600 text-white hover:bg-blue-700">הוסף אירוע</Button>
+                  <Button type="submit">הוסף אירוע</Button>
                 </div>
               </form>
             </DialogContent>

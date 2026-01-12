@@ -309,6 +309,25 @@ The Situation Dashboard provides a high-level, real-time overview of an ongoing 
 - `app/context/AuthContext.js` - Authentication context
 - `app/login/page.js` - Login page
 
+### 11. Real-time Notification System
+
+#### Notification Features
+- **Real-time Alerts**: In-app notifications are delivered in real-time using Firestore listeners.
+- **Push Notifications**: Leverages Firebase Cloud Messaging (FCM) to send push notifications to users' browsers, even when the application is not in the foreground.
+- **User-Specific Configuration**: Each user can configure their notification preferences.
+- **Granular Controls**: In the settings dialog, users can enable/disable notifications and notification sounds for specific event types.
+- **Notification Categories**:
+  - **Tasks**: When a task is created, replied to, or completed.
+  - **Residents**: When a resident's status changes.
+  - **Events**: When a new event is logged or an existing event's status changes.
+- **Targeted Delivery**: Notifications can be sent to individual users or broadcast to all users within a specific department.
+- **Sound Alerts**: Plays a sound for new incoming notifications if enabled by the user.
+
+#### File References
+- `app/context/NotificationContext.js` - The core context for managing notification state, settings, and FCM integration.
+- `components/NotificationSettings.js` - Dialog component for users to manage their notification preferences.
+- `lib/notifications.js` - Utility functions for creating and sending notifications.
+
 ---
 
 ## User Interface & Experience
@@ -369,7 +388,11 @@ The Situation Dashboard provides a high-level, real-time overview of an ongoing 
   role: 'admin' | 'staff',
   alias: string,
   createdAt: timestamp,
-  lastLogin: timestamp
+  lastLogin: timestamp,
+  // Subcollections:
+  // - fcmTokens: { token: string, createdAt: timestamp }
+  // - notifications: See schema below
+  // - notificationSettings: See schema below
 }
 ```
 
@@ -506,6 +529,37 @@ The Situation Dashboard provides a high-level, real-time overview of an ongoing 
 }
 ```
 
+##### Notifications Collection (`users/{userId}/notifications`)
+```javascript
+{
+  id: string,
+  message: string,
+  type: 'tasks' | 'residents' | 'events',
+  subType: 'created' | 'replied' | 'done' | 'statusChange' | 'newEvent',
+  link: string, // optional
+  timestamp: timestamp,
+  read: boolean
+}
+```
+
+##### Notification Settings (`users/{userId}/notificationSettings/settings`)
+```javascript
+{
+  tasks: {
+    created: { enabled: boolean, sound: boolean },
+    replied: { enabled: boolean, sound: boolean },
+    done: { enabled: boolean, sound: boolean }
+  },
+  residents: {
+    statusChange: { enabled: boolean, sound: boolean }
+  },
+  events: {
+    newEvent: { enabled: boolean, sound: boolean },
+    statusChange: { enabled: boolean, sound: boolean }
+  }
+}
+```
+
 ### Data Flow
 
 #### Real-time Synchronization
@@ -636,7 +690,8 @@ The Situation Dashboard provides a high-level, real-time overview of an ongoing 
 │   │   ├── parse-task/route.js   # Task parsing API
 │   │   └── sync-residents/route.js # Residents sync API
 │   ├── context/                  # React contexts
-│   │   └── AuthContext.js        # Authentication context
+│   │   ├── AuthContext.js        # Authentication context
+│   │   └── NotificationContext.js# Notification system context
 │   ├── globals.css               # Global styles
 │   ├── layout.js                 # Root layout
 │   ├── login/page.js             # Login page
@@ -659,6 +714,7 @@ The Situation Dashboard provides a high-level, real-time overview of an ongoing 
 │   ├── FullCalendarDemo.js       # Calendar demo
 │   ├── NewLeadsManager.js        # Leads management
 │   ├── NotesAndLinks.js          # Notes and links
+│   ├── NotificationSettings.js   # Notification settings dialog
 │   ├── ResidentsManagement.js    # Resident management
 │   ├── SimpleEmergencyLocator.js # Simple emergency locator
 │   ├── TabsManager.js            # Tab management
@@ -670,6 +726,7 @@ The Situation Dashboard provides a high-level, real-time overview of an ongoing 
 │   ├── cross-project-auth.js     # Cross-project authentication
 │   ├── emergency-locator-sync.js # Emergency locator sync
 │   ├── emergency-locator-sync-realtime.js # Real-time sync
+│   ├── notifications.js          # Notification utilities
 │   └── utils.js                  # Utility functions
 ├── combined-whatsapp-firebase-script.js # WhatsApp + Firebase integration
 ├── combined-whatsapp-firebase-script-v2.js # Enhanced WhatsApp integration
@@ -716,6 +773,12 @@ The Situation Dashboard provides a high-level, real-time overview of an ongoing 
 - **Features**: Kanban board, timeline/funnel views, status tracking, conversation history, click-to-call, task creation from leads.
 - **Dependencies**: Firebase, dnd-kit (for Kanban), UI components
 - **State**: Leads data, filters, sorting, view states (e.g., collapsed columns), editing states.
+
+##### NotificationSettings.js
+- **Purpose**: User-facing dialog to manage notification preferences.
+- **Features**: Allows toggling notifications and sound alerts for different categories (Tasks, Residents, Events).
+- **Dependencies**: `NotificationContext`, UI components.
+- **State**: Manages a local copy of settings before saving.
 
 ##### SimpleEmergencyLocator.js
 - **Purpose**: Emergency location services
