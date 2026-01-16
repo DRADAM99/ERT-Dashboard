@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, ChevronDown, Upload, ChevronLeft, ChevronRight, Flame } from "lucide-react";
+import { Search, ChevronDown, Upload, ChevronLeft, ChevronRight, Flame, Link } from "lucide-react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "@/components/ui/use-toast";
@@ -71,7 +71,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
   const [taskEvent, setTaskEvent] = useState(null);
   const [taskPriority, setTaskPriority] = useState("רגיל");
   const [taskDepartment, setTaskDepartment] = useState("");
-  const [taskStatus, setTaskStatus] = useState("פתוח");
+  const [taskStatus, setTaskStatus] = useState("מחכה");
   const [userFullName, setUserFullName] = useState("");
 
   // Add event form state
@@ -81,6 +81,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
     description: "",
     department: "",
     status: "מחכה",
+    link: "",
   });
 
 
@@ -171,8 +172,27 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
     console.log("Attempting to create event log with data:", eventData);
     
     try {
-      await addDoc(collection(db, "eventLogs"), eventData);
-      console.log("Event log created successfully");
+      const docRef = await addDoc(collection(db, "eventLogs"), eventData);
+      console.log("Event log created successfully with ID:", docRef.id);
+
+      // Automatically create a task in Task Manager for the department
+      if (typeof window !== 'undefined' && window.createTaskFromExternal) {
+        const taskData = {
+          title: form.description || '',
+          subtitle: form.link ? `קישור: ${form.link}` : '',
+          priority: 'רגיל',
+          category: form.department,
+          department: form.department,
+          status: 'מחכה',
+          dueDate: new Date(),
+          eventId: docRef.id,
+          eventStatus: form.status || 'מחכה',
+          link: form.link || "",
+        };
+        
+        console.log("Automatically creating task for event:", taskData);
+        await window.createTaskFromExternal(taskData);
+      }
 
       // Notify users in the assigned department
       await notifyUsersInDepartment(form.department, {
@@ -182,7 +202,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
         link: `/`
       });
 
-      setForm({ reporter: "", recipient: userFullName || alias || "", description: "", department: "", status: "מחכה" });
+      setForm({ reporter: "", recipient: userFullName || alias || "", description: "", department: "", status: "מחכה", link: "" });
       setShowAddEventModal(false);
     } catch (error) {
       console.error("Error creating event log:", error);
@@ -191,7 +211,6 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
         message: error.message,
         data: eventData
       });
-      // You might want to show an error message to the user here
     }
   };
 
@@ -309,7 +328,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
     setTaskEvent(event);
     setTaskPriority("רגיל");
     setTaskDepartment(event.department || "");
-    setTaskStatus("פתוח");
+    setTaskStatus("מחכה");
     setShowTaskModal(true);
   };
   const createTask = async () => {
@@ -394,7 +413,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
       
       setShowTaskModal(false);
       setTaskEvent(null);
-      setTaskStatus("פתוח");
+      setTaskStatus("מחכה");
     } catch (error) {
       console.error("Error creating task from event:", error);
       toast({
@@ -516,7 +535,21 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${isFullView ? 'whitespace-nowrap' : 'text-xs'}`}>{isFullView ? formatDateTime(event.createdAt) : formatDateTime(event.createdAt).split(' ')[1]}</td>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate' : ''}`} title={event.reporter}>{event.reporter}</td>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate hidden sm:table-cell' : ''}`} title={event.recipient}>{event.recipient}</td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs' : ''} truncate`} title={event.description}>{event.description}</td>
+                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs' : ''} truncate`} title={event.description}>
+                        <div className="flex flex-col">
+                          <span>{event.description}</span>
+                          {event.link && (
+                            <a 
+                              href={event.link.startsWith('http') ? event.link : `https://${event.link}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-blue-500 hover:underline flex items-center gap-1 mt-1 text-[10px]"
+                            >
+                              <Link size={10} /> קישור חיצוני
+                            </a>
+                          )}
+                        </div>
+                      </td>
                       <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs' : ''}`}>
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getDepartmentBadgeColor(event.department)}`}>
                           {event.department}
@@ -607,6 +640,15 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
                 <Input placeholder="המדווח" value={form.reporter} onChange={e => setForm(f => ({ ...f, reporter: e.target.value }))} className="text-right" />
                 <Input placeholder="מקבל הדיווח" value={form.recipient} onChange={e => setForm(f => ({ ...f, recipient: e.target.value }))} className="text-right" />
                 <Textarea placeholder="תיאור האירוע" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="text-right" />
+                <div className="relative">
+                  <Input 
+                    placeholder="קישור (אופציונלי)" 
+                    value={form.link} 
+                    onChange={e => setForm(f => ({ ...f, link: e.target.value }))} 
+                    className="text-right pr-10" 
+                  />
+                  <Link className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                </div>
                 <Select value={form.department} onValueChange={val => setForm(f => ({ ...f, department: val }))}>
                   <SelectTrigger className="text-right"><SelectValue placeholder="בחר מחלקה" /></SelectTrigger>
                   <SelectContent>
@@ -651,7 +693,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
               <Label className="block mb-1">סטטוס</Label>
                               <Select value={taskStatus} onValueChange={setTaskStatus}>
                   <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="בחר..." /></SelectTrigger>
-                  <SelectContent>{["פתוח", "בטיפול", "הושלם"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                  <SelectContent>{["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                 </Select>
             </div>
             <div className="mb-2">

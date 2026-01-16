@@ -88,8 +88,8 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       // Users can update their own profile, and admins can update any profile
       allow update: if request.auth.uid == userId || isAdmin();
-      // Only admins can create new users
-      allow create: if isAdmin();
+      // Allow users to create their own profile during signup, or admins to create any user
+      allow create: if request.auth.uid == userId || isAdmin();
 
       // Allow users to manage their own notification settings, tokens, and notifications
       match /notificationSettings/{docId} {

@@ -13,7 +13,7 @@ import { notifyUsersInDepartment } from "@/lib/notifications";
 // Task categories for resident assignments - using the same categories as the main page
 const RESIDENT_TASK_CATEGORIES = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"];
 
-function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סטטוס', currentUser, alias, users = [], viewMode = 'full' }) {
+function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statusKey = 'סטטוס', currentUser, alias, users = [], viewMode = 'full' }) {
   const [expandedRows, setExpandedRows] = useState({});
   const [editingStatus, setEditingStatus] = useState(null);
   const [newStatus, setNewStatus] = useState('');
@@ -53,6 +53,20 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
       return 'bg-[#9CA3AF]';
     }
     return colorMap[status] || 'bg-[#9CA3AF]';
+  };
+
+  // Helper to get task summary for a resident
+  const getResidentTaskSummary = (residentId) => {
+    const residentTasks = tasks.filter(t => t.residentId === residentId);
+    if (residentTasks.length === 0) return null;
+
+    const summary = {
+      pending: residentTasks.filter(t => t.status === 'מחכה').length,
+      inProgress: residentTasks.filter(t => t.status === 'בטיפול').length,
+      completed: residentTasks.filter(t => t.status === 'טופל').length,
+      total: residentTasks.length
+    };
+    return summary;
   };
 
   // Helper to format cell values for display
@@ -327,7 +341,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
           priority: assignTaskData.priority,
           category: assignTaskData.category,
           department: assignTaskData.category,
-          status: "פתוח",
+          status: "מחכה",
           dueDate: new Date(),
           // Link to resident with proper field validation
           residentId: residentId,
@@ -370,7 +384,7 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
           priority: assignTaskData.priority,
           category: assignTaskData.category,
           department: assignTaskData.category,
-          status: "פתוח",
+          status: "מחכה",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           dueDate: now,
@@ -760,7 +774,16 @@ function ResidentsManagement({ residents, statusColorMap = {}, statusKey = 'סט
                   </td>
                   {/* Color tab cell */}
                   <td className="align-top px-1">
-                    <span className={`inline-block w-2 h-6 rounded-full ${colorClass}`}></span>
+                    <div className="flex flex-col gap-1">
+                      <span className={`inline-block w-2 h-6 rounded-full ${colorClass}`} title={`סטטוס: ${status || 'ללא'}`}></span>
+                      {getResidentTaskSummary(row.id) && (
+                        <div className="flex flex-col gap-0.5">
+                          {getResidentTaskSummary(row.id).pending > 0 && <div className="w-2 h-2 rounded-full bg-red-500" title={`${getResidentTaskSummary(row.id).pending} משימות מחכות`} />}
+                          {getResidentTaskSummary(row.id).inProgress > 0 && <div className="w-2 h-2 rounded-full bg-orange-500" title={`${getResidentTaskSummary(row.id).inProgress} משימות בטיפול`} />}
+                          {getResidentTaskSummary(row.id).completed > 0 && <div className="w-2 h-2 rounded-full bg-green-500" title={`${getResidentTaskSummary(row.id).completed} משימות טופלו`} />}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   {/* Main fields */}
                   {mainFields.map((field) => (

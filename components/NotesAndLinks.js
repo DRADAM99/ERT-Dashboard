@@ -13,6 +13,8 @@ import {
   onSnapshot,
   getDoc,
 } from "firebase/firestore";
+import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function NotesAndLinks({ section }) {
   const [notes, setNotes] = useState([]);
@@ -272,32 +274,55 @@ export default function NotesAndLinks({ section }) {
           📝+
         </button>
 
-        {/* Modal */}
+        {/* Side Panel Modal */}
         {modalOpen && (
-          <div className="absolute top-16 left-1/2 transform -translate-x-1/2 bg-white shadow-xl p-4 border rounded z-50 w-60">
-            <select 
-              value={targetUser} 
-              onChange={(e) => setTargetUser(e.target.value)} 
-              className="text-xs border p-1 rounded w-full mb-2"
-            >
-              <option value="all">לכולם</option>
-              {allUsers.map((u) => (
-                <option key={u.id} value={u.email}>
-                  {u.alias || u.email}
-                </option>
-              ))}
-            </select>
-            <textarea
-              value={newNote}
-              onChange={(e) => setNewNote(e.target.value)}
-              placeholder="מה ברצונך להוסיף?"
-              className="w-full p-1 text-xs border rounded"
+          <>
+            <div 
+              className="fixed inset-0 bg-black/20 z-[90]" 
+              onClick={() => setModalOpen(false)}
             />
-            <div className="flex justify-between mt-2 text-xs">
-              <button onClick={() => setModalOpen(false)} className="text-gray-500">ביטול</button>
-              <button onClick={addNote} className="text-yellow-600 font-bold">הוסף</button>
+            <div className="fixed top-0 left-0 h-full w-72 bg-white shadow-2xl p-6 border-r z-[100] flex flex-col animate-in slide-in-from-left duration-300" style={{ direction: 'rtl' }}>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-lg text-yellow-700 text-right">הוספת פתק חדש</h3>
+                <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-right">עבור:</label>
+                  <select 
+                    value={targetUser} 
+                    onChange={(e) => setTargetUser(e.target.value)} 
+                    className="text-sm border p-2 rounded w-full bg-gray-50 text-right"
+                  >
+                    <option value="all">לכולם</option>
+                    {allUsers.map((u) => (
+                      <option key={u.id} value={u.email}>
+                        {u.alias || u.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-right">תוכן:</label>
+                  <textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="מה ברצונך להוסיף?"
+                    className="w-full p-2 text-sm border rounded bg-gray-50 min-h-[120px] text-right"
+                  />
+                </div>
+                
+                <div className="flex gap-3 pt-4">
+                  <Button onClick={addNote} className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-bold">הוסף פתק</Button>
+                  <Button variant="outline" onClick={() => setModalOpen(false)} className="flex-1">ביטול</Button>
+                </div>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     );
@@ -333,28 +358,56 @@ export default function NotesAndLinks({ section }) {
           📎+
         </button>
 
-        {/* Modal */}
+        {/* Side Panel Modal */}
         {modalOpen && (
-          <div className="absolute top-16 left-1/2 transform -translate-x-1/2 bg-white shadow-xl p-4 border rounded z-50 w-64">
-            <input
-              type="text"
-              value={newLink.title}
-              onChange={(e) => setNewLink({ ...newLink, title: e.target.value })}
-              placeholder="שם"
-              className="text-xs border p-1 rounded w-full mb-2"
+          <>
+            <div 
+              className="fixed inset-0 bg-black/20 z-[90]" 
+              onClick={() => setModalOpen(false)}
             />
-            <input
-              type="text"
-              value={newLink.url}
-              onChange={(e) => setNewLink({ ...newLink, url: e.target.value })}
-              placeholder="https://..."
-              className="text-xs border p-1 rounded w-full"
-            />
-            <div className="flex justify-between mt-2 text-xs">
-              <button onClick={() => setModalOpen(false)} className="text-gray-500">ביטול</button>
-              <button onClick={addLink} className="text-green-600 font-bold">הוסף</button>
+            <div className="fixed top-0 right-0 h-full w-72 bg-white shadow-2xl p-6 border-l z-[100] flex flex-col animate-in slide-in-from-right duration-300" style={{ direction: 'rtl' }}>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-lg text-green-700 text-right">הוספת קישור חדש</h3>
+                <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-right">שם הקישור:</label>
+                  <input
+                    type="text"
+                    value={newLink.title}
+                    onChange={(e) => setNewLink({ ...newLink, title: e.target.value })}
+                    placeholder="שם (למשל: תיקיית מסמכים)"
+                    className="text-sm border p-2 rounded w-full bg-gray-50 text-right"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-right">כתובת (URL):</label>
+                  <input
+                    type="text"
+                    value={newLink.url}
+                    onChange={(e) => setNewLink({ ...newLink, url: e.target.value })}
+                    placeholder="https://..."
+                    className="text-sm border p-2 rounded w-full bg-gray-50 text-right"
+                    style={{ direction: 'ltr' }}
+                  />
+                </div>
+                
+                <div className="flex gap-3 pt-4">
+                  <Button onClick={addLink} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold">הוסף קישור</Button>
+                  <Button variant="outline" onClick={() => setModalOpen(false)} className="flex-1">ביטול</Button>
+                </div>
+                
+                <div className="text-[10px] text-gray-500 text-center pt-2">
+                  ניתן לשמור עד 5 קישורים אישיים
+                </div>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     );

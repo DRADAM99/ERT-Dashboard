@@ -1,4 +1,4 @@
-// Version 7.5 - added notification system and modified Task Manager
+// Version 7.9 - added notification system and modified Task Manager
 "use client";
 
 // Utility functions for layout persistence
@@ -1345,7 +1345,7 @@ useEffect(() => {
         subtitle: newTaskSubtitle,
         priority: newTaskPriority,
         category: newTaskCategory,
-        status: "פתוח",
+        status: "מחכה",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         creatorAlias: alias || currentUser.email || "",
@@ -2850,7 +2850,7 @@ useEffect(() => {
 
           <div className="min-w-0 max-w-[200px] text-left text-sm text-gray-500 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs">{'Version 7.5'}</span>
+              <span className="text-xs">{'Version 7.9'}</span>
               <NotificationBell />
             </div>
             <div className="flex flex-col gap-1">
@@ -2934,6 +2934,7 @@ useEffect(() => {
       <CardContent className="p-0 flex-grow">
         <ResidentsManagement
           residents={residents}
+          tasks={tasks}
           statusColorMap={leadStatusConfig}
           statusKey="סטטוס"
           currentUser={currentUser}
