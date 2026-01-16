@@ -175,32 +175,34 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
       const docRef = await addDoc(collection(db, "eventLogs"), eventData);
       console.log("Event log created successfully with ID:", docRef.id);
 
-      // Automatically create a task in Task Manager for the department
-      if (typeof window !== 'undefined' && window.createTaskFromExternal) {
-        const taskData = {
-          title: form.description || '',
-          subtitle: form.link ? `קישור: ${form.link}` : '',
-          priority: 'רגיל',
-          category: form.department,
-          department: form.department,
-          status: 'מחכה',
-          dueDate: new Date(),
-          eventId: docRef.id,
-          eventStatus: form.status || 'מחכה',
-          link: form.link || "",
-        };
-        
-        console.log("Automatically creating task for event:", taskData);
-        await window.createTaskFromExternal(taskData);
-      }
+      // Automatically create a task in Task Manager for the department if department is selected
+      if (form.department && form.department.trim()) {
+        if (typeof window !== 'undefined' && window.createTaskFromExternal) {
+          const taskData = {
+            title: form.description || '',
+            subtitle: form.link ? `קישור: ${form.link}` : '',
+            priority: 'רגיל',
+            category: form.department,
+            department: form.department,
+            status: 'מחכה',
+            dueDate: new Date(),
+            eventId: docRef.id,
+            eventStatus: form.status || 'מחכה',
+            link: form.link || "",
+          };
+          
+          console.log("Automatically creating task for event:", taskData);
+          await window.createTaskFromExternal(taskData);
+        }
 
-      // Notify users in the assigned department
-      await notifyUsersInDepartment(form.department, {
-        message: `אירוע חדש ביומן: ${form.description}`,
-        type: 'event',
-        subType: 'newEvent',
-        link: `/`
-      });
+        // Notify users in the assigned department
+        await notifyUsersInDepartment(form.department, {
+          message: `אירוע חדש ביומן: ${form.description}`,
+          type: 'event',
+          subType: 'newevent',
+          link: `/`
+        });
+      }
 
       setForm({ reporter: "", recipient: userFullName || alias || "", description: "", department: "", status: "מחכה", link: "" });
       setShowAddEventModal(false);
@@ -305,12 +307,14 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
       // Notify users in the assigned department
       const eventDoc = await getDoc(eventRef);
       const eventData = eventDoc.data();
-      await notifyUsersInDepartment(eventData.department, {
-        message: `סטטוס אירוע התעדכן: ${eventData.description} - ${newStatus}`,
-        type: 'event',
-        subType: 'statusChange',
-        link: `/`
-      });
+      if (eventData.department && eventData.department.trim()) {
+        await notifyUsersInDepartment(eventData.department, {
+          message: `סטטוס אירוע התעדכן: ${eventData.description} - ${newStatus}`,
+          type: 'event',
+          subType: 'statuschange',
+          link: `/`
+        });
+      }
 
     } catch (error) {
       console.error('Error updating event status:', error);
@@ -398,12 +402,14 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
         await setDoc(taskRef, taskData);
 
         // Notify users in the assigned department
-        await notifyUsersInDepartment(taskDepartment, {
-          message: `משימה חדשה מאירוע: ${taskEvent.description || ''}`,
-          type: 'task',
-          subType: 'created',
-          link: `/`
-        });
+        if (taskDepartment && taskDepartment.trim()) {
+          await notifyUsersInDepartment(taskDepartment, {
+            message: `משימה חדשה מאירוע: ${taskEvent.description || ''}`,
+            type: 'task',
+            subType: 'created',
+            link: `/`
+          });
+        }
         
         toast({
           title: "Success",

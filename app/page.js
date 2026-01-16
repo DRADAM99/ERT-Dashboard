@@ -1,4 +1,4 @@
-// Version 7.9 - added notification system and modified Task Manager
+// Version 8.0 - sync tasks and residents status, notifications 
 "use client";
 
 // Utility functions for layout persistence
@@ -2850,7 +2850,7 @@ useEffect(() => {
 
           <div className="min-w-0 max-w-[200px] text-left text-sm text-gray-500 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs">{'Version 7.9'}</span>
+              <span className="text-xs">{'Version 8.0'}</span>
               <NotificationBell />
             </div>
             <div className="flex flex-col gap-1">

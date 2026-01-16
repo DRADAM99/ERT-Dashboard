@@ -5,6 +5,7 @@ import { db, app } from '../../firebase'; // Import 'app' from firebase
 import { collection, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { toast } from '@/components/ui/use-toast';
 
 const NotificationContext = createContext();
 
@@ -119,9 +120,23 @@ export function NotificationProvider({ children }) {
           snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
               const notificationData = change.doc.data();
-              const { type, subType } = notificationData;
-              if (settings && settings[type] && settings[type][subType] && settings[type][subType].sound) {
-                playNotificationSound();
+              const type = notificationData.type?.toLowerCase();
+              const subType = notificationData.subType?.toLowerCase();
+
+              if (settings && settings[type] && settings[type][subType]) {
+                // Play sound if enabled
+                if (settings[type][subType].sound) {
+                  playNotificationSound();
+                }
+                
+                // Show toast if enabled (visual update)
+                if (settings[type][subType].enabled) {
+                  toast({
+                    title: "התראה חדשה",
+                    description: notificationData.message,
+                    variant: type === 'resident' ? "destructive" : "default",
+                  });
+                }
               }
             }
           });
@@ -163,8 +178,8 @@ export function NotificationProvider({ children }) {
           // Create default settings if they don't exist
           const defaultSettings = {
             tasks: { created: { enabled: true, sound: true }, replied: { enabled: true, sound: true }, done: { enabled: true, sound: true } },
-            residents: { statusChange: { enabled: true, sound: true } },
-            events: { newEvent: { enabled: true, sound: true }, statusChange: { enabled: true, sound: true } }
+            residents: { statuschange: { enabled: true, sound: true } },
+            events: { newevent: { enabled: true, sound: true }, statuschange: { enabled: true, sound: true } }
           };
           setDoc(doc.ref, defaultSettings);
           setSettings(defaultSettings);

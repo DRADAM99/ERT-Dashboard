@@ -61,9 +61,10 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
     if (residentTasks.length === 0) return null;
 
     const summary = {
-      pending: residentTasks.filter(t => t.status === 'מחכה').length,
-      inProgress: residentTasks.filter(t => t.status === 'בטיפול').length,
-      completed: residentTasks.filter(t => t.status === 'טופל').length,
+      pending: residentTasks.filter(t => !t.done && (t.status === 'מחכה' || !t.status)).length,
+      inProgress: residentTasks.filter(t => !t.done && t.status === 'בטיפול').length,
+      completed: residentTasks.filter(t => t.done || t.status === 'טופל').length,
+      hasUnreadReplies: residentTasks.some(t => t.replies?.some(r => !r.isRead && r.userId !== currentUser?.uid)),
       total: residentTasks.length
     };
     return summary;
@@ -234,11 +235,29 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
   }, [viewMode]);
 
   // Toggle row expansion
-  const toggleRowExpansion = (rowId) => {
+  const toggleRowExpansion = async (rowId) => {
+    const isExpanding = !expandedRows[rowId];
     setExpandedRows(prev => ({
       ...prev,
-      [rowId]: !prev[rowId]
+      [rowId]: isExpanding
     }));
+
+    // If expanding and resident has new comments, mark as read
+    if (isExpanding) {
+      const resident = residents.find(r => r.id === rowId);
+      if (resident && (resident.hasNewComment || resident.hasNewReply)) {
+        try {
+          const residentRef = doc(db, 'residents', rowId);
+          await updateDoc(residentRef, {
+            hasNewComment: false,
+            hasNewReply: false,
+            updatedAt: serverTimestamp()
+          });
+        } catch (error) {
+          console.error('Error marking resident comments as read:', error);
+        }
+      }
+    }
   };
 
   // Handle status change
@@ -278,20 +297,13 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
           const tasksQuery = query(tasksRef, where("residentId", "==", residentId));
           const tasksSnapshot = await getDocs(tasksQuery);
           
-          // Update each task's residentStatus field and main status if it's a resident-linked task
+          // Update each task's residentStatus field to keep the display info updated,
+          // but DO NOT change the main task status (as they are separate).
           const updatePromises = tasksSnapshot.docs.map(async (taskDoc) => {
-            const taskData = taskDoc.data();
-            const updateData = {
+            await updateDoc(doc(db, "tasks", taskDoc.id), {
               residentStatus: newStatus,
               updatedAt: now
-            };
-            
-            // If this is a resident-linked task, also update the main status
-            if (taskData.residentId) {
-              updateData.status = newStatus;
-            }
-            
-            await updateDoc(doc(db, "tasks", taskDoc.id), updateData);
+            });
           });
           
           await Promise.all(updatePromises);
@@ -332,23 +344,31 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
   const handleAssignTask = async (residentId, residentData) => {
     if (!currentUser || !residentId) return;
 
+    // Use helper to get clean values
+    const firstName = getFieldValue(residentData, 'שם פרטי');
+    const lastName = getFieldValue(residentData, 'שם משפחה');
+    const neighborhood = getFieldValue(residentData, 'שכונה');
+    const phone = getFieldValue(residentData, 'טלפון');
+    const status = getFieldValue(residentData, 'סטטוס');
+
     try {
       // Use the standardized task creation function if available
       if (typeof window !== 'undefined' && window.createTaskFromExternal) {
         const taskData = {
           title: assignTaskData.title,
-          subtitle: `תושב: ${residentData['שם פרטי']} ${residentData['שם משפחה']} - ${residentData['שכונה']}`,
+          subtitle: `תושב: ${firstName} ${lastName} - ${neighborhood}`,
           priority: assignTaskData.priority,
           category: assignTaskData.category,
           department: assignTaskData.category,
+          creatorDepartment: currentUser.department || "",
           status: "מחכה",
           dueDate: new Date(),
           // Link to resident with proper field validation
           residentId: residentId,
-          residentName: `${residentData['שם פרטי']} ${residentData['שם משפחה']}`,
-          residentPhone: residentData['טלפון'] || "",
-          residentNeighborhood: residentData['שכונה'] || "",
-          residentStatus: residentData['סטטוס'] || ""
+          residentName: `${firstName} ${lastName}`,
+          residentPhone: phone || "",
+          residentNeighborhood: neighborhood || "",
+          residentStatus: status || ""
         };
 
         const taskId = await window.createTaskFromExternal(taskData);
@@ -377,10 +397,11 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
           id: taskRef.id,
           userId: currentUser.uid,
           creatorId: currentUser.uid,
+          creatorDepartment: currentUser.department || "",
           creatorAlias: alias || currentUser.email,
           assignTo: assignTaskData.category, // Use category as assignTo
           title: assignTaskData.title,
-          subtitle: `תושב: ${residentData['שם פרטי']} ${residentData['שם משפחה']} - ${residentData['שכונה']}`,
+          subtitle: `תושב: ${firstName} ${lastName} - ${neighborhood}`,
           priority: assignTaskData.priority,
           category: assignTaskData.category,
           department: assignTaskData.category,
@@ -397,21 +418,23 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
           nudges: [],
           // Link to resident with proper field validation
           residentId: residentId,
-          residentName: `${residentData['שם פרטי']} ${residentData['שם משפחה']}`,
-          residentPhone: residentData['טלפון'] || "",
-          residentNeighborhood: residentData['שכונה'] || "",
-          residentStatus: residentData['סטטוס'] || ""
+          residentName: `${firstName} ${lastName}`,
+          residentPhone: phone || "",
+          residentNeighborhood: neighborhood || "",
+          residentStatus: status || ""
         };
 
         await setDoc(taskRef, taskData);
 
-        // Notify users in the assigned department
-        await notifyUsersInDepartment(taskData.department, {
-          message: `משימה חדשה מתושב: ${taskData.title}`,
-          type: 'task',
-          subType: 'created',
-          link: `/`
-        });
+        // Notify users in the assigned department if department is selected
+        if (taskData.department && taskData.department.trim()) {
+          await notifyUsersInDepartment(taskData.department, {
+            message: `משימה חדשה מתושב: ${taskData.title}`,
+            type: 'task',
+            subType: 'created',
+            link: `/`
+          });
+        }
 
         // Update resident with task assignment
         const residentRef = doc(db, 'residents', residentId);
@@ -448,17 +471,59 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
       const residentRef = doc(db, 'residents', residentId);
       const now = new Date();
       
+      const commentText = newComment.trim();
       const comment = {
-        text: newComment,
+        text: commentText,
         timestamp: now,
         userId: currentUser.uid,
         userAlias: alias || currentUser.email
       };
 
+      console.log(`Adding comment to resident ${residentId}: ${commentText}`);
       await updateDoc(residentRef, {
         comments: arrayUnion(comment),
-        updatedAt: now
+        updatedAt: serverTimestamp()
       });
+
+      // Also add this comment as a reply to all tasks linked to this resident
+      try {
+        console.log(`Searching for tasks linked to resident ${residentId}`);
+        const tasksRef = collection(db, "tasks");
+        const tasksQuery = query(tasksRef, where("residentId", "==", residentId));
+        const tasksSnapshot = await getDocs(tasksQuery);
+        
+        console.log(`Found ${tasksSnapshot.docs.length} tasks for resident ${residentId}`);
+        
+        const replyPromises = tasksSnapshot.docs.map(async (taskDoc) => {
+          const taskData = taskDoc.data();
+          const taskRef = doc(db, "tasks", taskDoc.id);
+          
+          console.log(`Mirroring comment to task ${taskDoc.id}`);
+          await updateDoc(taskRef, {
+            replies: arrayUnion({
+              text: `[הערה מתושב] ${commentText}`,
+              timestamp: now,
+              userId: currentUser.uid,
+              userAlias: alias || currentUser.email,
+              isRead: false
+            }),
+            hasNewReply: true,
+            lastReplyAt: now,
+            updatedAt: serverTimestamp()
+          });
+
+          // Notify task creator/assignee about the new comment
+          if (taskData.creatorId && taskData.creatorId !== currentUser.uid) {
+            // This is a placeholder for notification logic if available in this component
+            // If notifyUsersInDepartment is available, we could use it
+            console.log(`Notification would be sent to task creator ${taskData.creatorId}`);
+          }
+        });
+        
+        await Promise.all(replyPromises);
+      } catch (taskError) {
+        console.error('Error syncing resident comment to task replies:', taskError);
+      }
 
       setNewComment('');
       setCommentingResident(null);
@@ -726,8 +791,8 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
           <tr>
             {/* Expand/collapse column */}
             <th className="w-10 flex-shrink-0"></th>
-            {/* Color tab column */}
-            <th className="w-3 flex-shrink-0"></th>
+            {/* Consolidated status column */}
+            <th className="w-6 flex-shrink-0 px-1"></th>
             {/* Main fields with explicit widths */}
             {mainFields.map((field) => {
               let width = 'w-auto';
@@ -772,15 +837,23 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                       )}
                     </button>
                   </td>
-                  {/* Color tab cell */}
-                  <td className="align-top px-1">
-                    <div className="flex flex-col gap-1">
-                      <span className={`inline-block w-2 h-6 rounded-full ${colorClass}`} title={`סטטוס: ${status || 'ללא'}`}></span>
+                  {/* Consolidated status and notification column */}
+                  <td className="align-top px-1 py-2 w-4">
+                    <div className="flex flex-col items-center gap-1.5 relative">
+                      {/* Main resident status color bar */}
+                      <span className={`inline-block w-2.5 h-8 rounded-full shadow-sm ${colorClass}`} title={`סטטוס: ${status || 'ללא'}`}></span>
+                      
+                      {/* Pulsating notification dot - placed on top of or near the status bar */}
+                      {(getResidentTaskSummary(row.id)?.hasUnreadReplies || row.hasNewComment || row.hasNewReply) && (
+                        <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-600 border-2 border-white animate-pulse z-10" title="יש תגובה או הערה חדשה!" />
+                      )}
+
+                      {/* Task status summary dots */}
                       {getResidentTaskSummary(row.id) && (
-                        <div className="flex flex-col gap-0.5">
-                          {getResidentTaskSummary(row.id).pending > 0 && <div className="w-2 h-2 rounded-full bg-red-500" title={`${getResidentTaskSummary(row.id).pending} משימות מחכות`} />}
-                          {getResidentTaskSummary(row.id).inProgress > 0 && <div className="w-2 h-2 rounded-full bg-orange-500" title={`${getResidentTaskSummary(row.id).inProgress} משימות בטיפול`} />}
-                          {getResidentTaskSummary(row.id).completed > 0 && <div className="w-2 h-2 rounded-full bg-green-500" title={`${getResidentTaskSummary(row.id).completed} משימות טופלו`} />}
+                        <div className="flex flex-col gap-1">
+                          {getResidentTaskSummary(row.id).pending > 0 && <div className="w-2 h-2 rounded-full bg-red-500 shadow-sm" title={`${getResidentTaskSummary(row.id).pending} משימות מחכות`} />}
+                          {getResidentTaskSummary(row.id).inProgress > 0 && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-sm" title={`${getResidentTaskSummary(row.id).inProgress} משימות בטיפול`} />}
+                          {getResidentTaskSummary(row.id).completed > 0 && <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm" title={`${getResidentTaskSummary(row.id).completed} משימות טופלו`} />}
                         </div>
                       )}
                     </div>
@@ -826,13 +899,27 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                         </a>
                       ) : (
                         <div className="flex items-center justify-between min-w-0 gap-1">
-                           {viewMode === 'full' || field !== 'סטטוס' ? (
+                          <div className="flex flex-col min-w-0">
                             <span className={`truncate ${row.assignedTasks && row.assignedTasks.length > 0 ? 'font-semibold text-blue-600' : ''}`}>
                               {field === 'סטטוס' && (!getFieldValue(row, field) || getFieldValue(row, field).trim() === '') 
                                 ? 'ללא סטטוס' 
                                 : formatCellValue(getFieldValue(row, field))}
                             </span>
-                          ) : <span />}
+                            {field === 'שם פרטי' && getResidentTaskSummary(row.id) && (
+                              <div className="flex gap-1 mt-0.5">
+                                {getResidentTaskSummary(row.id).pending > 0 && (
+                                  <span className="text-[10px] bg-red-100 text-red-700 px-1 rounded border border-red-200">
+                                    {getResidentTaskSummary(row.id).pending} מחכות
+                                  </span>
+                                )}
+                                {getResidentTaskSummary(row.id).inProgress > 0 && (
+                                  <span className="text-[10px] bg-orange-100 text-orange-700 px-1 rounded border border-orange-200">
+                                    {getResidentTaskSummary(row.id).inProgress} בטיפול
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                           {field === 'סטטוס' && currentUser && (
                             <button
                               onClick={(e) => {

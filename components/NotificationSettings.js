@@ -61,12 +61,13 @@ export default function NotificationSettings({ isOpen, onClose }) {
   }, [settings]);
 
   const handleSettingChange = (category, subType, field, value) => {
+    const normalizedSubType = subType.toLowerCase();
     const newSettings = {
       ...localSettings,
       [category]: {
         ...localSettings[category],
-        [subType]: {
-          ...localSettings[category][subType],
+        [normalizedSubType]: {
+          ...localSettings[category][normalizedSubType] || {},
           [field]: value,
         },
       },

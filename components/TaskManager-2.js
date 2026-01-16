@@ -140,13 +140,15 @@ export default function TaskManager2({
 
 
   const sendTaskCreationNotification = async (newTask) => {
-    // Send notification to the assigned department
-    await notifyUsersInDepartment(newTask.department, {
-      message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
-      type: 'task',
-      subType: 'created',
-      link: `/`
-    });
+    // Send notification to the assigned department if department is selected
+    if (newTask.department && newTask.department.trim()) {
+      await notifyUsersInDepartment(newTask.department, {
+        message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
+        type: 'task',
+        subType: 'created',
+        link: `/`
+      });
+    }
   };
 
   // Initialize sensors for drag and drop
@@ -410,13 +412,15 @@ export default function TaskManager2({
       
       console.log("Task saved to Firestore with ID:", taskRef.id);
       
-      // Send notification to the assigned department
-      await notifyUsersInDepartment(newTask.department, {
-        message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
-        type: 'task',
-        subType: 'created',
-        link: `/`
-      });
+      // Send notification to the assigned department if department is selected
+      if (newTask.department && newTask.department.trim()) {
+        await notifyUsersInDepartment(newTask.department, {
+          message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
+          type: 'task',
+          subType: 'created',
+          link: `/`
+        });
+      }
       
       toast({
         title: "משימה נוצרה",
@@ -628,6 +632,30 @@ export default function TaskManager2({
         lastReplyAt: now,
         updatedAt: now
       });
+
+      // If this task is linked to a resident, also add the reply as a comment to the resident
+      if (taskData.residentId) {
+        console.log(`Syncing reply to resident ${taskData.residentId}`);
+        try {
+          const residentRef = doc(db, 'residents', taskData.residentId);
+          await updateDoc(residentRef, {
+            comments: arrayUnion({
+              text: `[תגובה ממשימה] ${replyText}`,
+              timestamp: now,
+              userId: currentUser.uid,
+              userAlias: alias || currentUser.email,
+              fromTaskId: taskId
+            }),
+            hasNewComment: true,
+            updatedAt: serverTimestamp()
+          });
+          console.log(`Successfully synced task reply to resident ${taskData.residentId} comments`);
+        } catch (residentError) {
+          console.error('Error syncing task reply to resident comments:', residentError);
+        }
+      } else {
+        console.log('Task not linked to a resident, skipping comment sync');
+      }
 
       toast({
         title: "תגובה נשלחה",
@@ -977,13 +1005,15 @@ export default function TaskManager2({
       console.log("Saving task with data:", newTask);
       await setDoc(taskRef, newTask);
 
-      // Send notification to the assigned department
-      await notifyUsersInDepartment(newTask.department, {
-        message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
-        type: 'task',
-        subType: 'created',
-        link: `/`
-      });
+      // Send notification to the assigned department if department is selected
+      if (newTask.department && newTask.department.trim()) {
+        await notifyUsersInDepartment(newTask.department, {
+          message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
+          type: 'task',
+          subType: 'created',
+          link: `/`
+        });
+      }
 
       // Reset form
       setNewTaskTitle("");
