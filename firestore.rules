@@ -236,5 +236,13 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    // ────────────────
+    // System Settings Collection
+    // ────────────────
+    match /systemSettings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
   }
 }
