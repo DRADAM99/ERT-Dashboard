@@ -223,7 +223,7 @@ moment.tz.setDefault("Asia/Jerusalem");
 const localizer = momentLocalizer(moment);
 const messages = { allDay: "כל היום", previous: "הקודם", next: "הבא", today: "היום", month: "חודש", week: "שבוע", day: "יום", agenda: "סדר יום", date: "תאריך", time: "זמן", event: "אירוע", noEventsInRange: "אין אירועים בטווח זה", showMore: (total) => `+ ${total} נוספים`, };
 
-const LIVE_GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyoA53yoUTg7Dw0o0dsSnokFrycA_DPOGRlAMmLZi6uqVXxH6ejF9RfiJhhhFk5WvjFfg/exec";
+const LIVE_GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwNuUYL_Acq82G5Pb7lho-XzFIAOExn5ak6JqsQIwYUHOzErHmPO5lo4UcCinCzRqWkRA/exec";
 const EMERGENCY_SETTINGS_DOC = { collection: "systemSettings", id: "emergencyMode" };
 const isValidGoogleScriptExecUrl = (url) =>
   /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(url.trim());
