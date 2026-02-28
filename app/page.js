@@ -2902,11 +2902,11 @@ useEffect(() => {
     <TooltipProvider>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         
-      <header dir="rtl" className="border-b bg-white shadow-sm sticky top-0 z-20">
+      <header dir="rtl" className="border-b bg-white shadow-sm sticky top-0 z-20 w-full overflow-hidden">
         {/* Mobile Layout */}
-        <div className="block sm:hidden">
+        <div className="block sm:hidden w-full">
           {/* Top row: Logo, Info, Notifications */}
-          <div className="flex items-center justify-between p-1">
+          <div className="flex items-center justify-between p-1 w-full">
             <div className="flex items-center gap-2">
               <Image
                 src="/logo.png"
@@ -2920,7 +2920,7 @@ useEffect(() => {
             <div className="flex items-center gap-2 text-xs text-gray-600">
                 <div className="text-right">
                     <div>{currentDateTime || 'טוען תאריך...'}</div>
-                    <div className="text-gray-500">{'Version 7.5'}</div>
+                    <div className="text-gray-500">{'Version 8.2'}</div>
                     {department && <div className="text-xs text-blue-600">{`מחלקה: ${department}`}</div>}
                 </div>
                 <NotificationBell />
@@ -2929,54 +2929,35 @@ useEffect(() => {
 
           {/* Bottom row: Actions */}
           <div className="flex items-center justify-between p-1 gap-1 bg-gray-50 border-y">
-            <div className="flex gap-1">
-                <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs px-2 py-1 h-8">תמונת מצב</Button>
+            <div className="flex items-center gap-1 min-w-0">
+                <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs px-2 py-1 h-8 shrink-0">תמונת מצב</Button>
                 {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => updateEmergencyMode(emergencyMode === "live" ? "exercise" : "live")}
-                    disabled={!isEmergencyConfigLoaded || isSavingEmergencyConfig}
-                    className="text-xs px-2 py-1 h-8"
-                >
-                    {`מצב: ${emergencyModeLabel}`}
-                </Button>
-                )}
-                {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setShowEmergencyConfigDialog(true)}
-                    className="text-xs px-2 py-1 h-8"
-                >
-                    קישור תרגיל
-                </Button>
-                )}
-                {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button 
-                    size="sm" 
-                    onClick={() => setShowGreenEyesDialog(true)}
-                    disabled={isEmergencyActionsDisabled}
-                    className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium px-2 py-1 h-8"
-                >
-                    {`ירוק בעיניים (${emergencyModeLabel})`}
-                </Button>
-                )}
-                {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button 
-                    size="sm" 
-                    onClick={() => setShowEndEmergencyDialog(true)}
-                    disabled={isEmergencyActionsDisabled}
-                    className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium px-2 py-1 h-8"
-                >
-                    {`סיים אירוע (${emergencyModeLabel})`}
-                </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex flex-col items-center leading-none">
+                      <span className="text-[9px] text-gray-600 mb-0.5">תרגיל / חי</span>
+                      <Switch
+                        checked={emergencyMode === "live"}
+                        onCheckedChange={(checked) => updateEmergencyMode(checked ? "live" : "exercise")}
+                        disabled={!isEmergencyConfigLoaded || isSavingEmergencyConfig}
+                        className="data-[state=checked]:bg-blue-500 data-[state=unchecked]:bg-yellow-400 border-gray-300"
+                      />
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-7 w-7 shrink-0"
+                      onClick={() => setShowEmergencyConfigDialog(true)}
+                      title="קישור תרגיל"
+                    >
+                      <Link2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 )}
             </div>
             
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8">
+                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0">
                     <Menu className="h-4 w-4" />
                 </Button>
                 </DropdownMenuTrigger>
@@ -2984,6 +2965,25 @@ useEffect(() => {
                 {(currentUser?.role === 'admin' || role === 'admin') && (
                     <DropdownMenuCheckboxItem onSelect={() => setShowAddUserModal(true)}>
                     הוסף משתמש
+                    </DropdownMenuCheckboxItem>
+                )}
+                {(currentUser?.role === 'admin' || role === 'admin') && (
+                    <DropdownMenuSeparator />
+                )}
+                {(currentUser?.role === 'admin' || role === 'admin') && (
+                    <DropdownMenuCheckboxItem
+                      onSelect={() => !isEmergencyActionsDisabled && setShowGreenEyesDialog(true)}
+                      disabled={isEmergencyActionsDisabled}
+                    >
+                      <span className="text-red-600">{`ירוק בעיניים (${emergencyModeLabel})`}</span>
+                    </DropdownMenuCheckboxItem>
+                )}
+                {(currentUser?.role === 'admin' || role === 'admin') && (
+                    <DropdownMenuCheckboxItem
+                      onSelect={() => !isEmergencyActionsDisabled && setShowEndEmergencyDialog(true)}
+                      disabled={isEmergencyActionsDisabled}
+                    >
+                      <span className="text-green-700">{`סיים אירוע (${emergencyModeLabel})`}</span>
                     </DropdownMenuCheckboxItem>
                 )}
                 <DropdownMenuSeparator />
@@ -3046,7 +3046,7 @@ useEffect(() => {
 
           <div className="min-w-0 max-w-[200px] text-left text-sm text-gray-500 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs">{'Version 8.0'}</span>
+              <span className="text-xs">{'Version 8.2'}</span>
               <NotificationBell />
               {(currentUser?.role === 'admin' || role === 'admin') && (
                 <div className="flex items-center gap-1">
