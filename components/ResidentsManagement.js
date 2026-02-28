@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { ChevronDown, ChevronRight, Edit2, UserPlus, MessageSquare, ArrowUpDown, X, Phone } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit2, UserPlus, MessageSquare, ArrowUpDown, X, Phone, MessageCircle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -129,6 +129,25 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
     return fieldMap[fieldName] || row[fieldName] || '';
   };
 
+  const normalizePhoneNumber = (phoneValue) => {
+    if (!phoneValue) return '';
+    const onlyDigits = String(phoneValue).replace(/\D/g, '');
+    if (!onlyDigits) return '';
+    if (onlyDigits.startsWith('972')) return onlyDigits;
+    if (onlyDigits.startsWith('0')) return `972${onlyDigits.slice(1)}`;
+    return onlyDigits;
+  };
+
+  const getPhoneHref = (phoneValue) => {
+    const normalized = normalizePhoneNumber(phoneValue);
+    return normalized ? `tel:+${normalized}` : null;
+  };
+
+  const getWhatsAppHref = (phoneValue) => {
+    const normalized = normalizePhoneNumber(phoneValue);
+    return normalized ? `https://wa.me/${normalized}` : null;
+  };
+
   const ADVANCED_FILTER_FIELDS = ['שכונה', 'הורה/ילד', 'סטטוס מגורים'];
 
   const advancedFilterOptions = useMemo(() => {
@@ -210,6 +229,169 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
   const handleRemoveAdvancedFilter = (filterToRemove) => {
     setAdvancedFilters(prev => prev.filter(f => !(f.field === filterToRemove.field && f.value === filterToRemove.value)));
   };
+
+  const renderExpandedResidentContent = (row, rowId, useCardSpacing = false) => (
+    <div className={`space-y-4 ${useCardSpacing ? 'text-sm' : ''}`}>
+      {(editingStatus === rowId) && (
+        <div className="rounded-md border bg-white p-3">
+          <div className="mb-2 text-sm font-semibold text-gray-800">עדכון סטטוס</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={newStatus} onValueChange={setNewStatus} dir="rtl">
+              <SelectTrigger className="w-36 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-right">
+                <SelectValue placeholder="בחר סטטוס" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border border-gray-200 shadow-lg text-right">
+                <SelectItem value="NO_STATUS">ללא סטטוס</SelectItem>
+                <SelectItem value="כולם בסדר">כולם בסדר</SelectItem>
+                <SelectItem value="זקוקים לסיוע">זקוקים לסיוע</SelectItem>
+                <SelectItem value="לא בטוח">לא בטוח</SelectItem>
+                <SelectItem value="פצוע">פצוע</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              onClick={() => handleStatusChange(row.id, getFieldValue(row, statusKey) || '', newStatus)}
+              disabled={newStatus === undefined}
+            >
+              שמור
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setEditingStatus(null);
+                setNewStatus('');
+              }}
+            >
+              ביטול
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {extendedFields.map((fieldInfo) => (
+          <div key={fieldInfo.field} className="rounded-md border bg-white p-2.5">
+            <span className="font-bold text-gray-900">{fieldInfo.field}:</span>{' '}
+            <span className="text-gray-700">{formatCellValue(getFieldValue(row, fieldInfo.field), fieldInfo.field) || '-'}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t pt-4">
+        <div className="rounded-md border bg-white p-2.5">
+          <span className="font-bold text-gray-900">Event ID:</span>{' '}
+          <span className="text-gray-700">{formatCellValue(row['event_id']) || '-'}</span>
+        </div>
+        <div className="rounded-md border bg-white p-2.5">
+          <span className="font-bold text-gray-900">נוצר:</span>{' '}
+          <span className="text-gray-700">{formatCellValue(row['createdAt']) || '-'}</span>
+        </div>
+        <div className="rounded-md border bg-white p-2.5">
+          <span className="font-bold text-gray-900">עודכן:</span>{' '}
+          <span className="text-gray-700">{formatCellValue(row['syncedAt']) || '-'}</span>
+        </div>
+      </div>
+
+      {row.statusHistory && row.statusHistory.length > 0 && (
+        <div className="border-t pt-4">
+          <h4 className="font-bold mb-2">היסטוריית סטטוס</h4>
+          <div className="space-y-2">
+            {row.statusHistory.map((change, index) => (
+              <div key={index} className="text-sm bg-white p-2.5 rounded border">
+                <div className="flex justify-between gap-2">
+                  <span className="font-semibold">{change.userAlias}</span>
+                  <span className="text-gray-500">{formatCellValue(change.timestamp)}</span>
+                </div>
+                <div className="text-gray-700 mt-1">
+                  <span className="font-bold">שינוי:</span> {change.from || 'ללא'} → {change.to || 'ללא'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {row.assignedTasks && row.assignedTasks.length > 0 && (
+        <div className="border-t pt-4">
+          <h4 className="font-bold mb-2">משימות מוקצות</h4>
+          <div className="space-y-2">
+            {row.assignedTasks.map((task, index) => (
+              <div key={index} className="text-sm bg-white p-2.5 rounded border">
+                <div className="flex justify-between gap-2">
+                  <span className="font-semibold">{task.title}</span>
+                  <span className="text-gray-600">{task.category}</span>
+                </div>
+                <div className="text-gray-700 mt-1">
+                  <span className="font-bold">הוקצה ע״י:</span> {task.assignedBy} - {formatCellValue(task.assignedAt)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="border-t pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="font-bold">הערות</h4>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setCommentingResident(rowId)}
+          >
+            <MessageSquare className="h-3 w-3 mr-1" />
+            הוסף הערה
+          </Button>
+        </div>
+
+        {commentingResident === rowId && (
+          <div className="mb-4 p-3 bg-white rounded border">
+            <Textarea
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="הזן הערה..."
+              className="mb-2"
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={() => handleAddComment(row.id)}
+                disabled={!newComment.trim()}
+              >
+                הוסף
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setCommentingResident(null);
+                  setNewComment('');
+                }}
+              >
+                ביטול
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {row.comments && row.comments.length > 0 ? (
+          <div className="space-y-2">
+            {row.comments.map((comment, index) => (
+              <div key={index} className="text-sm bg-white p-2.5 rounded border">
+                <div className="flex justify-between gap-2">
+                  <span className="font-semibold">{comment.userAlias}</span>
+                  <span className="text-gray-500">{formatCellValue(comment.timestamp)}</span>
+                </div>
+                <p className="mt-1 text-gray-700">{comment.text}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm">אין הערות עדיין</p>
+        )}
+      </div>
+    </div>
+  );
 
 
   const mainFields = useMemo(() => {
@@ -785,7 +967,292 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
           ))}
         </div>
       )}
-      <div className="overflow-x-auto overflow-y-auto max-h-[70vh] max-w-full">
+      {viewMode === 'compact' ? (
+        <div className="overflow-y-auto max-h-[70vh] max-w-full p-2 sm:p-3 bg-gray-50">
+          <div className="space-y-3">
+            {filteredAndSortedResidents.map((row, idx) => {
+              const status = getFieldValue(row, statusKey) || '';
+              const colorClass = getStatusColor(status);
+              const rowId = row.id || `row-${idx}`;
+              const isExpanded = expandedRows[rowId];
+              const phoneValue = getFieldValue(row, 'טלפון');
+              const phoneHref = getPhoneHref(phoneValue);
+              const whatsappHref = getWhatsAppHref(phoneValue);
+              const taskSummary = getResidentTaskSummary(row.id);
+
+              return (
+                <div key={rowId} className="rounded-lg border bg-white shadow-md overflow-hidden">
+                  <div className="p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="relative flex flex-col items-center gap-1.5 pt-0.5">
+                        <span className={`inline-block w-2.5 h-9 rounded-full shadow-sm ${colorClass}`} title={`סטטוס: ${status || 'ללא'}`}></span>
+                        {(taskSummary?.hasUnreadReplies || row.hasNewComment || row.hasNewReply) && (
+                          <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-600 border-2 border-white animate-pulse z-10" title="יש תגובה או הערה חדשה!" />
+                        )}
+                        {taskSummary && (
+                          <div className="flex flex-col gap-1">
+                            {taskSummary.pending > 0 && <div className="w-2 h-2 rounded-full bg-red-500 shadow-sm" title={`${taskSummary.pending} משימות מחכות`} />}
+                            {taskSummary.inProgress > 0 && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-sm" title={`${taskSummary.inProgress} משימות בטיפול`} />}
+                            {taskSummary.completed > 0 && <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm" title={`${taskSummary.completed} משימות טופלו`} />}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-semibold text-gray-900 truncate">
+                              {`${getFieldValue(row, 'שם פרטי')} ${getFieldValue(row, 'שם משפחה')}`.trim() || 'ללא שם'}
+                            </div>
+                            <div className="text-sm text-gray-600 truncate">
+                              <span className="font-semibold">סטטוס:</span> {status || 'ללא סטטוס'}
+                            </div>
+                            {getFieldValue(row, 'שכונה') && (
+                              <div className="text-xs text-gray-500 truncate mt-0.5">
+                                <span className="font-semibold">שכונה:</span> {getFieldValue(row, 'שכונה')}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => toggleRowExpansion(rowId)}
+                            className="hover:bg-gray-100 rounded p-1 flex-shrink-0"
+                            aria-label={isExpanded ? 'סגור פרטים' : 'פתח פרטים'}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4 text-gray-500" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-gray-500" />
+                            )}
+                          </button>
+                        </div>
+
+                        {taskSummary && (taskSummary.pending > 0 || taskSummary.inProgress > 0) && (
+                          <div className="flex gap-1 mt-1.5 flex-wrap">
+                            {taskSummary.pending > 0 && (
+                              <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
+                                {taskSummary.pending} מחכות
+                              </span>
+                            )}
+                            {taskSummary.inProgress > 0 && (
+                              <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
+                                {taskSummary.inProgress} בטיפול
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="mt-3 flex items-center justify-center gap-2.5 flex-wrap">
+                          {currentUser && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingStatus(rowId);
+                                setNewStatus(status || 'NO_STATUS');
+                                if (!isExpanded) toggleRowExpansion(rowId);
+                              }}
+                              className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200"
+                              title="ערוך סטטוס"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </button>
+                          )}
+
+                          {phoneHref ? (
+                            <a href={phoneHref} className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-sky-300 bg-sky-100 text-sky-700 hover:bg-sky-200" title={`התקשר ל-${phoneValue}`}>
+                              <Phone className="h-4 w-4" />
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-sky-200 bg-sky-50 text-sky-300">
+                              <Phone className="h-4 w-4" />
+                            </span>
+                          )}
+
+                          {whatsappHref ? (
+                            <a
+                              href={whatsappHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-green-600 bg-green-600 text-white hover:bg-green-700"
+                              title={`WhatsApp ל-${phoneValue}`}
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-green-200 bg-green-100 text-green-300">
+                              <MessageCircle className="h-4 w-4" />
+                            </span>
+                          )}
+
+                          <Button
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowAssignDialog(row);
+                            }}
+                            className={`text-xs h-9 px-3 border ${row.assignedTasks && row.assignedTasks.length > 0 ? 'bg-indigo-200 border-indigo-300 text-indigo-800 hover:bg-indigo-300' : 'bg-indigo-100 border-indigo-300 text-indigo-700 hover:bg-indigo-200'}`}
+                          >
+                            <UserPlus className="h-3 w-3 ml-1" />
+                            {row.assignedTasks && row.assignedTasks.length > 0 ? `${row.assignedTasks.length} משימות` : 'הקצה'}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="border-t bg-gray-50 p-3">
+                      {renderExpandedResidentContent(row, rowId, true)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+      <>
+      <div className="sm:hidden overflow-y-auto max-h-[70vh] max-w-full p-2 sm:p-3 bg-gray-50">
+        <div className="space-y-3">
+          {filteredAndSortedResidents.map((row, idx) => {
+            const status = getFieldValue(row, statusKey) || '';
+            const colorClass = getStatusColor(status);
+            const rowId = row.id || `row-${idx}`;
+            const isExpanded = expandedRows[rowId];
+            const phoneValue = getFieldValue(row, 'טלפון');
+            const phoneHref = getPhoneHref(phoneValue);
+            const whatsappHref = getWhatsAppHref(phoneValue);
+            const taskSummary = getResidentTaskSummary(row.id);
+
+            return (
+              <div key={rowId} className="rounded-lg border bg-white shadow-md overflow-hidden">
+                <div className="p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="relative flex flex-col items-center gap-1.5 pt-0.5">
+                      <span className={`inline-block w-2.5 h-9 rounded-full shadow-sm ${colorClass}`} title={`סטטוס: ${status || 'ללא'}`}></span>
+                      {(taskSummary?.hasUnreadReplies || row.hasNewComment || row.hasNewReply) && (
+                        <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-600 border-2 border-white animate-pulse z-10" title="יש תגובה או הערה חדשה!" />
+                      )}
+                      {taskSummary && (
+                        <div className="flex flex-col gap-1">
+                          {taskSummary.pending > 0 && <div className="w-2 h-2 rounded-full bg-red-500 shadow-sm" title={`${taskSummary.pending} משימות מחכות`} />}
+                          {taskSummary.inProgress > 0 && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-sm" title={`${taskSummary.inProgress} משימות בטיפול`} />}
+                          {taskSummary.completed > 0 && <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm" title={`${taskSummary.completed} משימות טופלו`} />}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-gray-900 truncate">
+                            {`${getFieldValue(row, 'שם פרטי')} ${getFieldValue(row, 'שם משפחה')}`.trim() || 'ללא שם'}
+                          </div>
+                          <div className="text-sm text-gray-600 truncate">
+                            <span className="font-semibold">סטטוס:</span> {status || 'ללא סטטוס'}
+                          </div>
+                          {getFieldValue(row, 'שכונה') && (
+                            <div className="text-xs text-gray-500 truncate mt-0.5">
+                              <span className="font-semibold">שכונה:</span> {getFieldValue(row, 'שכונה')}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => toggleRowExpansion(rowId)}
+                          className="hover:bg-gray-100 rounded p-1 flex-shrink-0"
+                          aria-label={isExpanded ? 'סגור פרטים' : 'פתח פרטים'}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-gray-500" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-gray-500" />
+                          )}
+                        </button>
+                      </div>
+
+                      {taskSummary && (taskSummary.pending > 0 || taskSummary.inProgress > 0) && (
+                        <div className="flex gap-1 mt-1.5 flex-wrap">
+                          {taskSummary.pending > 0 && (
+                            <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
+                              {taskSummary.pending} מחכות
+                            </span>
+                          )}
+                          {taskSummary.inProgress > 0 && (
+                            <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
+                              {taskSummary.inProgress} בטיפול
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mt-3 flex items-center justify-center gap-2.5 flex-wrap">
+                        {currentUser && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingStatus(rowId);
+                              setNewStatus(status || 'NO_STATUS');
+                              if (!isExpanded) toggleRowExpansion(rowId);
+                            }}
+                            className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200"
+                            title="ערוך סטטוס"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                        )}
+
+                        {phoneHref ? (
+                          <a href={phoneHref} className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-sky-300 bg-sky-100 text-sky-700 hover:bg-sky-200" title={`התקשר ל-${phoneValue}`}>
+                            <Phone className="h-4 w-4" />
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-sky-200 bg-sky-50 text-sky-300">
+                            <Phone className="h-4 w-4" />
+                          </span>
+                        )}
+
+                        {whatsappHref ? (
+                          <a
+                            href={whatsappHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-green-600 bg-green-600 text-white hover:bg-green-700"
+                            title={`WhatsApp ל-${phoneValue}`}
+                          >
+                            <MessageCircle className="h-4 w-4" />
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-green-200 bg-green-100 text-green-300">
+                            <MessageCircle className="h-4 w-4" />
+                          </span>
+                        )}
+
+                        <Button
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowAssignDialog(row);
+                          }}
+                          className={`text-xs h-9 px-3 border ${row.assignedTasks && row.assignedTasks.length > 0 ? 'bg-indigo-200 border-indigo-300 text-indigo-800 hover:bg-indigo-300' : 'bg-indigo-100 border-indigo-300 text-indigo-700 hover:bg-indigo-200'}`}
+                        >
+                          <UserPlus className="h-3 w-3 ml-1" />
+                          {row.assignedTasks && row.assignedTasks.length > 0 ? `${row.assignedTasks.length} משימות` : 'הקצה'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="border-t bg-gray-50 p-3">
+                    {renderExpandedResidentContent(row, rowId, true)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="hidden sm:block overflow-x-auto overflow-y-auto max-h-[70vh] max-w-full">
       <table className="w-full table-fixed text-sm border-collapse min-w-[600px]">
         <thead className="sticky top-0 bg-gray-100 z-10">
           <tr>
@@ -961,134 +1428,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                 {isExpanded && (
                   <tr className="bg-gray-50 border-b">
                     <td colSpan={mainFields.length + 3} className="px-4 py-3">
-                      <div className="space-y-4">
-                        {/* Extended info - New fields from Google Sheet */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                          {extendedFields.map((fieldInfo) => (
-                            <div key={fieldInfo.field}>
-                              <span className="font-medium">{fieldInfo.field}:</span> {formatCellValue(getFieldValue(row, fieldInfo.field), fieldInfo.field)}
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* System info - Keep only essential metadata */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm border-t pt-4">
-                          <div>
-                            <span className="font-medium">Event ID:</span> {formatCellValue(row['event_id'])}
-                          </div>
-                          <div>
-                            <span className="font-medium">נוצר:</span> {formatCellValue(row['createdAt'])}
-                          </div>
-                          <div>
-                            <span className="font-medium">עודכן:</span> {formatCellValue(row['syncedAt'])}
-                          </div>
-                        </div>
-
-                        {/* Status history */}
-                        {row.statusHistory && row.statusHistory.length > 0 && (
-                          <div className="border-t pt-4">
-                            <h4 className="font-medium mb-2">היסטוריית סטטוס:</h4>
-                            <div className="space-y-2">
-                              {row.statusHistory.map((change, index) => (
-                                <div key={index} className="text-sm bg-white p-2 rounded border">
-                                  <div className="flex justify-between">
-                                    <span>{change.userAlias}</span>
-                                    <span className="text-gray-500">
-                                      {formatCellValue(change.timestamp)}
-                                    </span>
-                                  </div>
-                                  <div className="text-gray-600">
-                                    {change.from} → {change.to}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Assigned tasks */}
-                        {row.assignedTasks && row.assignedTasks.length > 0 && (
-                          <div className="border-t pt-4">
-                            <h4 className="font-medium mb-2">משימות מוקצות:</h4>
-                            <div className="space-y-2">
-                              {row.assignedTasks.map((task, index) => (
-                                <div key={index} className="text-sm bg-white p-2 rounded border">
-                                  <div className="flex justify-between">
-                                    <span className="font-medium">{task.title}</span>
-                                    <span className="text-gray-500">{task.category}</span>
-                                  </div>
-                                  <div className="text-gray-600">
-                                    הוקצה ע"י: {task.assignedBy} - {formatCellValue(task.assignedAt)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Comments section */}
-                        <div className="border-t pt-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-medium">הערות:</h4>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setCommentingResident(rowId)}
-                            >
-                              <MessageSquare className="h-3 w-3 mr-1" />
-                              הוסף הערה
-                            </Button>
-                          </div>
-                          
-                          {commentingResident === rowId && (
-                            <div className="mb-4 p-3 bg-white rounded border">
-                              <Textarea
-                                value={newComment}
-                                onChange={(e) => setNewComment(e.target.value)}
-                                placeholder="הזן הערה..."
-                                className="mb-2"
-                              />
-                              <div className="flex gap-2">
-                                <Button 
-                                  size="sm"
-                                  onClick={() => handleAddComment(row.id)}
-                                  disabled={!newComment.trim()}
-                                >
-                                  הוסף
-                                </Button>
-                                <Button 
-                                  size="sm" 
-                                  variant="outline"
-                                  onClick={() => {
-                                    setCommentingResident(null);
-                                    setNewComment('');
-                                  }}
-                                >
-                                  ביטול
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-
-                          {row.comments && row.comments.length > 0 ? (
-                            <div className="space-y-2">
-                              {row.comments.map((comment, index) => (
-                                <div key={index} className="text-sm bg-white p-2 rounded border">
-                                  <div className="flex justify-between">
-                                    <span className="font-medium">{comment.userAlias}</span>
-                                    <span className="text-gray-500">
-                                      {formatCellValue(comment.timestamp)}
-                                    </span>
-                                  </div>
-                                  <p className="mt-1">{comment.text}</p>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-gray-500 text-sm">אין הערות עדיין</p>
-                          )}
-                        </div>
-                      </div>
+                      {renderExpandedResidentContent(row, rowId)}
                     </td>
                   </tr>
                 )}
@@ -1098,6 +1438,8 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
         </tbody>
       </table>
       </div>
+      </>
+      )}
 
       {/* Task Assignment Dialog */}
       <Dialog open={!!showAssignDialog} onOpenChange={() => setShowAssignDialog(null)}>
