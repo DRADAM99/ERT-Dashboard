@@ -11,7 +11,7 @@ export default function SimpleEmergencyLocator() {
         </div>
         <div className="relative" style={{ height: '600px' }}>
           <iframe
-            src="https://emergency-locator-585a5.web.app/map-osm.html"
+            src="https://emergency-locator-585a5.web.app/map.html"
             className="w-full h-full border-0"
             title="Emergency Locator Map"
             allow="geolocation"

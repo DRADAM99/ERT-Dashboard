@@ -11,7 +11,7 @@ export default function EmergencyLocatorIntegration() {
             <p className="text-sm text-gray-600">Emergency Location Map</p>
           </div>
           <iframe
-            src="https://emergency-locator-585a5.web.app/map-osm.html"
+            src="https://emergency-locator-585a5.web.app/map.html"
             className="w-full h-full border-0"
             title="Emergency Locator Map"
             allow="geolocation"
