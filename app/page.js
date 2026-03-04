@@ -274,6 +274,7 @@ export default function Dashboard() {
   // Green Eyes functionality
   const [showGreenEyesDialog, setShowGreenEyesDialog] = useState(false);
   const [showEventStatus, setShowEventStatus] = useState(false);
+  const [isDrillMode, setIsDrillMode] = useState(false);
 // Add this handler for category drag end
 const handleCategoryDragEnd = (event) => {
   const { active, over } = event;
@@ -775,17 +776,20 @@ const handleFollowUpClick = async (lead) => {
     }
   };
 
-  // Green Eyes Activation Function
+  // Green Eyes Activation Function (v7.0 — Firebase-centered, dual mode)
   const handleGreenEyesActivation = async () => {
     setShowGreenEyesDialog(false);
+    const mode = isDrillMode ? "drill" : "live";
     try {
-      console.log("🚨 Activating Green Eyes emergency procedure...");
+      console.log(`🚨 Activating Green Eyes — mode: ${mode}`);
       
       // Create emergency event log entry
       await addDoc(collection(db, "eventLogs"), {
         reporter: alias || currentUser?.email || "System",
         recipient: "חמ\"ל",
-        description: "הפעלת נוהל ירוק בעיניים - אירוע חירום",
+        description: isDrillMode
+          ? "הפעלת תרגיל ירוק בעיניים"
+          : "הפעלת נוהל ירוק בעיניים - אירוע חירום",
         department: "חמ\"ל",
         status: "מחכה",
         createdAt: serverTimestamp(),
@@ -793,42 +797,34 @@ const handleFollowUpClick = async (lead) => {
         lastUpdater: alias || currentUser?.email || "System",
         history: [{
           timestamp: new Date().toISOString(),
-          text: "נוהל ירוק בעיניים הופעל",
+          text: isDrillMode ? "תרגיל ירוק בעיניים הופעל" : "נוהל ירוק בעיניים הופעל",
           userAlias: alias || currentUser?.email || "System"
         }],
         emergencyType: "green_eyes",
+        emergencyMode: mode,
         emergencyEventId: emergencyEventId
       });
 
-      // Call Google Apps Script to trigger ירוק בעיניים
-      const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzn4sgqomgZu0DQxd32u4aosx5yoFNdhvBIWKjrrxB9k3DzADJnVuh5DpSlglZDo9fF/exec";
+      // Write to Firestore emergencyEvents — triggers Cloud Function
+      const eventId = `ge_${mode}_${Date.now()}`;
+      console.log(`🔄 Writing emergency event to Firestore: ${eventId}`);
       
-      console.log("🔄 Calling Google Apps Script for ירוק בעיניים:", GOOGLE_APPS_SCRIPT_URL);
-      
-      try {
-        const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: 'triggerGreenInEyes=1',
-          mode: 'no-cors'
-        });
-        
-        console.log("📥 ירוק בעיניים response status:", response.status);
-      } catch (scriptError) {
-        console.error("❌ Error calling Google Apps Script:", scriptError);
-        toast({
-          title: "שגיאה בקריאה לסקריפט",
-          description: "לא ניתן להפעיל את נוהל ירוק בעיניים",
-          variant: "destructive"
-        });
-      }
+      await setDoc(doc(db, "emergencyEvents", eventId), {
+        type: "green_eyes",
+        mode: mode,
+        triggeredBy: alias || currentUser?.email || "System",
+        triggeredAt: serverTimestamp(),
+        status: "pending",
+        emergencyEventId: emergencyEventId
+      });
 
-      // Send notification to all users (optional)
+      console.log(`✅ Emergency event created: ${eventId}`);
+
       toast({
-        title: "נוהל ירוק בעיניים הופעל",
-        description: "אירוע חירום נרשם במערכת",
+        title: isDrillMode ? "תרגיל ירוק בעיניים הופעל" : "נוהל ירוק בעיניים הופעל",
+        description: isDrillMode
+          ? "תרגיל נרשם במערכת — הודעות תרגיל יישלחו"
+          : "אירוע חירום נרשם במערכת — הודעות חירום יישלחו",
       });
 
     } catch (error) {
@@ -2762,13 +2758,25 @@ useEffect(() => {
             <div className="flex gap-1">
               <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs px-2 py-1">תמונת מצב</Button>
               {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button 
-                  size="sm" 
-                  onClick={() => setShowGreenEyesDialog(true)}
-                  className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium px-2 py-1"
-                >
-                  ירוק בעיניים
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button 
+                    size="sm" 
+                    onClick={() => setShowGreenEyesDialog(true)}
+                    className={`text-xs font-medium px-2 py-1 ${isDrillMode ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-red-600 hover:bg-red-700'} text-white`}
+                  >
+                    {isDrillMode ? 'תרגיל 🟡' : 'ירוק בעיניים'}
+                  </Button>
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[10px] text-gray-500">תרגיל</span>
+                    <IOSSwitch
+                      size="small"
+                      checked={!isDrillMode}
+                      onChange={(e) => setIsDrillMode(!e.target.checked)}
+                      sx={{ transform: 'scale(0.7)' }}
+                    />
+                    <span className="text-[10px] text-gray-500">חי</span>
+                  </div>
+                </div>
               )}
               {(currentUser?.role === 'admin' || role === 'admin') && (
                 <Button 
@@ -2856,13 +2864,25 @@ useEffect(() => {
             <NotificationBell />
             <div className="flex flex-col gap-2 mt-2">
               {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button 
-                  size="sm" 
-                  onClick={() => setShowGreenEyesDialog(true)}
-                  className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium border border-red-600"
-                >
-                  הפעלת ירוק בעיניים
-                </Button>
+                <div className="flex flex-col gap-1">
+                  <Button 
+                    size="sm" 
+                    onClick={() => setShowGreenEyesDialog(true)}
+                    className={`text-xs font-medium border ${isDrillMode ? 'bg-yellow-500 hover:bg-yellow-600 border-yellow-500' : 'bg-red-600 hover:bg-red-700 border-red-600'} text-white`}
+                  >
+                    {isDrillMode ? 'תרגיל ירוק בעיניים 🟡' : 'הפעלת ירוק בעיניים'}
+                  </Button>
+                  <div className="flex items-center justify-center gap-1">
+                    <span className="text-[10px] text-gray-500">תרגיל</span>
+                    <IOSSwitch
+                      size="small"
+                      checked={!isDrillMode}
+                      onChange={(e) => setIsDrillMode(!e.target.checked)}
+                      sx={{ transform: 'scale(0.7)' }}
+                    />
+                    <span className="text-[10px] text-gray-500">חי</span>
+                  </div>
+                </div>
               )}
               {(currentUser?.role === 'admin' || role === 'admin') && (
                 <Button 
@@ -3223,9 +3243,20 @@ useEffect(() => {
       <Dialog open={showGreenEyesDialog} onOpenChange={setShowGreenEyesDialog}>
         <DialogContent className="bg-white rounded-xl shadow-xl p-8 max-w-xs w-full text-center" style={{ direction: 'rtl', textAlign: 'center' }}>
           <DialogHeader className="text-center">
-            <DialogTitle className="text-lg font-semibold mb-6">הפעלת נוהל ירוק בעיניים</DialogTitle>
+            <DialogTitle className="text-lg font-semibold mb-4">
+              {isDrillMode ? 'הפעלת תרגיל ירוק בעיניים' : 'הפעלת נוהל ירוק בעיניים'}
+            </DialogTitle>
           </DialogHeader>
-          <div className="text-lg font-semibold mb-6">האם אתה בטוח שאתה רוצה להפעיל נוהל ירוק בעיניים?</div>
+          {isDrillMode && (
+            <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-4 text-sm text-yellow-800">
+              ⚠️ מצב תרגיל — תישלח הודעת תרגיל בלבד
+            </div>
+          )}
+          <div className="text-lg font-semibold mb-6">
+            {isDrillMode
+              ? 'האם אתה בטוח שאתה רוצה להפעיל תרגיל?'
+              : 'האם אתה בטוח שאתה רוצה להפעיל נוהל ירוק בעיניים?'}
+          </div>
           <div className="flex justify-between gap-4">
             <Button 
               variant="outline" 
@@ -3236,9 +3267,9 @@ useEffect(() => {
             </Button>
             <Button 
               onClick={handleGreenEyesActivation}
-              className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold"
+              className={`flex-1 py-2 rounded-lg text-white font-bold ${isDrillMode ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-red-600 hover:bg-red-700'}`}
             >
-              כן
+              {isDrillMode ? 'הפעל תרגיל' : 'כן'}
             </Button>
           </div>
         </DialogContent>
