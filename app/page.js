@@ -2931,6 +2931,7 @@ useEffect(() => {
           <div className="flex items-center justify-between p-1 gap-1 bg-gray-50 border-y">
             <div className="flex items-center gap-1 min-w-0">
                 <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs px-2 py-1 h-8 shrink-0">תמונת מצב</Button>
+                <NotesAndLinks section="links" />
                 {(currentUser?.role === 'admin' || role === 'admin') && (
                   <div className="flex items-center gap-1 shrink-0">
                     <div className="flex flex-col items-center leading-none">

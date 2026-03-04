@@ -1,6 +1,21 @@
 'use client';
 
+import { useEffect } from 'react';
+
+const EMERGENCY_LOCATOR_ORIGIN = 'https://emergency-locator-585a5.web.app';
+
 export default function EmergencyLocatorIntegration() {
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (event.origin !== EMERGENCY_LOCATOR_ORIGIN) return;
+      if (event.data?.type === 'COPY_LOCATION' && event.data?.url) {
+        navigator.clipboard.writeText(event.data.url);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
   return (
     <div className="space-y-4">
       {/* Emergency Locator Map Display */}
@@ -14,7 +29,7 @@ export default function EmergencyLocatorIntegration() {
             src="https://emergency-locator-585a5.web.app/map.html"
             className="w-full h-full border-0"
             title="Emergency Locator Map"
-            allow="geolocation"
+            allow="geolocation clipboard-write"
           />
         </div>
       </div>
