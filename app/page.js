@@ -279,6 +279,7 @@ export default function Dashboard() {
   // Green Eyes functionality
   const [showGreenEyesDialog, setShowGreenEyesDialog] = useState(false);
   const [showEventStatus, setShowEventStatus] = useState(false);
+  const [isDrillMode, setIsDrillMode] = useState(false);
   const [emergencyMode, setEmergencyMode] = useState("exercise");
   const [exerciseGreenEyesUrl, setExerciseGreenEyesUrl] = useState("");
   const [isEmergencyConfigLoaded, setIsEmergencyConfigLoaded] = useState(false);
@@ -367,12 +368,15 @@ const handleClick2Call = async (phoneNumber) => {
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
-          setEmergencyMode(data?.mode === "live" ? "live" : "exercise");
+          const mode = data?.mode === "live" ? "live" : "exercise";
+          setEmergencyMode(mode);
+          setIsDrillMode(mode !== "live");
           setExerciseGreenEyesUrl(typeof data?.exerciseGreenEyesUrl === "string" ? data.exerciseGreenEyesUrl : "");
           setEmergencyConfigUpdatedBy(typeof data?.updatedBy === "string" ? data.updatedBy : "");
           setEmergencyConfigUpdatedAt(data?.updatedAt || null);
         } else {
           setEmergencyMode("exercise");
+          setIsDrillMode(true);
           setExerciseGreenEyesUrl("");
           setEmergencyConfigUpdatedBy("");
           setEmergencyConfigUpdatedAt(null);
@@ -382,6 +386,7 @@ const handleClick2Call = async (phoneNumber) => {
       (error) => {
         console.error("Error loading emergency settings:", error);
         setEmergencyMode("exercise");
+        setIsDrillMode(true);
         setExerciseGreenEyesUrl("");
         setEmergencyConfigUpdatedBy("");
         setEmergencyConfigUpdatedAt(null);
@@ -395,6 +400,7 @@ const handleClick2Call = async (phoneNumber) => {
   const updateEmergencyMode = async (nextMode) => {
     if (!isAdminUser) return;
     setIsSavingEmergencyConfig(true);
+    setIsDrillMode(nextMode === "exercise");
     try {
       const configRef = doc(db, EMERGENCY_SETTINGS_DOC.collection, EMERGENCY_SETTINGS_DOC.id);
       await setDoc(
@@ -937,7 +943,7 @@ const handleFollowUpClick = async (lead) => {
     }
   };
 
-  // Green Eyes Activation Function
+  // Green Eyes Activation Function (v7.0 — Firebase-centered, dual mode)
   const handleGreenEyesActivation = async () => {
     if (isEmergencyActionsDisabled) {
       toast({
@@ -951,14 +957,17 @@ const handleFollowUpClick = async (lead) => {
     }
 
     setShowGreenEyesDialog(false);
+    const mode = isDrillMode ? "drill" : "live";
     try {
-      console.log("🚨 Activating Green Eyes emergency procedure...");
+      console.log(`🚨 Activating Green Eyes — mode: ${mode}`);
       
       // Create emergency event log entry
       await addDoc(collection(db, "eventLogs"), {
         reporter: alias || currentUser?.email || "System",
         recipient: "חמ\"ל",
-        description: "הפעלת נוהל ירוק בעיניים - אירוע חירום",
+        description: isDrillMode
+          ? "הפעלת תרגיל ירוק בעיניים"
+          : "הפעלת נוהל ירוק בעיניים - אירוע חירום",
         department: "חמ\"ל",
         status: "מחכה",
         createdAt: serverTimestamp(),
@@ -966,42 +975,34 @@ const handleFollowUpClick = async (lead) => {
         lastUpdater: alias || currentUser?.email || "System",
         history: [{
           timestamp: new Date().toISOString(),
-          text: "נוהל ירוק בעיניים הופעל",
+          text: isDrillMode ? "תרגיל ירוק בעיניים הופעל" : "נוהל ירוק בעיניים הופעל",
           userAlias: alias || currentUser?.email || "System"
         }],
         emergencyType: "green_eyes",
+        emergencyMode: mode,
         emergencyEventId: emergencyEventId
       });
 
-      // Call Google Apps Script to trigger ירוק בעיניים
-      const GOOGLE_APPS_SCRIPT_URL = getEmergencyScriptUrl();
+      // Write to Firestore emergencyEvents — triggers Cloud Function
+      const eventId = `ge_${mode}_${Date.now()}`;
+      console.log(`🔄 Writing emergency event to Firestore: ${eventId}`);
       
-      console.log(`🔄 Calling Google Apps Script for ירוק בעיניים [${emergencyModeLabel}]:`, GOOGLE_APPS_SCRIPT_URL);
-      
-      try {
-        const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: 'triggerGreenInEyes=1',
-          mode: 'no-cors'
-        });
-        
-        console.log("📥 ירוק בעיניים response status:", response.status);
-      } catch (scriptError) {
-        console.error("❌ Error calling Google Apps Script:", scriptError);
-        toast({
-          title: "שגיאה בקריאה לסקריפט",
-          description: "לא ניתן להפעיל את נוהל ירוק בעיניים",
-          variant: "destructive"
-        });
-      }
+      await setDoc(doc(db, "emergencyEvents", eventId), {
+        type: "green_eyes",
+        mode: mode,
+        triggeredBy: alias || currentUser?.email || "System",
+        triggeredAt: serverTimestamp(),
+        status: "pending",
+        emergencyEventId: emergencyEventId
+      });
 
-      // Send notification to all users (optional)
+      console.log(`✅ Emergency event created: ${eventId}`);
+
       toast({
-        title: "נוהל ירוק בעיניים הופעל",
-        description: `אירוע חירום נרשם במערכת (מצב ${emergencyModeLabel})`,
+        title: isDrillMode ? "תרגיל ירוק בעיניים הופעל" : "נוהל ירוק בעיניים הופעל",
+        description: isDrillMode
+          ? "תרגיל נרשם במערכת — הודעות תרגיל יישלחו"
+          : "אירוע חירום נרשם במערכת — הודעות חירום יישלחו",
       });
 
     } catch (error) {
@@ -2920,40 +2921,50 @@ useEffect(() => {
             <div className="flex items-center gap-2 text-xs text-gray-600">
                 <div className="text-right">
                     <div>{currentDateTime || 'טוען תאריך...'}</div>
-                    <div className="text-gray-500">{'Version 8.2'}</div>
+                    <div className="text-gray-500">{'Version 8.5'}</div>
                     {department && <div className="text-xs text-blue-600">{`מחלקה: ${department}`}</div>}
                 </div>
                 <NotificationBell />
-            </div>
-          </div>
-
-          {/* Bottom row: Actions */}
-          <div className="flex items-center justify-between p-1 gap-1 bg-gray-50 border-y">
-            <div className="flex items-center gap-1 min-w-0">
-                <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs px-2 py-1 h-8 shrink-0">תמונת מצב</Button>
-                <NotesAndLinks section="links" />
                 {(currentUser?.role === 'admin' || role === 'admin') && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <div className="flex flex-col items-center leading-none">
-                      <span className="text-[9px] text-gray-600 mb-0.5">תרגיל / חי</span>
-                      <Switch
-                        checked={emergencyMode === "live"}
-                        onCheckedChange={(checked) => updateEmergencyMode(checked ? "live" : "exercise")}
-                        disabled={!isEmergencyConfigLoaded || isSavingEmergencyConfig}
-                        className="data-[state=checked]:bg-blue-500 data-[state=unchecked]:bg-yellow-400 border-gray-300"
-                      />
-                    </div>
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className="h-7 w-7 shrink-0"
-                      onClick={() => setShowEmergencyConfigDialog(true)}
-                      title="קישור תרגיל"
-                    >
-                      <Link2 className="h-3.5 w-3.5" />
-                    </Button>
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[10px] text-gray-500">חי</span>
+                    <IOSSwitch
+                      size="small"
+                      checked={!isDrillMode}
+                      onChange={(e) => {
+                        const toLive = e.target.checked;
+                        setIsDrillMode(!toLive);
+                        updateEmergencyMode(toLive ? "live" : "exercise");
+                      }}
+                      sx={{ transform: 'scale(0.7)' }}
+                    />
+                    <span className="text-[10px] text-gray-500">תרגיל</span>
                   </div>
                 )}
+            </div>
+          </div>
+          {/* Action buttons row */}
+          <div className="flex items-center justify-between p-2 gap-2">
+            <div className="flex gap-1">
+              <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs px-2 py-1">תמונת מצב</Button>
+              {(currentUser?.role === 'admin' || role === 'admin') && (
+                <>
+                  <Button 
+                    size="sm" 
+                    onClick={() => setShowGreenEyesDialog(true)}
+                    className={`text-xs font-medium px-2 py-1 ${isDrillMode ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-red-600 hover:bg-red-700'} text-white`}
+                  >
+                    {isDrillMode ? 'תרגיל 🟡' : 'ירוק בעיניים'}
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    onClick={() => setShowEndEmergencyDialog(true)}
+                    className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium px-2 py-1"
+                  >
+                    סיים אירוע
+                  </Button>
+                </>
+              )}
             </div>
             
             <DropdownMenu>
@@ -3047,53 +3058,45 @@ useEffect(() => {
 
           <div className="min-w-0 max-w-[200px] text-left text-sm text-gray-500 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs">{'Version 8.2'}</span>
+              <span className="text-xs">{'Version 8.5'}</span>
               <NotificationBell />
               {(currentUser?.role === 'admin' || role === 'admin') && (
-                <div className="flex items-center gap-1">
-                  <div className="flex flex-col items-center leading-none">
-                    <span className="text-[10px] text-gray-600 mb-1">תרגיל / חי</span>
-                    <Switch
-                      checked={emergencyMode === "live"}
-                      onCheckedChange={(checked) => updateEmergencyMode(checked ? "live" : "exercise")}
-                      disabled={!isEmergencyConfigLoaded || isSavingEmergencyConfig}
-                      className="data-[state=checked]:bg-blue-500 data-[state=unchecked]:bg-yellow-400 border-gray-300"
-                    />
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="h-7 w-7"
-                    onClick={() => setShowEmergencyConfigDialog(true)}
-                    title="קישור תרגיל"
-                  >
-                    <Link2 className="h-3.5 w-3.5" />
-                  </Button>
+                <div className="flex items-center gap-0.5">
+                  <span className="text-[10px] text-gray-500">חי</span>
+                  <IOSSwitch
+                    size="small"
+                    checked={!isDrillMode}
+                    onChange={(e) => {
+                      const toLive = e.target.checked;
+                      setIsDrillMode(!toLive);
+                      updateEmergencyMode(toLive ? "live" : "exercise");
+                    }}
+                    sx={{ transform: 'scale(0.7)' }}
+                  />
+                  <span className="text-[10px] text-gray-500">תרגיל</span>
                 </div>
               )}
             </div>
             <div className="flex flex-col gap-1">
               {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button 
-                  size="sm" 
-                  onClick={() => setShowGreenEyesDialog(true)}
-                  variant="destructive"
-                  disabled={isEmergencyActionsDisabled}
-                  className="text-xs w-full"
-                >
-                  <span className="truncate">{`ירוק בעיניים (${emergencyModeLabel})`}</span>
-                </Button>
-              )}
-              {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button 
-                  size="sm" 
-                  onClick={() => setShowEndEmergencyDialog(true)}
-                  variant="success"
-                  disabled={isEmergencyActionsDisabled}
-                  className="text-xs w-full"
-                >
-                  <span className="truncate">{`סיים אירוע (${emergencyModeLabel})`}</span>
-                </Button>
+                <>
+                  <Button 
+                    size="sm" 
+                    onClick={() => setShowGreenEyesDialog(true)}
+                    className={`text-xs font-medium border ${isDrillMode ? 'bg-yellow-500 hover:bg-yellow-600 border-yellow-500' : 'bg-red-600 hover:bg-red-700 border-red-600'} text-white`}
+                  >
+                    {isDrillMode ? 'תרגיל ירוק בעיניים 🟡' : 'הפעלת ירוק בעיניים'}
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    onClick={() => setShowEndEmergencyDialog(true)}
+                    variant="success"
+                    disabled={isEmergencyActionsDisabled}
+                    className="text-xs w-full"
+                  >
+                    <span className="truncate">{`סיים אירוע (${emergencyModeLabel})`}</span>
+                  </Button>
+                </>
               )}
               <button
                 className="text-xs text-red-600 underline truncate text-center"
@@ -3479,9 +3482,20 @@ useEffect(() => {
       <Dialog open={showGreenEyesDialog} onOpenChange={setShowGreenEyesDialog}>
         <DialogContent className="bg-white rounded-xl shadow-xl p-8 max-w-xs w-full text-center" style={{ direction: 'rtl', textAlign: 'center' }}>
           <DialogHeader className="text-center">
-            <DialogTitle className="text-lg font-semibold mb-6">הפעלת נוהל ירוק בעיניים</DialogTitle>
+            <DialogTitle className="text-lg font-semibold mb-4">
+              {isDrillMode ? 'הפעלת תרגיל ירוק בעיניים' : 'הפעלת נוהל ירוק בעיניים'}
+            </DialogTitle>
           </DialogHeader>
-          <div className="text-lg font-semibold mb-6">האם אתה בטוח שאתה רוצה להפעיל נוהל ירוק בעיניים?</div>
+          {isDrillMode && (
+            <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-4 text-sm text-yellow-800">
+              ⚠️ מצב תרגיל — תישלח הודעת תרגיל בלבד
+            </div>
+          )}
+          <div className="text-lg font-semibold mb-6">
+            {isDrillMode
+              ? 'האם אתה בטוח שאתה רוצה להפעיל תרגיל?'
+              : 'האם אתה בטוח שאתה רוצה להפעיל נוהל ירוק בעיניים?'}
+          </div>
           <div className="flex justify-between gap-4">
             <Button 
               variant="outline" 
@@ -3492,9 +3506,9 @@ useEffect(() => {
             </Button>
             <Button 
               onClick={handleGreenEyesActivation}
-              className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold"
+              className={`flex-1 py-2 rounded-lg text-white font-bold ${isDrillMode ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-red-600 hover:bg-red-700'}`}
             >
-              כן
+              {isDrillMode ? 'הפעל תרגיל' : 'כן'}
             </Button>
           </div>
         </DialogContent>

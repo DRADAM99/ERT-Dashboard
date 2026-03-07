@@ -230,6 +230,30 @@ service cloud.firestore {
     }
 
     // ────────────────
+    // Green Eyes Log (written by Cloud Functions, read-only for clients)
+    // ────────────────
+    match /greenEyesLog/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only Cloud Functions write here
+    }
+
+    // ────────────────
+    // Emergency Events (Green Eyes trigger)
+    // ────────────────
+    match /emergencyEvents/{eventId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
+    }
+
+    // ────────────────
+    // System (activeEmergency, etc. — client may read)
+    // ────────────────
+    match /system/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only Cloud Functions write here
+    }
+
+    // ────────────────
     // Residents Collection
     // ────────────────
     match /residents/{residentId} {

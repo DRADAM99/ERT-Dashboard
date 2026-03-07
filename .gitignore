@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .next
+
+# Firebase deploy secrets
+functions/.env.deploy
