@@ -289,10 +289,11 @@ function israelTime() {
 async function appendSheetLog(sheetId, {event, phone, body, status, notes}) {
   if (!sheetId) return;
   try {
+    console.log(`[SheetLog] Appending to sheetId=${sheetId}, range='Script Logs'!A:F`, {event, phone});
     const sheets = await getSheetsClient();
     await sheets.spreadsheets.values.append({
       spreadsheetId: sheetId,
-      range: "'Script Logs'!A:F",
+      range: "'Script Logs'",
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: {
