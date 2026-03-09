@@ -230,11 +230,12 @@ service cloud.firestore {
     }
 
     // ────────────────
-    // Green Eyes Log (written by Cloud Functions, read-only for clients)
+    // Green Eyes Log (written by Cloud Functions; admins can delete/create for UI management)
     // ────────────────
     match /greenEyesLog/{docId} {
       allow read: if isAuthenticated();
-      allow write: if false; // Only Cloud Functions write here
+      allow delete, create: if isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     // ────────────────

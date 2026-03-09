@@ -2998,6 +2998,11 @@ useEffect(() => {
                       <span className="text-green-700">{`סיים אירוע (${emergencyModeLabel})`}</span>
                     </DropdownMenuCheckboxItem>
                 )}
+                {(currentUser?.role === 'admin' || role === 'admin') && (
+                    <DropdownMenuCheckboxItem onSelect={() => router.push('/admin-logs')}>
+                      יומן לוגים
+                    </DropdownMenuCheckboxItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuCheckboxItem onSelect={() => {
                     import("firebase/auth").then(({ signOut }) =>
@@ -3095,6 +3100,14 @@ useEffect(() => {
                     className="text-xs w-full"
                   >
                     <span className="truncate">{`סיים אירוע (${emergencyModeLabel})`}</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs w-full"
+                    onClick={() => router.push('/admin-logs')}
+                  >
+                    יומן לוגים
                   </Button>
                 </>
               )}
