@@ -292,7 +292,7 @@ async function appendSheetLog(sheetId, {event, phone, body, status, notes}) {
     const sheets = await getSheetsClient();
     await sheets.spreadsheets.values.append({
       spreadsheetId: sheetId,
-      range: "Script Logs!A:F",
+      range: "'Script Logs'!A:F",
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: {
