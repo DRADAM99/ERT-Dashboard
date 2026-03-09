@@ -36,6 +36,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Search, RotateCcw, Bell, ChevronDown, Pencil, MessageCircle, Check, X, ChevronLeft, UserPlus, Menu, Link2 } from 'lucide-react';
 import NotesAndLinks from "@/components/NotesAndLinks";
+import AdminLogsPanel from "@/components/AdminLogsPanel";
 import {
   collection,
   getDocs,
@@ -288,6 +289,7 @@ export default function Dashboard() {
   const [emergencyConfigUpdatedBy, setEmergencyConfigUpdatedBy] = useState("");
   const [emergencyConfigUpdatedAt, setEmergencyConfigUpdatedAt] = useState(null);
   const isAdminUser = currentUser?.role === "admin" || role === "admin";
+  const [showAdminLogs, setShowAdminLogs] = useState(false);
   const emergencyModeLabel = emergencyMode === "live" ? "חי" : "תרגיל";
   const hasExerciseGreenEyesUrl = exerciseGreenEyesUrl.trim().length > 0;
   const isEmergencyActionsDisabled =
@@ -2999,7 +3001,7 @@ useEffect(() => {
                     </DropdownMenuCheckboxItem>
                 )}
                 {(currentUser?.role === 'admin' || role === 'admin') && (
-                    <DropdownMenuCheckboxItem onSelect={() => router.push('/admin-logs')}>
+                    <DropdownMenuCheckboxItem onSelect={() => setShowAdminLogs(true)}>
                       יומן לוגים
                     </DropdownMenuCheckboxItem>
                 )}
@@ -3105,7 +3107,7 @@ useEffect(() => {
                     size="sm"
                     variant="outline"
                     className="text-xs w-full"
-                    onClick={() => router.push('/admin-logs')}
+                    onClick={() => setShowAdminLogs(true)}
                   >
                     יומן לוגים
                   </Button>
@@ -3579,6 +3581,7 @@ useEffect(() => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    <AdminLogsPanel open={showAdminLogs} onClose={() => setShowAdminLogs(false)} />
     </TooltipProvider>
   );
 
