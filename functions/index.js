@@ -281,29 +281,6 @@ function israelTime() {
   return `${p.day}.${p.month}.${p.year} ${p.hour}:${p.minute}`;
 }
 
-/**
- * Appends a single log row to the "Script Log" tab in a Google Sheet.
- * Columns: זמן | אירוע | טלפון | תגובה | סטטוס | הערות
- * Never throws — errors are swallowed so logging never blocks the main flow.
- */
-async function appendSheetLog(sheetId, {event, phone, body, status, notes}) {
-  if (!sheetId) return;
-  try {
-    console.log(`[SheetLog] Appending to sheetId=${sheetId}, range='Script Logs'!A:F`, {event, phone});
-    const sheets = await getSheetsClient();
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: sheetId,
-      range: "'Script Logs'",
-      valueInputOption: "USER_ENTERED",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: {
-        values: [[israelTime(), event || "", phone || "", body || "", status || "", notes || ""]],
-      },
-    });
-  } catch (err) {
-    console.error("[SheetLog] Failed to append:", err.message);
-  }
-}
 
 // ============================================================================
 // triggerGreenEyes — Firestore onCreate trigger
@@ -622,18 +599,8 @@ exports.handleTwilioWebhook = functions
         }
       }
 
-      // ─── GOOGLE SHEET UPDATES (completed before responding) ──────────────
-      // Single batch call keeps total time ~5-6s, within Studio's 25s timeout.
-      // res.send() is at the very end so Firebase doesn't terminate early.
-      if (!residentFound) {
-        await appendSheetLog(sheetId, {
-          event: "⚠️ תושב לא נמצא",
-          phone,
-          body,
-          status: mappedStatus,
-          notes: `טלפון ${phone} לא קיים ב-Firestore`,
-        });
-      } else if (sheetId && rowIndex) {
+      // ─── GOOGLE SHEET ROW UPDATE ──────────────────────────────────────────
+      if (residentFound && sheetId && rowIndex) {
         try {
           const sheetUpdates = [];
           if (statusColIdx !== undefined && statusColIdx !== -1) {
@@ -650,33 +617,10 @@ exports.handleTwilioWebhook = functions
             console.log(`[TwilioWebhook] Sheet batch-updated: row ${rowIndex} → ${mappedStatus}`);
             await fsLog(activeEventId, "info", `Sheet row ${rowIndex} batch-updated → ${mappedStatus}`);
           }
-
-          await appendSheetLog(sheetId, {
-            event: "✅ תגובה עודכנה",
-            phone,
-            body,
-            status: mappedStatus,
-            notes: `שורה ${rowIndex} — Firebase + גיליון עודכנו`,
-          });
         } catch (sheetErr) {
           console.error("[TwilioWebhook] Sheet write-back error:", sheetErr.message);
           await fsLog(activeEventId, "error", `Sheet write-back failed: ${sheetErr.message}`);
-          await appendSheetLog(sheetId, {
-            event: "❌ שגיאת עדכון גיליון",
-            phone,
-            body,
-            status: mappedStatus,
-            notes: sheetErr.message,
-          });
         }
-      } else if (sheetId && !rowIndex) {
-        await appendSheetLog(sheetId, {
-          event: "✅ Firebase עודכן",
-          phone,
-          body,
-          status: mappedStatus,
-          notes: "rowIndex חסר — גיליון לא עודכן",
-        });
       }
 
       // ─── RESPOND TO STUDIO ────────────────────────────────────────────────
