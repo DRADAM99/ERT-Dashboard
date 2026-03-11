@@ -34,9 +34,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, RotateCcw, Bell, ChevronDown, Pencil, MessageCircle, Check, X, ChevronLeft, UserPlus, Menu, Link2 } from 'lucide-react';
+import { Search, RotateCcw, Bell, ChevronDown, Pencil, MessageCircle, Check, X, ChevronLeft, UserPlus, Menu, Link2, Settings } from 'lucide-react';
 import NotesAndLinks from "@/components/NotesAndLinks";
 import AdminLogsPanel from "@/components/AdminLogsPanel";
+import AdminPanel from "@/components/AdminPanel";
 import {
   collection,
   getDocs,
@@ -290,6 +291,7 @@ export default function Dashboard() {
   const [emergencyConfigUpdatedAt, setEmergencyConfigUpdatedAt] = useState(null);
   const isAdminUser = currentUser?.role === "admin" || role === "admin";
   const [showAdminLogs, setShowAdminLogs] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const emergencyModeLabel = emergencyMode === "live" ? "חי" : "תרגיל";
   const hasExerciseGreenEyesUrl = exerciseGreenEyesUrl.trim().length > 0;
   const isEmergencyActionsDisabled =
@@ -1064,16 +1066,6 @@ const fetchUsers = async () => {
     if (holdDelayTimeout.current) clearTimeout(holdDelayTimeout.current);
     if (holdAnimationRef.current) cancelAnimationFrame(holdAnimationRef.current);
   };
-//Add user button 
-const [showAddUserModal, setShowAddUserModal] = useState(false);
-
-// User creation form state
-const [newUserFullName, setNewUserFullName] = useState("");
-const [newUserEmail, setNewUserEmail] = useState("");
-const [newUserPassword, setNewUserPassword] = useState("");
-const [newUserDepartment, setNewUserDepartment] = useState("");
-const [newUserRole, setNewUserRole] = useState("staff");
-const [isCreatingUser, setIsCreatingUser] = useState(false);
 
 const [holdLeadId, setHoldLeadId] = useState(null);
 const [holdProgress, setHoldProgress] = useState(0);
@@ -1179,6 +1171,24 @@ const updateKanbanCategoryOrder = async (newOrder) => {
 
     fetchUserData();
   }, [currentUser, taskCategories]);
+
+  // Load departments from Firestore (falls back to default list)
+  useEffect(() => {
+    const loadDepartments = async () => {
+      try {
+        const snap = await getDoc(doc(db, "systemSettings", "taskCategories"));
+        if (snap.exists()) {
+          const cats = snap.data().categories;
+          if (Array.isArray(cats) && cats.length > 0) {
+            setTaskCategories(cats);
+          }
+        }
+      } catch {
+        // Keep default categories on error
+      }
+    };
+    loadDepartments();
+  }, []);
 
   
   /** Task Listener with improved visibility logic */
@@ -1318,94 +1328,6 @@ useEffect(() => {
     }
   };
 
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
-    if (!newUserEmail || !newUserPassword || !newUserFullName || !newUserDepartment) {
-      toast({
-        title: "שגיאה",
-        description: "יש למלא את כל השדות הנדרשים",
-        variant: "destructive",
-      });
-      return;
-    }
-    setIsCreatingUser(true);
-    try {
-      // Store current admin credentials
-      const adminEmail = currentUser.email;
-      let adminPassword = window.sessionStorage.getItem('adminPassword');
-      if (!adminPassword) {
-        adminPassword = prompt('הזן את סיסמת הניהול שלך כדי להמשיך ביצירת משתמש חדש:');
-        if (!adminPassword) throw new Error('Admin password required');
-        window.sessionStorage.setItem('adminPassword', adminPassword);
-      }
-      const { createUserWithEmailAndPassword, signInWithEmailAndPassword } = await import("firebase/auth");
-      // Create user (this will sign in as the new user)
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        newUserEmail,
-        newUserPassword
-      );
-      const newUser = userCredential.user;
-      await setDoc(doc(db, "users", newUser.uid), {
-        email: newUserEmail,
-        alias: newUserFullName,
-        fullName: newUserFullName,
-        department: newUserDepartment.trim(),
-        role: newUserRole,
-        createdAt: serverTimestamp(),
-        createdBy: currentUser.uid,
-      });
-
-      // Auto-sync user to emergency locator
-      try {
-        const { autoSyncUserToEmergencyLocator } = await import("../lib/auto-sync-emergency-locator");
-        await autoSyncUserToEmergencyLocator(newUser.uid, {
-          email: newUserEmail,
-          name: newUserFullName,
-          role: newUserRole,
-          alias: newUserFullName
-        });
-        console.log(`✅ Auto-synced new user to emergency locator: ${newUserEmail}`);
-      } catch (error) {
-        console.error(`❌ Failed to auto-sync user to emergency locator: ${newUserEmail}`, error);
-        // Don't fail the user creation if emergency locator sync fails
-      }
-      toast({
-        title: "משתמש נוצר בהצלחה",
-        description: `המשתמש ${newUserFullName} נוצר בהצלחה במחלקת ${newUserDepartment}`,
-      });
-      // Immediately sign back in as the admin
-      await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
-      // Reset form
-      setNewUserFullName("");
-      setNewUserEmail("");
-      setNewUserPassword("");
-      setNewUserDepartment("");
-      setNewUserRole("staff");
-      setShowAddUserModal(false);
-      // Refresh users list
-      fetchUsers();
-    } catch (error) {
-      console.error("Error creating user:", error);
-      let errorMessage = "שגיאה ביצירת המשתמש";
-      if (error.code === "auth/email-already-in-use") {
-        errorMessage = "כתובת המייל כבר קיימת במערכת";
-      } else if (error.code === "auth/weak-password") {
-        errorMessage = "הסיסמה חייבת להכיל לפחות 6 תווים";
-      } else if (error.code === "auth/invalid-email") {
-        errorMessage = "כתובת המייל אינה תקינה";
-      } else if (error.message === 'Admin password required') {
-        errorMessage = "יש להזין סיסמת ניהול כדי להמשיך";
-      }
-      toast({
-        title: "שגיאה ביצירת משתמש",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreatingUser(false);
-    }
-  };
   
   const [justClosedLeadId, setJustClosedLeadId] = useState(null);
   const justClosedLeadIdRef = useRef(null);
@@ -2969,76 +2891,69 @@ useEffect(() => {
               )}
             </div>
             
-            <DropdownMenu>
+            <div className="flex items-center gap-1">
+              {(currentUser?.role === 'admin' || role === 'admin') && (
+                <button
+                  className="rounded-full p-1.5 hover:bg-gray-100 transition-colors"
+                  onClick={() => setShowAdminPanel(true)}
+                  title="פאנל ניהול"
+                  aria-label="פאנל ניהול"
+                >
+                  <Settings className="h-4 w-4 text-gray-600" />
+                </button>
+              )}
+              <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0">
+                  <Button variant="outline" size="icon" className="h-8 w-8 shrink-0">
                     <Menu className="h-4 w-4" />
-                </Button>
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                {(currentUser?.role === 'admin' || role === 'admin') && (
-                    <DropdownMenuCheckboxItem onSelect={() => setShowAddUserModal(true)}>
-                    הוסף משתמש
-                    </DropdownMenuCheckboxItem>
-                )}
-                {(currentUser?.role === 'admin' || role === 'admin') && (
-                    <DropdownMenuSeparator />
-                )}
-                {(currentUser?.role === 'admin' || role === 'admin') && (
+                  {(currentUser?.role === 'admin' || role === 'admin') && (
                     <DropdownMenuCheckboxItem
                       onSelect={() => !isEmergencyActionsDisabled && setShowGreenEyesDialog(true)}
                       disabled={isEmergencyActionsDisabled}
                     >
                       <span className="text-red-600">{`ירוק בעיניים (${emergencyModeLabel})`}</span>
                     </DropdownMenuCheckboxItem>
-                )}
-                {(currentUser?.role === 'admin' || role === 'admin') && (
+                  )}
+                  {(currentUser?.role === 'admin' || role === 'admin') && (
                     <DropdownMenuCheckboxItem
                       onSelect={() => !isEmergencyActionsDisabled && setShowEndEmergencyDialog(true)}
                       disabled={isEmergencyActionsDisabled}
                     >
                       <span className="text-green-700">{`סיים אירוע (${emergencyModeLabel})`}</span>
                     </DropdownMenuCheckboxItem>
-                )}
-                {(currentUser?.role === 'admin' || role === 'admin') && (
-                    <DropdownMenuCheckboxItem onSelect={() => setShowAdminLogs(true)}>
-                      יומן לוגים
-                    </DropdownMenuCheckboxItem>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem onSelect={() => {
+                  )}
+                  {(currentUser?.role === 'admin' || role === 'admin') && <DropdownMenuSeparator />}
+                  <DropdownMenuCheckboxItem onSelect={() => {
                     import("firebase/auth").then(({ signOut }) =>
-                    signOut(auth).then(() => router.push("/login"))
+                      signOut(auth).then(() => router.push("/login"))
                     );
-                }}>
+                  }}>
                     <span className="text-red-600">התנתק</span>
-                </DropdownMenuCheckboxItem>
+                  </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
-            </DropdownMenu>
+              </DropdownMenu>
+            </div>
           </div>
             
             
         </div>
 
         {/* Desktop Layout */}
-        <div className="hidden sm:flex items-center justify-between p-2 sm:p-4 min-h-[90px] max-w-full overflow-x-hidden">
+        <div className="hidden sm:flex items-center justify-between p-2 sm:p-3 min-h-[72px] max-w-full overflow-x-hidden">
           <div className="min-w-0 max-w-[200px] text-right text-sm text-gray-600 flex-shrink-0">
-            <div className="text-right truncate">{currentDateTime || 'טוען תאריך...'}</div>
+            <div className="text-right truncate text-xs">{currentDateTime || 'טוען תאריך...'}</div>
             {alias && (
               <div className="text-xs text-gray-700 text-right truncate">
                 {`שלום, ${alias}`}
                 {department && (
-                  <div className="text-xs text-blue-600 mt-1 truncate">{`מחלקה: ${department}`}</div>
+                  <div className="text-xs text-blue-600 mt-0.5 truncate">{`מחלקה: ${department}`}</div>
                 )}
               </div>
             )}
-            <div className="flex flex-col gap-1 mt-2">
-              {/* Admin-only: Add User Button */}
-              {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button size="sm" className="w-full text-xs" variant="outline" onClick={() => setShowAddUserModal(true)}>
-                  <span className="truncate">הוסף משתמש</span>
-                </Button>
-              )}
+            <div className="flex flex-col gap-1 mt-1.5">
               <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs w-full">
                 <span className="truncate">תמונת מצב</span>
               </Button>
@@ -3063,7 +2978,7 @@ useEffect(() => {
             </div>
           </div>
 
-          <div className="min-w-0 max-w-[200px] text-left text-sm text-gray-500 flex-shrink-0">
+          <div className="min-w-0 max-w-[220px] text-left text-sm text-gray-500 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs">{'Version 8.5'}</span>
               <NotificationBell />
@@ -3082,6 +2997,16 @@ useEffect(() => {
                   />
                   <span className="text-[10px] text-gray-500">תרגיל</span>
                 </div>
+              )}
+              {(currentUser?.role === 'admin' || role === 'admin') && (
+                <button
+                  className="rounded-full p-1 hover:bg-gray-100 transition-colors"
+                  onClick={() => setShowAdminPanel(true)}
+                  title="פאנל ניהול"
+                  aria-label="פאנל ניהול"
+                >
+                  <Settings className="h-4 w-4 text-gray-600" />
+                </button>
               )}
             </div>
             <div className="flex flex-col gap-1">
@@ -3102,14 +3027,6 @@ useEffect(() => {
                     className="text-xs w-full"
                   >
                     <span className="truncate">{`סיים אירוע (${emergencyModeLabel})`}</span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs w-full"
-                    onClick={() => setShowAdminLogs(true)}
-                  >
-                    יומן לוגים
                   </Button>
                 </>
               )}
@@ -3180,6 +3097,7 @@ useEffect(() => {
           alias={alias}
           users={users}
           viewMode={isLeadsFullView ? 'full' : 'compact'}
+          isAdmin={isAdminUser}
         />
       </CardContent>
     </Card>
@@ -3365,101 +3283,15 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Add User Modal */}
-      <Dialog open={showAddUserModal} onOpenChange={setShowAddUserModal}>
-        <DialogContent className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>הוסף משתמש חדש</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleCreateUser} className="space-y-4">
-            <div>
-              <Label htmlFor="fullName" className="text-sm font-medium">שם מלא</Label>
-              <Input
-                id="fullName"
-                type="text"
-                value={newUserFullName}
-                onChange={(e) => setNewUserFullName(e.target.value)}
-                placeholder="הכנס שם מלא"
-                required
-                className="mt-1"
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="email" className="text-sm font-medium">כתובת מייל</Label>
-              <Input
-                id="email"
-                type="email"
-                value={newUserEmail}
-                onChange={(e) => setNewUserEmail(e.target.value)}
-                placeholder="user@example.com"
-                required
-                className="mt-1"
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="password" className="text-sm font-medium">סיסמה</Label>
-              <Input
-                id="password"
-                type="password"
-                value={newUserPassword}
-                onChange={(e) => setNewUserPassword(e.target.value)}
-                placeholder="לפחות 6 תווים"
-                required
-                minLength={6}
-                className="mt-1"
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="department" className="text-sm font-medium">מחלקה</Label>
-              <Select value={newUserDepartment} onValueChange={(value) => setNewUserDepartment(value.trim())}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="בחר מחלקה" />
-                </SelectTrigger>
-                <SelectContent>
-                  {taskCategories.map((dept) => (
-                    <SelectItem key={dept} value={dept}>
-                      {dept}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label htmlFor="role" className="text-sm font-medium">תפקיד</Label>
-              <Select value={newUserRole} onValueChange={setNewUserRole}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="staff">עובד</SelectItem>
-                  <SelectItem value="admin">מנהל</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <DialogFooter className="mt-6">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowAddUserModal(false)}
-                disabled={isCreatingUser}
-              >
-                ביטול
-              </Button>
-              <Button
-                type="submit"
-                disabled={isCreatingUser}
-              >
-                {isCreatingUser ? "יוצר משתמש..." : "צור משתמש"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Admin Panel */}
+      <AdminPanel
+        open={showAdminPanel}
+        onClose={() => setShowAdminPanel(false)}
+        taskCategories={taskCategories}
+        onCategoriesChange={setTaskCategories}
+        onOpenLogs={() => setShowAdminLogs(true)}
+        currentUser={currentUser}
+      />
       {showEventStatus && <EventStatus onClose={() => setShowEventStatus(false)} />}
       <Dialog open={showEmergencyConfigDialog} onOpenChange={setShowEmergencyConfigDialog}>
         <DialogContent className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full" style={{ direction: 'rtl', textAlign: 'right' }}>

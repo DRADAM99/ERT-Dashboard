@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { ChevronDown, ChevronRight, Edit2, UserPlus, MessageSquare, ArrowUpDown, X, Phone, MessageCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit2, UserPlus, MessageSquare, ArrowUpDown, X, Phone, MessageCircle, RefreshCw } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -8,12 +8,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { doc, updateDoc, arrayUnion, serverTimestamp, collection, setDoc, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { notifyUsersInDepartment } from "@/lib/notifications";
+import { toast } from "@/components/ui/use-toast";
 
 // Task categories for resident assignments - using the same categories as the main page
 const RESIDENT_TASK_CATEGORIES = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"];
 
-function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statusKey = 'סטטוס', currentUser, alias, users = [], viewMode = 'full' }) {
+function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statusKey = 'סטטוס', currentUser, alias, users = [], viewMode = 'full', isAdmin = false }) {
   const [expandedRows, setExpandedRows] = useState({});
   const [editingStatus, setEditingStatus] = useState(null);
   const [newStatus, setNewStatus] = useState('');
@@ -34,6 +36,29 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
   const [advancedFilters, setAdvancedFilters] = useState([]); // e.g., [{field: 'שכונה', value: 'נופים'}]
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [currentAdvancedFilter, setCurrentAdvancedFilter] = useState({ field: '', value: '' });
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleManualSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const functions = getFunctions();
+      const syncFn = httpsCallable(functions, "syncResidentsManual");
+      const result = await syncFn({});
+      toast({
+        title: "סנכרון הושלם",
+        description: `${result.data.count} תושבים עודכנו בהצלחה`,
+      });
+    } catch (err) {
+      toast({
+        title: "שגיאת סנכרון",
+        description: err.message || "הסנכרון נכשל",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Helper to get color for a status
   const getStatusColor = (status) => {
@@ -719,38 +744,41 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
     return (
       <div>
         {/* Render controls even when there are no residents, but disable some */}
-        <div className="p-4 bg-gray-50 border-b flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 text-sm">
-           <div className="flex-grow grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
-              <Input
-                placeholder="חפש תושב..."
-                disabled
-                className="bg-gray-200"
-              />
+        <div className="p-4 bg-gray-50 border-b flex items-center gap-2 text-sm">
+          <div className="flex-grow grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+            <Input placeholder="חפש תושב..." disabled className="bg-gray-200" />
+            <Select disabled dir="rtl">
+              <SelectTrigger className="bg-gray-200 text-right">
+                <SelectValue placeholder="כל הסטטוסים" />
+              </SelectTrigger>
+            </Select>
+            <Button variant="outline" className="bg-gray-200 justify-end" disabled>
+              <span>סנן לפי</span>
+            </Button>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-500">סדר לפי:</label>
               <Select disabled dir="rtl">
-                <SelectTrigger className="bg-gray-200 text-right">
-                  <SelectValue placeholder="כל הסטטוסים" />
+                <SelectTrigger className="bg-gray-200 w-auto text-right">
+                  <SelectValue placeholder="זמן תגובה" />
                 </SelectTrigger>
               </Select>
-               <Button variant="outline" className="bg-gray-200 justify-end" disabled>
-                <span>סנן לפי</span>
+              <Button variant="outline" size="icon" className="bg-gray-200" disabled>
+                <ArrowUpDown className="h-4 w-4" />
               </Button>
-               <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-500">סדר לפי:</label>
-                <Select disabled dir="rtl">
-                  <SelectTrigger className="bg-gray-200 w-auto text-right">
-                    <SelectValue placeholder="זמן תגובה" />
-                  </SelectTrigger>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="bg-gray-200"
-                  disabled
-                >
-                  <ArrowUpDown className="h-4 w-4" />
-                </Button>
-              </div>
-           </div>
+            </div>
+          </div>
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 bg-white text-blue-600 border-blue-300 hover:bg-blue-50"
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              title="סנכרן תושבים מהגיליון ללא הפעלת ירוק בעיניים"
+            >
+              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            </Button>
+          )}
         </div>
         <div className="text-center text-gray-500 py-6">אין נתונים להצגה</div>
       </div>
@@ -763,7 +791,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
       {/* Filters and Sorting Controls */}
       <div className="p-4 bg-gray-50 border-b">
         {viewMode === 'full' ? (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 text-sm">
+          <div className="flex items-center gap-2 text-sm">
             <div className="flex-grow grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
               <Input
                 placeholder="חפש תושב..."
@@ -855,18 +883,30 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                 </Button>
               </div>
             </div>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="icon"
+                className="shrink-0 bg-white text-blue-600 border-blue-300 hover:bg-blue-50"
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                title="סנכרן תושבים מהגיליון ללא הפעלת ירוק בעיניים"
+              >
+                <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              </Button>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-2 text-sm">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center gap-2">
               <Input
                 placeholder="חפש תושב..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-white"
+                className="bg-white flex-1"
               />
               <Select value={statusFilter} onValueChange={setStatusFilter} dir="rtl">
-                <SelectTrigger className="bg-white text-right">
+                <SelectTrigger className="bg-white text-right w-36">
                   <SelectValue placeholder="סנן לפי סטטוס" />
                 </SelectTrigger>
                 <SelectContent className="text-right">
@@ -878,12 +918,10 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                   <SelectItem value="ללא סטטוס">ללא סטטוס</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="flex justify-between items-center gap-2">
-               <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="bg-white justify-end">
-                    <span>סנן לפי</span>
+                  <Button variant="outline" size="icon" className="bg-white shrink-0">
+                    <span className="text-xs">סנן</span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-64" align="end">
@@ -930,26 +968,35 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                   </div>
                 </PopoverContent>
               </Popover>
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">סדר לפי:</label>
-                <Select value={sortBy} onValueChange={setSortBy} dir="rtl">
-                  <SelectTrigger className="bg-white w-auto text-right">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="text-right">
-                    <SelectItem value="syncedAt">זמן תגובה</SelectItem>
-                    <SelectItem value="status">סטטוס</SelectItem>
-                  </SelectContent>
-                </Select>
+              <Select value={sortBy} onValueChange={setSortBy} dir="rtl">
+                <SelectTrigger className="bg-white w-32 text-right shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="text-right">
+                  <SelectItem value="syncedAt">זמן תגובה</SelectItem>
+                  <SelectItem value="status">סטטוס</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                className="bg-white shrink-0"
+                onClick={() => setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+              >
+                <ArrowUpDown className="h-4 w-4" />
+              </Button>
+              {isAdmin && (
                 <Button
                   variant="outline"
                   size="icon"
-                  className="bg-white"
-                  onClick={() => setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+                  className="shrink-0 bg-white text-blue-600 border-blue-300 hover:bg-blue-50"
+                  onClick={handleManualSync}
+                  disabled={isSyncing}
+                  title="סנכרן תושבים מהגיליון ללא הפעלת ירוק בעיניים"
                 >
-                  <ArrowUpDown className="h-4 w-4" />
+                  <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
                 </Button>
-              </div>
+              )}
             </div>
           </div>
         )}

@@ -622,35 +622,40 @@ exports.handleTwilioWebhook = functions
         }
       }
 
-      // ─── GOOGLE SHEET UPDATES (completed before responding) ──────────────
-      // Single batch call keeps total time ~5-6s, within Studio's 25s timeout.
-      // res.send() is at the very end so Firebase doesn't terminate early.
+      // ─── RESPOND TO STUDIO IMMEDIATELY ───────────────────────────────────
+      // Must happen before any Sheets writes so Studio never times out under
+      // concurrent load. Firebase keeps the function alive to finish the work.
+      res.status(200).type("text/xml").send("<Response></Response>");
+
+      // ─── GOOGLE SHEET UPDATES (fire-and-forget after responding) ─────────
+      // Sheets API is rate-limited (~60 writes/min). Under 65+ concurrent
+      // replies these writes can take 25-60s — fine now that we've responded.
       if (!residentFound) {
-        await appendSheetLog(sheetId, {
+        appendSheetLog(sheetId, {
           event: "⚠️ תושב לא נמצא",
           phone,
           body,
           status: mappedStatus,
           notes: `טלפון ${phone} לא קיים ב-Firestore`,
-        });
+        }).catch((err) => console.error("[TwilioWebhook] SheetLog error:", err.message));
       } else if (sheetId && rowIndex) {
-        try {
-          const sheetUpdates = [];
-          if (statusColIdx !== undefined && statusColIdx !== -1) {
-            sheetUpdates.push({rowIndex, colIndex: statusColIdx, value: mappedStatus});
-          }
-          if (replyColIdx !== undefined && replyColIdx !== -1) {
-            sheetUpdates.push({rowIndex, colIndex: replyColIdx, value: body});
-          }
-          if (timestampColIdx !== undefined && timestampColIdx !== -1) {
-            sheetUpdates.push({rowIndex, colIndex: timestampColIdx, value: israelTime()});
-          }
+        const sheetUpdates = [];
+        if (statusColIdx !== undefined && statusColIdx !== -1) {
+          sheetUpdates.push({rowIndex, colIndex: statusColIdx, value: mappedStatus});
+        }
+        if (replyColIdx !== undefined && replyColIdx !== -1) {
+          sheetUpdates.push({rowIndex, colIndex: replyColIdx, value: body});
+        }
+        if (timestampColIdx !== undefined && timestampColIdx !== -1) {
+          sheetUpdates.push({rowIndex, colIndex: timestampColIdx, value: israelTime()});
+        }
+
+        const doSheetWork = async () => {
           if (sheetUpdates.length > 0) {
             await batchUpdateSheetCells(sheetId, sheetName, sheetUpdates);
             console.log(`[TwilioWebhook] Sheet batch-updated: row ${rowIndex} → ${mappedStatus}`);
             await fsLog(activeEventId, "info", `Sheet row ${rowIndex} batch-updated → ${mappedStatus}`);
           }
-
           await appendSheetLog(sheetId, {
             event: "✅ תגובה עודכנה",
             phone,
@@ -658,27 +663,112 @@ exports.handleTwilioWebhook = functions
             status: mappedStatus,
             notes: `שורה ${rowIndex} — Firebase + גיליון עודכנו`,
           });
-        } catch (sheetErr) {
+        };
+
+        doSheetWork().catch(async (sheetErr) => {
           console.error("[TwilioWebhook] Sheet write-back error:", sheetErr.message);
           await fsLog(activeEventId, "error", `Sheet write-back failed: ${sheetErr.message}`);
-          await appendSheetLog(sheetId, {
+          appendSheetLog(sheetId, {
             event: "❌ שגיאת עדכון גיליון",
             phone,
             body,
             status: mappedStatus,
             notes: sheetErr.message,
-          });
-        }
+          }).catch(() => {});
+        });
       } else if (sheetId && !rowIndex) {
-        await appendSheetLog(sheetId, {
+        appendSheetLog(sheetId, {
           event: "✅ Firebase עודכן",
           phone,
           body,
           status: mappedStatus,
           notes: "rowIndex חסר — גיליון לא עודכן",
-        });
+        }).catch((err) => console.error("[TwilioWebhook] SheetLog error:", err.message));
+      }
+    });
+
+// ============================================================================
+// syncResidentsManual — Callable function (admin-only manual residents sync)
+// ============================================================================
+// Reads residents from Google Sheets and writes them to Firestore WITHOUT
+// triggering any WhatsApp messages or creating an emergencyEvents document.
+// Used by admins to refresh תמונת מצב during a soft emergency.
+// ============================================================================
+
+exports.syncResidentsManual = functions
+    .runWith({timeoutSeconds: 300, memory: "512MB"})
+    .https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Authentication required");
       }
 
-      // ─── RESPOND TO STUDIO ────────────────────────────────────────────────
-      res.status(200).type("text/xml").send("<Response></Response>");
+      const uid = context.auth.uid;
+      const syncId = `manual_sync_${Date.now()}`;
+
+      const userSnap = await db.collection("users").doc(uid).get();
+      if (!userSnap.exists || userSnap.data().role !== "admin") {
+        throw new functions.https.HttpsError("permission-denied", "Admin role required");
+      }
+
+      const userAlias = userSnap.data().alias || userSnap.data().email || uid;
+
+      console.log(`[SyncResidents] Manual sync started by ${userAlias} (${uid})`);
+      await fsLog(syncId, "info", `Manual residents sync started by ${userAlias}`);
+
+      const modeConfig = (functions.config().mode || {}).live || {};
+      const sheetId = data.sheetId || modeConfig.sheet_id;
+      const sheetName = data.sheetName || modeConfig.sheet_name || "2025";
+
+      if (!sheetId) {
+        await fsLog(syncId, "error", "Missing sheetId — cannot sync");
+        throw new functions.https.HttpsError("failed-precondition", "Sheet ID not configured");
+      }
+
+      let residents;
+      try {
+        const sheetData = await readResidentsFromSheet(sheetId, sheetName);
+        residents = sheetData.residents;
+        console.log(`[SyncResidents] Read ${residents.length} residents from sheet`);
+        await fsLog(syncId, "info", `Read ${residents.length} residents from sheet`);
+      } catch (err) {
+        console.error("[SyncResidents] Sheet read error:", err);
+        await fsLog(syncId, "error", `Sheet read failed: ${err.message}`);
+        throw new functions.https.HttpsError("internal", `Sheet read failed: ${err.message}`);
+      }
+
+      if (residents.length === 0) {
+        await fsLog(syncId, "warn", "No residents found in sheet");
+        throw new functions.https.HttpsError("not-found", "No residents found in sheet");
+      }
+
+      const BATCH_SIZE = 450;
+      let writtenCount = 0;
+      for (let i = 0; i < residents.length; i += BATCH_SIZE) {
+        const batch = db.batch();
+        const chunk = residents.slice(i, i + BATCH_SIZE);
+        for (const resident of chunk) {
+          const docId = "resident_" + resident.normalizedPhone;
+          const ref = db.collection("residents").doc(docId);
+          batch.set(ref, {
+            ...resident,
+            syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+            source: "manual_sync",
+            syncedBy: uid,
+            syncedByAlias: userAlias,
+          }, {merge: true});
+        }
+        await batch.commit();
+        writtenCount += chunk.length;
+        console.log(`[SyncResidents] Batch ${Math.floor(i / BATCH_SIZE) + 1} committed (${writtenCount}/${residents.length})`);
+      }
+
+      await fsLog(syncId, "info", `Manual sync complete — ${writtenCount} residents written by ${userAlias}`, {
+        syncedBy: uid,
+        syncedByAlias: userAlias,
+        totalResidents: writtenCount,
+        type: "manual_sync",
+      });
+
+      console.log(`[SyncResidents] Done — ${writtenCount} residents synced by ${userAlias}`);
+      return {success: true, count: writtenCount, syncId};
     });
