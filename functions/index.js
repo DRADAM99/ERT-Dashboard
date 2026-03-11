@@ -494,7 +494,7 @@ exports.triggerGreenEyes = functions
 // ============================================================================
 
 exports.handleTwilioWebhook = functions
-    .runWith({timeoutSeconds: 60, memory: "256MB", maxInstances: 100})
+    .runWith({timeoutSeconds: 60, memory: "256MB", maxInstances: 100, minInstances: 5})
     .https.onRequest(async (req, res) => {
       if (req.method !== "POST") {
         res.status(405).send("Method Not Allowed");
