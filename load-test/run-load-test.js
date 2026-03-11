@@ -43,8 +43,9 @@ const args = Object.fromEntries(
   process.argv.slice(2)
     .filter((a) => a.startsWith("--"))
     .map((a) => {
-      const [k, v] = a.replace("--", "").split("=");
-      return [k, v ?? true];
+      const eqIdx = a.indexOf("=");
+      if (eqIdx === -1) return [a.slice(2), true];
+      return [a.slice(2, eqIdx), a.slice(eqIdx + 1)]; // split on first = only
     }),
 );
 
