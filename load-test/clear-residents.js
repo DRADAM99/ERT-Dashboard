@@ -23,15 +23,22 @@ try {
 
 const PROJECT_ID = "emergency-dashboard-a3842";
 
-const keyPath = path.join(__dirname, "..", "serviceAccountKey.json");
-if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && fs.existsSync(keyPath)) {
-  process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath;
+function initFirebaseAdmin() {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount), projectId: PROJECT_ID });
+    return;
+  }
+  const keyPath = path.join(__dirname, "..", "serviceAccountKey.json");
+  if (fs.existsSync(keyPath)) {
+    const serviceAccount = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount), projectId: PROJECT_ID });
+    return;
+  }
+  admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: PROJECT_ID });
 }
 
-admin.initializeApp({
-  credential: admin.credential.applicationDefault(),
-  projectId: PROJECT_ID,
-});
+initFirebaseAdmin();
 
 const db = admin.firestore();
 

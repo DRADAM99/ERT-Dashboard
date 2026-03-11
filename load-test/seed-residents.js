@@ -13,11 +13,12 @@
  *   node load-test/seed-residents.js 1500
  *   node load-test/seed-residents.js 5000
  *
- * Auth (one of):
- *   a) Place serviceAccountKey.json in the workspace root  ← easiest
- *   b) GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json node ...
+ * Auth — three options (tried in order):
+ *   1. FIREBASE_SERVICE_ACCOUNT_KEY env var — paste the full JSON as a Cursor Secret (recommended for cloud agents)
+ *   2. serviceAccountKey.json file in the workspace root
+ *   3. GOOGLE_APPLICATION_CREDENTIALS env var pointing to a key file
  *
- * How to get serviceAccountKey.json:
+ * How to get the service account key:
  *   Firebase Console → Project Settings → Service Accounts → Generate new private key
  */
 
@@ -40,25 +41,66 @@ try {
 
 const PROJECT_ID = "emergency-dashboard-a3842";
 
-// ── Auth: look for service account key, then fall back to ADC ─────────────
-const keyPath = path.join(__dirname, "..", "serviceAccountKey.json");
-if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && fs.existsSync(keyPath)) {
-  process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath;
+// ── Auth: try three sources in order ──────────────────────────────────────
+function initFirebaseAdmin() {
+  // Option 1: FIREBASE_SERVICE_ACCOUNT_KEY env var (Cursor Secret — full JSON string)
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+    try {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        projectId: PROJECT_ID,
+      });
+      console.log("   Auth: FIREBASE_SERVICE_ACCOUNT_KEY env var ✓");
+      return;
+    } catch (e) {
+      console.error("❌  FIREBASE_SERVICE_ACCOUNT_KEY is set but failed to parse:", e.message);
+      process.exit(1);
+    }
+  }
+
+  // Option 2: serviceAccountKey.json file in workspace root
+  const keyPath = path.join(__dirname, "..", "serviceAccountKey.json");
+  if (fs.existsSync(keyPath)) {
+    try {
+      const serviceAccount = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        projectId: PROJECT_ID,
+      });
+      console.log("   Auth: serviceAccountKey.json file ✓");
+      return;
+    } catch (e) {
+      console.error("❌  serviceAccountKey.json found but failed to parse:", e.message);
+      process.exit(1);
+    }
+  }
+
+  // Option 3: GOOGLE_APPLICATION_CREDENTIALS or gcloud ADC
+  try {
+    admin.initializeApp({
+      credential: admin.credential.applicationDefault(),
+      projectId: PROJECT_ID,
+    });
+    console.log("   Auth: Application Default Credentials ✓");
+  } catch (err) {
+    console.error("❌  No Firebase credentials found. Choose one of:");
+    console.error("");
+    console.error("   A) Cursor Secret (recommended for cloud agent):");
+    console.error("      cursor.com/dashboard → Cloud Agents → Secrets");
+    console.error("      Add secret name:  FIREBASE_SERVICE_ACCOUNT_KEY");
+    console.error("      Add secret value: <paste the full contents of your service account key JSON>");
+    console.error("");
+    console.error("   B) File in workspace root:");
+    console.error("      Save key as:  /workspace/serviceAccountKey.json");
+    console.error("");
+    console.error("   Get the key from:");
+    console.error("   Firebase Console → Project Settings → Service Accounts → Generate new private key");
+    process.exit(1);
+  }
 }
 
-try {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    projectId: PROJECT_ID,
-  });
-} catch (err) {
-  console.error("❌  Firebase Admin init failed:", err.message);
-  console.error("");
-  console.error("    To fix, get a service account key from:");
-  console.error("    Firebase Console → Project Settings → Service Accounts → Generate new private key");
-  console.error("    Save it as:  /workspace/serviceAccountKey.json");
-  process.exit(1);
-}
+initFirebaseAdmin();
 
 const db = admin.firestore();
 
