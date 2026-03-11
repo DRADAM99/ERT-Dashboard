@@ -9,19 +9,24 @@
  * No Twilio account needed — we bypass Twilio entirely.
  *
  * Prerequisites:
- *   1. Run seed-residents.js first (populates Firestore + system/activeEmergency)
- *   2. Deploy the updated Cloud Function (optional but recommended)
+ *   Firestore must be seeded. Choose one method:
+ *   A) Via the deployed Cloud Function (no service account key needed):
+ *      node load-test/run-load-test.js --seed-url=https://us-central1-emergency-dashboard-a3842.cloudfunctions.net/seedLoadTestData?key=YOUR_SECRET
+ *   B) Via local seed script (needs FIREBASE_SERVICE_ACCOUNT_KEY secret):
+ *      node load-test/seed-residents.js 1500
  *
  * Usage:
  *   node load-test/run-load-test.js
  *   node load-test/run-load-test.js --count=500
  *   node load-test/run-load-test.js --count=1500 --concurrency=30 --delay=400
  *   node load-test/run-load-test.js --count=5000 --concurrency=50 --delay=200
+ *   node load-test/run-load-test.js --seed-url=https://...seedLoadTestData?key=SECRET&count=1500
  *
  * Options:
  *   --count=N          Total residents to simulate  (default: 1500)
  *   --concurrency=N    Parallel requests per batch  (default: 20)
  *   --delay=N          Milliseconds between batches (default: 500)
+ *   --seed-url=URL     Seed Firestore via the deployed Cloud Function, then run
  *   --dry-run          Print config and exit without sending
  */
 
@@ -47,6 +52,7 @@ const COUNT       = parseInt(args.count       ?? "1500", 10);
 const CONCURRENCY = parseInt(args.concurrency ?? "20",   10);
 const DELAY_MS    = parseInt(args.delay       ?? "500",  10);
 const DRY_RUN     = args["dry-run"] === true || args["dry-run"] === "true";
+const SEED_URL    = args["seed-url"] ?? null;
 
 // ── Reply distribution ─────────────────────────────────────────────────────
 // Realistic mix: most reply "ok", some need help, some unsure, a few in Hebrew
@@ -65,22 +71,61 @@ function randomReply() {
 
 // ── Phone list ─────────────────────────────────────────────────────────────
 
-function loadPhones() {
+function httpsGet(url) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const options = {method: "GET", hostname: u.hostname, path: u.pathname + u.search, timeout: 120000};
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", (c) => { data += c; });
+      res.on("end", () => {
+        if (res.statusCode === 200) resolve(data);
+        else reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
+      });
+    });
+    req.on("timeout", () => { req.destroy(); reject(new Error("Request timed out")); });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+async function loadPhones() {
+  // Option 1: --seed-url flag → call the deployed Cloud Function to seed + get phones
+  if (SEED_URL) {
+    console.log("  Seeding Firestore via Cloud Function...");
+    const url = SEED_URL.includes("count=") ? SEED_URL : `${SEED_URL}&count=${COUNT}`;
+    try {
+      const raw  = await httpsGet(url);
+      const data = JSON.parse(raw);
+      if (!data.success || !data.phones) throw new Error(data.error || "Unexpected response");
+      const phones = data.phones.slice(0, COUNT);
+      // Save for next run (avoids re-seeding)
+      fs.writeFileSync(path.join(__dirname, "phones.json"), JSON.stringify(phones, null, 2));
+      console.log(`  Seeded ${phones.length} residents (eventId: ${data.eventId})\n`);
+      return phones;
+    } catch (err) {
+      console.error(`❌  Seed via Cloud Function failed: ${err.message}`);
+      console.error("    Check that you deployed seedLoadTestData and the ?key= is correct.");
+      process.exit(1);
+    }
+  }
+
+  // Option 2: phones.json already exists (from a previous seed run)
   const phonesFile = path.join(__dirname, "phones.json");
   if (fs.existsSync(phonesFile)) {
     const all = JSON.parse(fs.readFileSync(phonesFile, "utf8"));
     if (COUNT > all.length) {
       console.warn(`⚠️   phones.json has ${all.length} entries but --count=${COUNT}.`);
-      console.warn("    Re-run seed-residents.js with a higher count, or lower --count.");
       console.warn(`    Using all ${all.length} available phones.\n`);
       return all;
     }
     return all.slice(0, COUNT);
   }
 
-  // No phones.json: generate phone numbers on the fly (matching seed pattern)
+  // Option 3: generate on the fly — Firestore must have been seeded separately
   console.warn("⚠️   phones.json not found — generating phone numbers on the fly.");
-  console.warn("    Make sure you ran seed-residents.js first so Firestore has these residents.\n");
+  console.warn("    Firestore must already have matching resident docs.");
+  console.warn("    Seed first with:  node load-test/seed-residents.js 1500\n");
   return Array.from({length: COUNT}, (_, i) =>
     `972501${String(i + 1).padStart(6, "0")}`,
   );
@@ -145,7 +190,7 @@ function avg(arr) {
 // ── Main ───────────────────────────────────────────────────────────────────
 
 async function runLoadTest() {
-  const phones = loadPhones();
+  const phones = await loadPhones();
 
   console.log("═══════════════════════════════════════════════════════");
   console.log("  Green Eyes — Load Test");

@@ -626,3 +626,177 @@ exports.handleTwilioWebhook = functions
       // ─── RESPOND TO STUDIO ────────────────────────────────────────────────
       res.status(200).type("text/xml").send("<Response></Response>");
     });
+
+// ============================================================================
+// seedLoadTestData — HTTP endpoint to populate Firestore with fake residents
+// ============================================================================
+// Generates N fake Hebrew residents and writes them to the `residents`
+// collection, then sets system/activeEmergency (sheetId=null so no Google
+// Sheets writes happen during the load test).
+//
+// Protected by a secret key set via:
+//   firebase functions:config:set loadtest.secret="your-secret-here"
+//
+// Usage:
+//   GET https://us-central1-emergency-dashboard-a3842.cloudfunctions.net/seedLoadTestData?key=YOUR_SECRET&count=1500
+//
+// The endpoint also returns a phones.json-compatible array so run-load-test.js
+// can be pointed at it directly.
+// ============================================================================
+
+const LOAD_TEST_FIRST_NAMES = [
+  "דוד", "יוסף", "משה", "אברהם", "יצחק", "יעקב", "שמעון", "אהרן", "ישראל", "שלמה",
+  "שרה", "רחל", "לאה", "מרים", "דבורה", "נעמי", "רות", "חנה", "אסתר", "יהודית",
+  "בנימין", "אלי", "שמואל", "יהודה", "חיים", "אריה", "ברוך", "רפאל", "עמי", "ניר",
+  "אביבה", "ציפורה", "גאולה", "מזל", "שושנה", "תמר", "דינה", "נורית", "ריבה", "זהבה",
+  "גלעד", "שי", "אורן", "יובל", "אמיר", "רועי", "תומר", "עידו", "גיא", "עמית",
+  "שלומית", "אורה", "גילה", "ברכה", "נחמה", "מיכל", "טלי", "יעל", "אורית", "ענת",
+];
+
+const LOAD_TEST_LAST_NAMES = [
+  "כהן", "לוי", "מזרחי", "פרץ", "ביטון", "אברהם", "פרידמן", "שפירא", "אדלר", "אוחיון",
+  "אלבז", "אמסלם", "בן דוד", "בן חיים", "ברגר", "ברקוביץ", "דהן", "זיו", "חדד", "טל",
+  "כץ", "מלכה", "סבג", "עמר", "פיינגולד", "צבי", "קפלן", "רוזנברג", "שמש", "תמיר",
+  "אנגל", "בר", "גולדברג", "הרצוג", "וייס", "חזן", "טוביה", "כנפי", "לנדאו", "מנדל",
+  "נחמני", "סויסה", "עוזיאל", "פינטו", "ציון", "קורן", "ראובן", "שאול", "יונה", "אזולאי",
+];
+
+const LOAD_TEST_NEIGHBORHOODS = [
+  "כרמל", "נווה שאנן", "עיר תחתית", "רמות", "בת גלים", "כרמליה",
+  "מרכז הכרמל", "נאות פרס", "קריית ים", "קריית ביאליק", "קריית אתא",
+  "קריית חיים", "רמת שאול", "הדר", "אחוזה", "רמת ויצמן", "נווה דוד",
+];
+
+const LOAD_TEST_STREETS = [
+  "הרצל", "בן גוריון", "העצמאות", "הנשיא", "אלנבי", "ויצמן",
+  "הגליל", "ירושלים", "תל אביב", "הבנים", "הגפן", "הדקל",
+  "הכרמל", "הנביאים", "הפרחים", "הרימון", "הזית", "הדגן",
+];
+
+function generateFakeResidents(count) {
+  const residents = [];
+  for (let i = 0; i < count; i++) {
+    const seq = String(i + 1).padStart(6, "0");
+    residents.push({
+      "שם פרטי":  LOAD_TEST_FIRST_NAMES[i % LOAD_TEST_FIRST_NAMES.length],
+      "שם משפחה": LOAD_TEST_LAST_NAMES[i  % LOAD_TEST_LAST_NAMES.length],
+      "טלפון":    `0501${seq}`,
+      "שכונה":    LOAD_TEST_NEIGHBORHOODS[i % LOAD_TEST_NEIGHBORHOODS.length],
+      "כתובת":    `רחוב ${LOAD_TEST_STREETS[i % LOAD_TEST_STREETS.length]} ${(i % 150) + 1}`,
+      "סטטוס":    "",
+      "תגובה":    "",
+      "updated at": "",
+      normalizedPhone: `972501${seq}`,
+      rowIndex: i + 2,
+      source: "load_test",
+      mode: "drill",
+    });
+  }
+  return residents;
+}
+
+exports.seedLoadTestData = functions
+    .runWith({timeoutSeconds: 300, memory: "512MB"})
+    .https.onRequest(async (req, res) => {
+      // ── Auth: require loadtest.secret config key ───────────────────────
+      const expectedKey = (functions.config().loadtest || {}).secret;
+      if (!expectedKey) {
+        res.status(503).json({
+          error: "Load test secret not configured.",
+          fix: "firebase functions:config:set loadtest.secret=\"your-secret\" && firebase deploy --only functions:seedLoadTestData",
+        });
+        return;
+      }
+      if (req.query.key !== expectedKey) {
+        res.status(403).json({error: "Missing or invalid ?key= parameter"});
+        return;
+      }
+
+      const count = Math.min(parseInt(req.query.count || "1500", 10), 6000);
+      const eventId = `load-test-${Date.now()}`;
+      console.log(`[SeedLoadTest] Generating ${count} fake residents, eventId=${eventId}`);
+
+      // ── Generate residents ─────────────────────────────────────────────
+      const residents = generateFakeResidents(count);
+
+      // ── Batch-write to Firestore ───────────────────────────────────────
+      const BATCH_SIZE = 400;
+      for (let i = 0; i < residents.length; i += BATCH_SIZE) {
+        const batch = db.batch();
+        for (const r of residents.slice(i, i + BATCH_SIZE)) {
+          const ref = db.collection("residents").doc("resident_" + r.normalizedPhone);
+          batch.set(ref, {
+            ...r,
+            syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+        await batch.commit();
+        console.log(`[SeedLoadTest] Batch written: ${Math.min(i + BATCH_SIZE, count)}/${count}`);
+      }
+
+      // ── Set system/activeEmergency (sheetId=null → no sheet writes) ────
+      await db.doc("system/activeEmergency").set({
+        mode:                 "drill",
+        eventId,
+        sheetId:              null,
+        sheetName:            null,
+        statusColumnIndex:    -1,
+        timestampColumnIndex: -1,
+        replyColumnIndex:     -1,
+        activatedAt:          admin.firestore.FieldValue.serverTimestamp(),
+        activatedBy:          "seedLoadTestData",
+        isLoadTest:           true,
+      });
+
+      const phones = residents.map((r) => r.normalizedPhone);
+      console.log(`[SeedLoadTest] Done — ${count} residents seeded, eventId=${eventId}`);
+
+      res.json({
+        success: true,
+        count,
+        eventId,
+        phones,   // paste into load-test/phones.json
+        message:  `${count} fake residents written to Firestore. Copy 'phones' array to load-test/phones.json then run: node load-test/run-load-test.js`,
+      });
+    });
+
+// ============================================================================
+// clearLoadTestData — HTTP endpoint to clean up after a load test
+// ============================================================================
+// Deletes all documents in the `residents` collection and clears
+// system/activeEmergency.  Same ?key= protection as seedLoadTestData.
+//
+// Usage:
+//   GET https://us-central1-emergency-dashboard-a3842.cloudfunctions.net/clearLoadTestData?key=YOUR_SECRET
+// ============================================================================
+
+exports.clearLoadTestData = functions
+    .runWith({timeoutSeconds: 300, memory: "256MB"})
+    .https.onRequest(async (req, res) => {
+      const expectedKey = (functions.config().loadtest || {}).secret;
+      if (!expectedKey || req.query.key !== expectedKey) {
+        res.status(403).json({error: "Missing or invalid ?key= parameter"});
+        return;
+      }
+
+      console.log("[ClearLoadTest] Deleting residents collection...");
+      let deleted = 0;
+      while (true) {
+        const snap = await db.collection("residents").limit(400).get();
+        if (snap.empty) break;
+        const batch = db.batch();
+        snap.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+        deleted += snap.size;
+        console.log(`[ClearLoadTest] Deleted ${deleted} residents so far...`);
+      }
+
+      await db.doc("system/activeEmergency").delete();
+      console.log(`[ClearLoadTest] Done — deleted ${deleted} residents and cleared activeEmergency`);
+
+      res.json({
+        success: true,
+        deleted,
+        message: "Firestore cleared. Ready for a fresh load test.",
+      });
+    });
