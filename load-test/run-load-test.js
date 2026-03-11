@@ -49,11 +49,22 @@ const args = Object.fromEntries(
     }),
 );
 
-const COUNT       = parseInt(args.count       ?? "1500", 10);
+const SEED_URL    = args["seed-url"] ?? null;
+
+// If --count not set explicitly, infer it from ?count= in the seed URL
+function inferCount() {
+  if (args.count) return parseInt(args.count, 10);
+  if (SEED_URL) {
+    const m = SEED_URL.match(/[?&]count=(\d+)/);
+    if (m) return parseInt(m[1], 10);
+  }
+  return 1500;
+}
+
+const COUNT       = inferCount();
 const CONCURRENCY = parseInt(args.concurrency ?? "20",   10);
 const DELAY_MS    = parseInt(args.delay       ?? "500",  10);
 const DRY_RUN     = args["dry-run"] === true || args["dry-run"] === "true";
-const SEED_URL    = args["seed-url"] ?? null;
 
 // ── Reply distribution ─────────────────────────────────────────────────────
 // Realistic mix: most reply "ok", some need help, some unsure, a few in Hebrew
