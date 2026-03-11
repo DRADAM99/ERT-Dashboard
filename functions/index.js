@@ -100,17 +100,15 @@ exports.sendNotificationOnCreate = functions.firestore
 // NEW v7.0: Green Eyes — Firebase-Centered Architecture
 // ============================================================================
 //
-// Cloud Function config (set via Firebase CLI):
-//   firebase functions:config:set \
-//     twilio.account_sid="ACxxxxxxxxx" \
-//     twilio.auth_token="xxxxxxxxx" \
-//     twilio.messaging_service_sid="MGxxxxxxxxx" \
-//     mode.live.content_sid="HXxxxxxxxxx" \
-//     mode.live.sheet_id="xxxxxxxxx" \
-//     mode.live.sheet_name="2025" \
-//     mode.drill.content_sid="HXxxxxxxxxx" \
-//     mode.drill.sheet_id="xxxxxxxxx" \
-//     mode.drill.sheet_name="2025"
+// Configuration is read from environment variables (functions/.env.deploy).
+// Copy functions/.env.deploy.example → functions/.env.deploy, fill in values,
+// then deploy via:  bash functions/deploy.sh
+//
+// Required variables:
+//   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_MESSAGING_SERVICE_SID
+//   LIVE_CONTENT_SID, LIVE_SHEET_ID, LIVE_SHEET_NAME
+//   DRILL_CONTENT_SID, DRILL_SHEET_ID, DRILL_SHEET_NAME
+//   LOADTEST_SECRET  (any string — protects the seed/clear load-test endpoints)
 //
 // The Firebase service account email must have Editor access on both
 // Google Sheets (live + drill). Find the email in Firebase Console →
@@ -124,12 +122,16 @@ let sheetsClient = null;
 function getTwilioClient() {
   if (twilioClient) return twilioClient;
   const twilio = require("twilio");
-  const config = functions.config().twilio || {};
-  if (!config.account_sid || !config.auth_token) {
-    throw new Error("Twilio credentials not configured. Run: " +
-        "firebase functions:config:set twilio.account_sid=... twilio.auth_token=...");
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken  = process.env.TWILIO_AUTH_TOKEN;
+  if (!accountSid || !authToken) {
+    throw new Error(
+        "Twilio credentials not configured. " +
+        "Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in functions/.env.deploy, " +
+        "then redeploy via: bash functions/deploy.sh",
+    );
   }
-  twilioClient = twilio(config.account_sid, config.auth_token);
+  twilioClient = twilio(accountSid, authToken);
   return twilioClient;
 }
 
@@ -281,29 +283,6 @@ function israelTime() {
   return `${p.day}.${p.month}.${p.year} ${p.hour}:${p.minute}`;
 }
 
-/**
- * Appends a single log row to the "Script Log" tab in a Google Sheet.
- * Columns: זמן | אירוע | טלפון | תגובה | סטטוס | הערות
- * Never throws — errors are swallowed so logging never blocks the main flow.
- */
-async function appendSheetLog(sheetId, {event, phone, body, status, notes}) {
-  if (!sheetId) return;
-  try {
-    console.log(`[SheetLog] Appending to sheetId=${sheetId}, range='Script Logs'!A:F`, {event, phone});
-    const sheets = await getSheetsClient();
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: sheetId,
-      range: "'Script Logs'",
-      valueInputOption: "USER_ENTERED",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: {
-        values: [[israelTime(), event || "", phone || "", body || "", status || "", notes || ""]],
-      },
-    });
-  } catch (err) {
-    console.error("[SheetLog] Failed to append:", err.message);
-  }
-}
 
 // ============================================================================
 // triggerGreenEyes — Firestore onCreate trigger
@@ -325,13 +304,12 @@ exports.triggerGreenEyes = functions
       console.log(`[GreenEyes] Triggered: ${eventId}, mode: ${mode}`);
       await fsLog(eventId, "info", `Triggered — mode: ${mode}`);
 
-      // Resolve config: prefer event data, fall back to functions.config()
-      const modeConfig = (functions.config().mode || {})[mode] || {};
-      const sheetId = eventData.sheetId || modeConfig.sheet_id;
-      const sheetName = eventData.sheetName || modeConfig.sheet_name || "2025";
-      const contentSid = eventData.contentSid || modeConfig.content_sid;
-      const twilioConfig = functions.config().twilio || {};
-      const messagingServiceSid = twilioConfig.messaging_service_sid;
+      // Resolve config: prefer event data, fall back to environment variables
+      const modeUpper = mode.toUpperCase(); // "LIVE" or "DRILL"
+      const sheetId    = eventData.sheetId    || process.env[`${modeUpper}_SHEET_ID`];
+      const sheetName  = eventData.sheetName  || process.env[`${modeUpper}_SHEET_NAME`] || "2025";
+      const contentSid = eventData.contentSid || process.env[`${modeUpper}_CONTENT_SID`];
+      const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
       if (!sheetId || !contentSid || !messagingServiceSid) {
         const missing = [];
@@ -516,7 +494,7 @@ exports.triggerGreenEyes = functions
 // ============================================================================
 
 exports.handleTwilioWebhook = functions
-    .runWith({timeoutSeconds: 60, memory: "256MB", maxInstances: 100})
+    .runWith({timeoutSeconds: 60, memory: "256MB", maxInstances: 100, minInstances: 5})
     .https.onRequest(async (req, res) => {
       if (req.method !== "POST") {
         res.status(405).send("Method Not Allowed");
@@ -622,18 +600,8 @@ exports.handleTwilioWebhook = functions
         }
       }
 
-      // ─── GOOGLE SHEET UPDATES (completed before responding) ──────────────
-      // Single batch call keeps total time ~5-6s, within Studio's 25s timeout.
-      // res.send() is at the very end so Firebase doesn't terminate early.
-      if (!residentFound) {
-        await appendSheetLog(sheetId, {
-          event: "⚠️ תושב לא נמצא",
-          phone,
-          body,
-          status: mappedStatus,
-          notes: `טלפון ${phone} לא קיים ב-Firestore`,
-        });
-      } else if (sheetId && rowIndex) {
+      // ─── GOOGLE SHEET ROW UPDATE ──────────────────────────────────────────
+      if (residentFound && sheetId && rowIndex) {
         try {
           const sheetUpdates = [];
           if (statusColIdx !== undefined && statusColIdx !== -1) {
@@ -650,35 +618,186 @@ exports.handleTwilioWebhook = functions
             console.log(`[TwilioWebhook] Sheet batch-updated: row ${rowIndex} → ${mappedStatus}`);
             await fsLog(activeEventId, "info", `Sheet row ${rowIndex} batch-updated → ${mappedStatus}`);
           }
-
-          await appendSheetLog(sheetId, {
-            event: "✅ תגובה עודכנה",
-            phone,
-            body,
-            status: mappedStatus,
-            notes: `שורה ${rowIndex} — Firebase + גיליון עודכנו`,
-          });
         } catch (sheetErr) {
           console.error("[TwilioWebhook] Sheet write-back error:", sheetErr.message);
           await fsLog(activeEventId, "error", `Sheet write-back failed: ${sheetErr.message}`);
-          await appendSheetLog(sheetId, {
-            event: "❌ שגיאת עדכון גיליון",
-            phone,
-            body,
-            status: mappedStatus,
-            notes: sheetErr.message,
-          });
         }
-      } else if (sheetId && !rowIndex) {
-        await appendSheetLog(sheetId, {
-          event: "✅ Firebase עודכן",
-          phone,
-          body,
-          status: mappedStatus,
-          notes: "rowIndex חסר — גיליון לא עודכן",
-        });
       }
 
       // ─── RESPOND TO STUDIO ────────────────────────────────────────────────
       res.status(200).type("text/xml").send("<Response></Response>");
+    });
+
+// ============================================================================
+// seedLoadTestData — HTTP endpoint to populate Firestore with fake residents
+// ============================================================================
+// Generates N fake Hebrew residents and writes them to the `residents`
+// collection, then sets system/activeEmergency (sheetId=null so no Google
+// Sheets writes happen during the load test).
+//
+// Protected by a secret key set via:
+//   firebase functions:config:set loadtest.secret="your-secret-here"
+//
+// Usage:
+//   GET https://us-central1-emergency-dashboard-a3842.cloudfunctions.net/seedLoadTestData?key=YOUR_SECRET&count=1500
+//
+// The endpoint also returns a phones.json-compatible array so run-load-test.js
+// can be pointed at it directly.
+// ============================================================================
+
+const LOAD_TEST_FIRST_NAMES = [
+  "דוד", "יוסף", "משה", "אברהם", "יצחק", "יעקב", "שמעון", "אהרן", "ישראל", "שלמה",
+  "שרה", "רחל", "לאה", "מרים", "דבורה", "נעמי", "רות", "חנה", "אסתר", "יהודית",
+  "בנימין", "אלי", "שמואל", "יהודה", "חיים", "אריה", "ברוך", "רפאל", "עמי", "ניר",
+  "אביבה", "ציפורה", "גאולה", "מזל", "שושנה", "תמר", "דינה", "נורית", "ריבה", "זהבה",
+  "גלעד", "שי", "אורן", "יובל", "אמיר", "רועי", "תומר", "עידו", "גיא", "עמית",
+  "שלומית", "אורה", "גילה", "ברכה", "נחמה", "מיכל", "טלי", "יעל", "אורית", "ענת",
+];
+
+const LOAD_TEST_LAST_NAMES = [
+  "כהן", "לוי", "מזרחי", "פרץ", "ביטון", "אברהם", "פרידמן", "שפירא", "אדלר", "אוחיון",
+  "אלבז", "אמסלם", "בן דוד", "בן חיים", "ברגר", "ברקוביץ", "דהן", "זיו", "חדד", "טל",
+  "כץ", "מלכה", "סבג", "עמר", "פיינגולד", "צבי", "קפלן", "רוזנברג", "שמש", "תמיר",
+  "אנגל", "בר", "גולדברג", "הרצוג", "וייס", "חזן", "טוביה", "כנפי", "לנדאו", "מנדל",
+  "נחמני", "סויסה", "עוזיאל", "פינטו", "ציון", "קורן", "ראובן", "שאול", "יונה", "אזולאי",
+];
+
+const LOAD_TEST_NEIGHBORHOODS = [
+  "כרמל", "נווה שאנן", "עיר תחתית", "רמות", "בת גלים", "כרמליה",
+  "מרכז הכרמל", "נאות פרס", "קריית ים", "קריית ביאליק", "קריית אתא",
+  "קריית חיים", "רמת שאול", "הדר", "אחוזה", "רמת ויצמן", "נווה דוד",
+];
+
+const LOAD_TEST_STREETS = [
+  "הרצל", "בן גוריון", "העצמאות", "הנשיא", "אלנבי", "ויצמן",
+  "הגליל", "ירושלים", "תל אביב", "הבנים", "הגפן", "הדקל",
+  "הכרמל", "הנביאים", "הפרחים", "הרימון", "הזית", "הדגן",
+];
+
+function generateFakeResidents(count) {
+  const residents = [];
+  for (let i = 0; i < count; i++) {
+    const seq = String(i + 1).padStart(6, "0");
+    residents.push({
+      "שם פרטי":  LOAD_TEST_FIRST_NAMES[i % LOAD_TEST_FIRST_NAMES.length],
+      "שם משפחה": LOAD_TEST_LAST_NAMES[i  % LOAD_TEST_LAST_NAMES.length],
+      "טלפון":    `0501${seq}`,
+      "שכונה":    LOAD_TEST_NEIGHBORHOODS[i % LOAD_TEST_NEIGHBORHOODS.length],
+      "כתובת":    `רחוב ${LOAD_TEST_STREETS[i % LOAD_TEST_STREETS.length]} ${(i % 150) + 1}`,
+      "סטטוס":    "",
+      "תגובה":    "",
+      "updated at": "",
+      normalizedPhone: `972501${seq}`,
+      rowIndex: i + 2,
+      source: "load_test",
+      mode: "drill",
+    });
+  }
+  return residents;
+}
+
+exports.seedLoadTestData = functions
+    .runWith({timeoutSeconds: 300, memory: "512MB"})
+    .https.onRequest(async (req, res) => {
+      // ── Auth: require LOADTEST_SECRET env var ─────────────────────────
+      const expectedKey = process.env.LOADTEST_SECRET;
+      if (!expectedKey) {
+        res.status(503).json({
+          error: "LOADTEST_SECRET not configured.",
+          fix: "Add LOADTEST_SECRET=your-secret to functions/.env.deploy and redeploy via: bash functions/deploy.sh",
+        });
+        return;
+      }
+      if (req.query.key !== expectedKey) {
+        res.status(403).json({error: "Missing or invalid ?key= parameter"});
+        return;
+      }
+
+      const count = Math.min(parseInt(req.query.count || "1500", 10), 6000);
+      const eventId = `load-test-${Date.now()}`;
+      console.log(`[SeedLoadTest] Generating ${count} fake residents, eventId=${eventId}`);
+
+      // ── Generate residents ─────────────────────────────────────────────
+      const residents = generateFakeResidents(count);
+
+      // ── Batch-write to Firestore ───────────────────────────────────────
+      const BATCH_SIZE = 400;
+      for (let i = 0; i < residents.length; i += BATCH_SIZE) {
+        const batch = db.batch();
+        for (const r of residents.slice(i, i + BATCH_SIZE)) {
+          const ref = db.collection("residents").doc("resident_" + r.normalizedPhone);
+          batch.set(ref, {
+            ...r,
+            syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+        await batch.commit();
+        console.log(`[SeedLoadTest] Batch written: ${Math.min(i + BATCH_SIZE, count)}/${count}`);
+      }
+
+      // ── Set system/activeEmergency (sheetId=null → no sheet writes) ────
+      await db.doc("system/activeEmergency").set({
+        mode:                 "drill",
+        eventId,
+        sheetId:              null,
+        sheetName:            null,
+        statusColumnIndex:    -1,
+        timestampColumnIndex: -1,
+        replyColumnIndex:     -1,
+        activatedAt:          admin.firestore.FieldValue.serverTimestamp(),
+        activatedBy:          "seedLoadTestData",
+        isLoadTest:           true,
+      });
+
+      const phones = residents.map((r) => r.normalizedPhone);
+      console.log(`[SeedLoadTest] Done — ${count} residents seeded, eventId=${eventId}`);
+
+      res.json({
+        success: true,
+        count,
+        eventId,
+        phones,   // paste into load-test/phones.json
+        message:  `${count} fake residents written to Firestore. Copy 'phones' array to load-test/phones.json then run: node load-test/run-load-test.js`,
+      });
+    });
+
+// ============================================================================
+// clearLoadTestData — HTTP endpoint to clean up after a load test
+// ============================================================================
+// Deletes all documents in the `residents` collection and clears
+// system/activeEmergency.  Same ?key= protection as seedLoadTestData.
+//
+// Usage:
+//   GET https://us-central1-emergency-dashboard-a3842.cloudfunctions.net/clearLoadTestData?key=YOUR_SECRET
+// ============================================================================
+
+exports.clearLoadTestData = functions
+    .runWith({timeoutSeconds: 300, memory: "256MB"})
+    .https.onRequest(async (req, res) => {
+      const expectedKey = process.env.LOADTEST_SECRET;
+      if (!expectedKey || req.query.key !== expectedKey) {
+        res.status(403).json({error: "Missing or invalid ?key= parameter"});
+        return;
+      }
+
+      console.log("[ClearLoadTest] Deleting residents collection...");
+      let deleted = 0;
+      while (true) {
+        const snap = await db.collection("residents").limit(400).get();
+        if (snap.empty) break;
+        const batch = db.batch();
+        snap.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+        deleted += snap.size;
+        console.log(`[ClearLoadTest] Deleted ${deleted} residents so far...`);
+      }
+
+      await db.doc("system/activeEmergency").delete();
+      console.log(`[ClearLoadTest] Done — deleted ${deleted} residents and cleared activeEmergency`);
+
+      res.json({
+        success: true,
+        deleted,
+        message: "Firestore cleared. Ready for a fresh load test.",
+      });
     });

@@ -26,3 +26,4 @@ dist-ssr
 
 # Firebase deploy secrets
 functions/.env.deploy
+functions/.env
