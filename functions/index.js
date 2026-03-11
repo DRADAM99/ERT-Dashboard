@@ -100,17 +100,15 @@ exports.sendNotificationOnCreate = functions.firestore
 // NEW v7.0: Green Eyes — Firebase-Centered Architecture
 // ============================================================================
 //
-// Cloud Function config (set via Firebase CLI):
-//   firebase functions:config:set \
-//     twilio.account_sid="ACxxxxxxxxx" \
-//     twilio.auth_token="xxxxxxxxx" \
-//     twilio.messaging_service_sid="MGxxxxxxxxx" \
-//     mode.live.content_sid="HXxxxxxxxxx" \
-//     mode.live.sheet_id="xxxxxxxxx" \
-//     mode.live.sheet_name="2025" \
-//     mode.drill.content_sid="HXxxxxxxxxx" \
-//     mode.drill.sheet_id="xxxxxxxxx" \
-//     mode.drill.sheet_name="2025"
+// Configuration is read from environment variables (functions/.env.deploy).
+// Copy functions/.env.deploy.example → functions/.env.deploy, fill in values,
+// then deploy via:  bash functions/deploy.sh
+//
+// Required variables:
+//   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_MESSAGING_SERVICE_SID
+//   LIVE_CONTENT_SID, LIVE_SHEET_ID, LIVE_SHEET_NAME
+//   DRILL_CONTENT_SID, DRILL_SHEET_ID, DRILL_SHEET_NAME
+//   LOADTEST_SECRET  (any string — protects the seed/clear load-test endpoints)
 //
 // The Firebase service account email must have Editor access on both
 // Google Sheets (live + drill). Find the email in Firebase Console →
@@ -124,12 +122,16 @@ let sheetsClient = null;
 function getTwilioClient() {
   if (twilioClient) return twilioClient;
   const twilio = require("twilio");
-  const config = functions.config().twilio || {};
-  if (!config.account_sid || !config.auth_token) {
-    throw new Error("Twilio credentials not configured. Run: " +
-        "firebase functions:config:set twilio.account_sid=... twilio.auth_token=...");
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken  = process.env.TWILIO_AUTH_TOKEN;
+  if (!accountSid || !authToken) {
+    throw new Error(
+        "Twilio credentials not configured. " +
+        "Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in functions/.env.deploy, " +
+        "then redeploy via: bash functions/deploy.sh",
+    );
   }
-  twilioClient = twilio(config.account_sid, config.auth_token);
+  twilioClient = twilio(accountSid, authToken);
   return twilioClient;
 }
 
@@ -302,13 +304,12 @@ exports.triggerGreenEyes = functions
       console.log(`[GreenEyes] Triggered: ${eventId}, mode: ${mode}`);
       await fsLog(eventId, "info", `Triggered — mode: ${mode}`);
 
-      // Resolve config: prefer event data, fall back to functions.config()
-      const modeConfig = (functions.config().mode || {})[mode] || {};
-      const sheetId = eventData.sheetId || modeConfig.sheet_id;
-      const sheetName = eventData.sheetName || modeConfig.sheet_name || "2025";
-      const contentSid = eventData.contentSid || modeConfig.content_sid;
-      const twilioConfig = functions.config().twilio || {};
-      const messagingServiceSid = twilioConfig.messaging_service_sid;
+      // Resolve config: prefer event data, fall back to environment variables
+      const modeUpper = mode.toUpperCase(); // "LIVE" or "DRILL"
+      const sheetId    = eventData.sheetId    || process.env[`${modeUpper}_SHEET_ID`];
+      const sheetName  = eventData.sheetName  || process.env[`${modeUpper}_SHEET_NAME`] || "2025";
+      const contentSid = eventData.contentSid || process.env[`${modeUpper}_CONTENT_SID`];
+      const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
       if (!sheetId || !contentSid || !messagingServiceSid) {
         const missing = [];
@@ -698,12 +699,12 @@ function generateFakeResidents(count) {
 exports.seedLoadTestData = functions
     .runWith({timeoutSeconds: 300, memory: "512MB"})
     .https.onRequest(async (req, res) => {
-      // ── Auth: require loadtest.secret config key ───────────────────────
-      const expectedKey = (functions.config().loadtest || {}).secret;
+      // ── Auth: require LOADTEST_SECRET env var ─────────────────────────
+      const expectedKey = process.env.LOADTEST_SECRET;
       if (!expectedKey) {
         res.status(503).json({
-          error: "Load test secret not configured.",
-          fix: "firebase functions:config:set loadtest.secret=\"your-secret\" && firebase deploy --only functions:seedLoadTestData",
+          error: "LOADTEST_SECRET not configured.",
+          fix: "Add LOADTEST_SECRET=your-secret to functions/.env.deploy and redeploy via: bash functions/deploy.sh",
         });
         return;
       }
@@ -773,7 +774,7 @@ exports.seedLoadTestData = functions
 exports.clearLoadTestData = functions
     .runWith({timeoutSeconds: 300, memory: "256MB"})
     .https.onRequest(async (req, res) => {
-      const expectedKey = (functions.config().loadtest || {}).secret;
+      const expectedKey = process.env.LOADTEST_SECRET;
       if (!expectedKey || req.query.key !== expectedKey) {
         res.status(403).json({error: "Missing or invalid ?key= parameter"});
         return;

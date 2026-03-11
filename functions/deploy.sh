@@ -1,82 +1,100 @@
 #!/bin/bash
 # ============================================================
-# Deploy Firebase Functions with config from .env.deploy
+# Deploy Firebase Cloud Functions
 # Usage:  bash functions/deploy.sh
+# ============================================================
+# Reads credentials from functions/.env.deploy, writes them
+# to functions/.env (which Firebase uploads with the function),
+# then runs firebase deploy --only functions.
 # ============================================================
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ENV_FILE="$SCRIPT_DIR/.env.deploy"
+ENV_DEPLOY="$SCRIPT_DIR/.env.deploy"
+ENV_TARGET="$SCRIPT_DIR/.env"
 
-if [ ! -f "$ENV_FILE" ]; then
-  echo "❌ File not found: $ENV_FILE"
-  echo "   Run: cp functions/.env.deploy.example functions/.env.deploy"
-  echo "   Then fill in your values."
+if [ ! -f "$ENV_DEPLOY" ]; then
+  echo ""
+  echo "❌  $ENV_DEPLOY not found."
+  echo "    Run:  cp functions/.env.deploy.example functions/.env.deploy"
+  echo "    Then fill in all values."
+  echo ""
   exit 1
 fi
 
-# Read values from .env.deploy (skip comments and blank lines)
+# Validate — all non-LOADTEST values must be set
+echo ""
+echo "🔍  Validating $ENV_DEPLOY ..."
+MISSING=()
 while IFS='=' read -r key value; do
   [[ -z "$key" || "$key" =~ ^# ]] && continue
   key=$(echo "$key" | xargs)
   value=$(echo "$value" | xargs)
+  # LOADTEST_SECRET is optional (load test only)
+  [[ "$key" == "LOADTEST_SECRET" ]] && continue
   if [ -z "$value" ]; then
-    echo "❌ Missing value for: $key"
-    echo "   Please fill in all values in $ENV_FILE"
-    exit 1
+    MISSING+=("$key")
   fi
-  declare "$key=$value"
-done < "$ENV_FILE"
+done < "$ENV_DEPLOY"
+
+if [ ${#MISSING[@]} -gt 0 ]; then
+  echo "❌  Missing values in $ENV_DEPLOY:"
+  for k in "${MISSING[@]}"; do
+    echo "      $k"
+  done
+  echo ""
+  exit 1
+fi
+
+# Source values for the summary
+source "$ENV_DEPLOY"
 
 echo ""
-echo "📋 Config summary:"
-echo "   Twilio SID:        ${TWILIO_ACCOUNT_SID:0:8}..."
-echo "   Messaging Service: ${TWILIO_MESSAGING_SERVICE_SID:0:8}..."
-echo "   Live Content SID:  ${LIVE_CONTENT_SID}"
-echo "   Live Sheet ID:     ${LIVE_SHEET_ID:0:12}..."
-echo "   Drill Content SID: ${DRILL_CONTENT_SID}"
-echo "   Drill Sheet ID:    ${DRILL_SHEET_ID:0:12}..."
+echo "📋  Config summary:"
+echo "   Twilio SID:          ${TWILIO_ACCOUNT_SID:0:8}..."
+echo "   Messaging Service:   ${TWILIO_MESSAGING_SERVICE_SID:0:8}..."
+echo "   Live Content SID:    ${LIVE_CONTENT_SID}"
+echo "   Live Sheet ID:       ${LIVE_SHEET_ID:0:12}..."
+echo "   Drill Content SID:   ${DRILL_CONTENT_SID}"
+echo "   Drill Sheet ID:      ${DRILL_SHEET_ID:0:12}..."
+if [ -n "$LOADTEST_SECRET" ]; then
+  echo "   Load test secret:    ${LOADTEST_SECRET:0:4}... (set)"
+else
+  echo "   Load test secret:    (not set — seed/clear endpoints disabled)"
+fi
 echo ""
 
-read -p "🔑 Set Firebase Functions config? (y/n) " -n 1 -r
+read -p "🚀  Copy .env.deploy → .env and deploy? (y/n) " -n 1 -r
 echo ""
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   echo "Cancelled."
   exit 0
 fi
 
-echo "⚙️  Setting Firebase Functions config..."
-firebase functions:config:set \
-  twilio.account_sid="$TWILIO_ACCOUNT_SID" \
-  twilio.auth_token="$TWILIO_AUTH_TOKEN" \
-  twilio.messaging_service_sid="$TWILIO_MESSAGING_SERVICE_SID" \
-  mode.live.content_sid="$LIVE_CONTENT_SID" \
-  mode.live.sheet_id="$LIVE_SHEET_ID" \
-  mode.live.sheet_name="$LIVE_SHEET_NAME" \
-  mode.drill.content_sid="$DRILL_CONTENT_SID" \
-  mode.drill.sheet_id="$DRILL_SHEET_ID" \
-  mode.drill.sheet_name="$DRILL_SHEET_NAME"
+# Write functions/.env (this file is uploaded by Firebase during deploy)
+echo "⚙️   Writing $ENV_TARGET ..."
+grep -v '^#' "$ENV_DEPLOY" | grep -v '^[[:space:]]*$' > "$ENV_TARGET"
+echo "    Done."
 
 echo ""
-echo "✅ Config set. Verifying..."
-firebase functions:config:get
-echo ""
-
-read -p "🚀 Deploy Cloud Functions now? (y/n) " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  echo "Config is set. Run 'firebase deploy --only functions' when ready."
-  exit 0
-fi
-
-echo "🚀 Deploying Cloud Functions..."
+echo "🚀  Deploying Cloud Functions..."
 cd "$SCRIPT_DIR"
 firebase deploy --only functions
 
+# Remove the local .env after deploy (values are now baked into the deployment)
 echo ""
-echo "✅ Done! Next steps:"
-echo "   1. Share both Google Sheets with your Firebase service account (Editor)"
-echo "   2. Update Twilio inbound webhook URL to:"
+echo "🧹  Removing local $ENV_TARGET ..."
+rm -f "$ENV_TARGET"
+
+echo ""
+echo "✅  Deploy complete!"
+echo ""
+echo "   Next steps:"
+echo "   1. Make sure both Google Sheets have Editor access for the Firebase"
+echo "      service account (Firebase Console → Project Settings → Service Accounts)"
+echo "   2. Twilio inbound webhook URL:"
 echo "      https://us-central1-emergency-dashboard-a3842.cloudfunctions.net/handleTwilioWebhook"
-echo "   3. Test: toggle to תרגיל on dashboard → press Green Eyes → check Firestore"
+echo "   3. Load test seed URL (if LOADTEST_SECRET was set):"
+echo "      https://us-central1-emergency-dashboard-a3842.cloudfunctions.net/seedLoadTestData?key=\$LOADTEST_SECRET&count=1500"
+echo ""
