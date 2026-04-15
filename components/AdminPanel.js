@@ -1,15 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { auth, db } from "../firebase";
 import {
   collection,
   doc,
   setDoc,
-  getDoc,
-  updateDoc,
-  getDocs,
   serverTimestamp,
+  onSnapshot,
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,13 +29,46 @@ import {
   Trash2,
   GripVertical,
   ChevronRight,
+  Users,
 } from "lucide-react";
 
 const SECTIONS = {
   MAIN: "main",
   ADD_USER: "add_user",
   DEPARTMENTS: "departments",
+  ONLINE_USERS: "online_users",
 };
+
+// A user is "active now" if seen within 10 min, "active today" within 24 h.
+const ACTIVE_NOW_MS   = 10 * 60 * 1000;
+const ACTIVE_TODAY_MS = 24 * 60 * 60 * 1000;
+
+function getPresence(lastSeen) {
+  if (!lastSeen) return "offline";
+  const ms = Date.now() - lastSeen.toDate().getTime();
+  if (ms < ACTIVE_NOW_MS)   return "now";
+  if (ms < ACTIVE_TODAY_MS) return "today";
+  return "offline";
+}
+
+function PresenceDot({ status }) {
+  if (status === "now")
+    return <span className="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0 shadow-sm" title="פעיל עכשיו" />;
+  if (status === "today")
+    return <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 shrink-0" title="פעיל היום" />;
+  return <span className="w-2.5 h-2.5 rounded-full bg-gray-300 shrink-0" title="לא מחובר" />;
+}
+
+function formatLastSeen(lastSeen) {
+  if (!lastSeen) return "לא נצפה";
+  const date = lastSeen.toDate();
+  const diffMin = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (diffMin < 1)  return "עכשיו";
+  if (diffMin < 60) return `לפני ${diffMin} דק׳`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24)   return `לפני ${diffH} שע׳`;
+  return date.toLocaleDateString("he-IL");
+}
 
 export default function AdminPanel({
   open,
@@ -61,6 +92,20 @@ export default function AdminPanel({
   // Departments state
   const [newDeptName, setNewDeptName] = useState("");
   const [isSavingDepts, setIsSavingDepts] = useState(false);
+
+  // Online users state
+  const [allUsers, setAllUsers] = useState([]);
+
+  // Real-time listener for users — only active while the panel is open
+  useEffect(() => {
+    if (!open) return;
+    const unsub = onSnapshot(collection(db, "users"), (snap) => {
+      setAllUsers(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      );
+    });
+    return () => unsub();
+  }, [open]);
 
   const handleClose = () => {
     setSection(SECTIONS.MAIN);
@@ -160,6 +205,17 @@ export default function AdminPanel({
     }
   };
 
+  // ── Online users derived data ─────────────────────────────────────────────
+  const usersWithPresence = allUsers
+    .map((u) => ({ ...u, presence: getPresence(u.lastSeen) }))
+    .sort((a, b) => {
+      const order = { now: 0, today: 1, offline: 2 };
+      return order[a.presence] - order[b.presence];
+    });
+
+  const nowCount   = usersWithPresence.filter((u) => u.presence === "now").length;
+  const todayCount = usersWithPresence.filter((u) => u.presence === "today").length;
+
   if (!open) return null;
 
   return (
@@ -200,6 +256,7 @@ export default function AdminPanel({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4">
+
           {/* ── Main menu ── */}
           {section === SECTIONS.MAIN && (
             <div className="space-y-2">
@@ -233,6 +290,21 @@ export default function AdminPanel({
                 <div>
                   <div className="font-medium text-gray-800 text-sm">יומן לוגים</div>
                   <div className="text-xs text-gray-500">צפייה ביומן האירועים</div>
+                </div>
+              </button>
+
+              <button
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 hover:bg-green-50 hover:border-green-300 transition-colors text-right"
+                onClick={() => setSection(SECTIONS.ONLINE_USERS)}
+              >
+                <Users className="h-5 w-5 text-green-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-800 text-sm">משתמשים מחוברים</div>
+                  <div className="text-xs text-gray-500">
+                    {allUsers.length === 0
+                      ? "טוען..."
+                      : `${nowCount} פעיל עכשיו · ${todayCount} פעיל היום`}
+                  </div>
                 </div>
               </button>
             </div>
@@ -368,6 +440,60 @@ export default function AdminPanel({
               <p className="text-xs text-gray-400">לחץ Enter או על הכפתור להוספה. רחף מעל מחלקה למחיקה.</p>
             </div>
           )}
+
+          {/* ── Online Users ── */}
+          {section === SECTIONS.ONLINE_USERS && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-700">משתמשים מחוברים</p>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                    עכשיו
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />
+                    היום
+                  </span>
+                </div>
+              </div>
+
+              {usersWithPresence.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-6">טוען משתמשים...</p>
+              )}
+
+              <div className="space-y-1">
+                {usersWithPresence.map((u) => (
+                  <div
+                    key={u.id}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border text-right ${
+                      u.presence === "offline"
+                        ? "border-gray-100 bg-white opacity-50"
+                        : "border-gray-200 bg-gray-50"
+                    }`}
+                  >
+                    <PresenceDot status={u.presence} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-800 truncate">
+                        {u.alias || u.email}
+                      </div>
+                      {u.department && (
+                        <div className="text-xs text-gray-500 truncate">{u.department}</div>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400 shrink-0 ltr:text-left rtl:text-right">
+                      {formatLastSeen(u.lastSeen)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-xs text-gray-400 text-center pt-1">
+                מתעדכן בזמן אמת · ●&nbsp;עכשיו = פעיל עד 10 דק׳ אחרונות
+              </p>
+            </div>
+          )}
+
         </div>
       </div>
     </div>

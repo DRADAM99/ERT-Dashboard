@@ -495,6 +495,16 @@ const handleClick2Call = async (phoneNumber) => {
       return updated;
     });
   };
+// Write lastSeen on mount and keep it fresh every 5 minutes while the tab is open
+useEffect(() => {
+  if (!currentUser) return;
+  const userRef = doc(db, 'users', currentUser.uid);
+  const ping = () => updateDoc(userRef, { lastSeen: serverTimestamp() }).catch(() => {});
+  ping();
+  const interval = setInterval(ping, 5 * 60 * 1000);
+  return () => clearInterval(interval);
+}, [currentUser]);
+
 // Fetch and listen for user's Kanban category order from Firestore
 useEffect(() => {
   if (!currentUser) return;
