@@ -506,13 +506,20 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, [currentUser]);
 
-// Fetch and listen for user's Kanban category order from Firestore
+// Single real-time listener for the current user's Firestore document.
+// Keeps alias, role, department, and kanban order in sync automatically,
+// so heartbeat writes (lastSeen) or any other update never cause stale UI.
 useEffect(() => {
   if (!currentUser) return;
   const userRef = doc(db, 'users', currentUser.uid);
   const unsubscribe = onSnapshot(userRef, (snap) => {
     if (snap.exists()) {
       const data = snap.data();
+      // Profile fields — only update if the values actually changed to avoid render churn
+      if (data.alias || data.email) setAlias(data.alias || data.email || currentUser.email);
+      if (data.role) setRole(data.role);
+      if (data.department) setDepartment(data.department.trim());
+      // Kanban category order
       if (Array.isArray(data.kanbanCategoryOrder) && data.kanbanCategoryOrder.length > 0) {
         setTaskCategories(data.kanbanCategoryOrder.map(c => c.trim()));
       } else {
@@ -1136,21 +1143,15 @@ const updateKanbanCategoryOrder = async (newOrder) => {
     setLoading(false);
   }, [loading, currentUser, router]);
 
-  // Fetch user's alias, role, and department — runs only when the logged-in user changes
+  // Create a Firestore profile doc for brand-new social/Google sign-ins that have no doc yet.
+  // The onSnapshot listener above will pick up the new doc and populate the UI automatically.
   useEffect(() => {
-    const fetchUserData = async () => {
+    const ensureUserDoc = async () => {
       if (!currentUser) return;
-
       try {
         const userRef = doc(db, "users", currentUser.uid);
         const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const data = userSnap.data();
-          setAlias(data.alias || currentUser.email || "");
-          setRole(data.role || "staff");
-          setDepartment(data.department?.trim() || "אחר");
-        } else {
-          // Brand-new Google/social login with no Firestore profile yet
+        if (!userSnap.exists()) {
           await setDoc(userRef, {
             email: currentUser.email,
             alias: currentUser.email,
@@ -1158,17 +1159,12 @@ const updateKanbanCategoryOrder = async (newOrder) => {
             department: "אחר",
             createdAt: serverTimestamp(),
           });
-          setAlias(currentUser.email);
-          setRole("staff");
-          setDepartment("אחר");
         }
       } catch (error) {
-        console.error("Error fetching user data:", error);
-        // Do NOT overwrite already-loaded alias/role on transient errors
+        console.error("Error ensuring user doc:", error);
       }
     };
-
-    fetchUserData();
+    ensureUserDoc();
   }, [currentUser]);
 
   // Load departments from Firestore (falls back to default list)
@@ -1249,20 +1245,6 @@ const updateKanbanCategoryOrder = async (newOrder) => {
     return () => unsubscribe();
   }, [currentUser, users, alias, department]);
 
-/** 🔁 Fetch logged-in user's alias */
-useEffect(() => {
-  if (currentUser) {
-    const fetchAlias = async () => {
-      const userRef = doc(db, "users", currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        setAlias(data.alias || data.email);
-      }
-    };
-    fetchAlias();
-  }
-}, [currentUser]);
 
 
   // ✅ 1. Listen to auth state changes - REMOVED duplicate listener since we use AuthContext
