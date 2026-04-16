@@ -252,8 +252,9 @@ const taskPriorities = ["דחוף", "רגיל", "נמוך"];
 
 
 
+const defaultTaskCategories = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"];
+
 export default function Dashboard() {
-  const defaultTaskCategories = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"];
   const [taskCategories, setTaskCategories] = useState(defaultTaskCategories);
   const { currentUser } = useAuth();
   const { toast } = useToast();
@@ -1135,11 +1136,11 @@ const updateKanbanCategoryOrder = async (newOrder) => {
     setLoading(false);
   }, [loading, currentUser, router]);
 
-  // Fetch user's alias and ensure department assignment
+  // Fetch user's alias, role, and department — runs only when the logged-in user changes
   useEffect(() => {
     const fetchUserData = async () => {
       if (!currentUser) return;
-      
+
       try {
         const userRef = doc(db, "users", currentUser.uid);
         const userSnap = await getDoc(userRef);
@@ -1147,24 +1148,15 @@ const updateKanbanCategoryOrder = async (newOrder) => {
           const data = userSnap.data();
           setAlias(data.alias || currentUser.email || "");
           setRole(data.role || "staff");
-          
-          // Check if user has department assigned and trim it
-          if (data.department && taskCategories.includes(data.department.trim())) {
-            setDepartment(data.department.trim());
-          } else {
-            // If no department or invalid department, assign default
-            console.warn(`User ${currentUser.email} has no department or invalid department: ${data.department}`);
-            setDepartment("אחר"); // Default department
-          }
+          setDepartment(data.department?.trim() || "אחר");
         } else {
-          // Create new user with default Department
-          console.log("Creating new user with default department");
+          // Brand-new Google/social login with no Firestore profile yet
           await setDoc(userRef, {
             email: currentUser.email,
             alias: currentUser.email,
             role: "staff",
-            department: "אחר", // Default department
-            createdAt: serverTimestamp()
+            department: "אחר",
+            createdAt: serverTimestamp(),
           });
           setAlias(currentUser.email);
           setRole("staff");
@@ -1172,15 +1164,12 @@ const updateKanbanCategoryOrder = async (newOrder) => {
         }
       } catch (error) {
         console.error("Error fetching user data:", error);
-        // Set default values on error
-        setAlias(currentUser.email);
-        setRole("staff");
-        setDepartment("אחר");
+        // Do NOT overwrite already-loaded alias/role on transient errors
       }
     };
 
     fetchUserData();
-  }, [currentUser, taskCategories]);
+  }, [currentUser]);
 
   // Load departments from Firestore (falls back to default list)
   useEffect(() => {
