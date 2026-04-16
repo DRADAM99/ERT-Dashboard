@@ -515,11 +515,9 @@ useEffect(() => {
   const unsubscribe = onSnapshot(userRef, (snap) => {
     if (snap.exists()) {
       const data = snap.data();
-      // Profile fields — only update if the values actually changed to avoid render churn
-      if (data.alias || data.email) setAlias(data.alias || data.email || currentUser.email);
-      if (data.role) setRole(data.role);
-      if (data.department) setDepartment(data.department.trim());
-      // Kanban category order
+      setAlias(data.alias || data.email || currentUser.email);
+      setRole(data.role || "staff");
+      setDepartment(data.department?.trim() || "אחר");
       if (Array.isArray(data.kanbanCategoryOrder) && data.kanbanCategoryOrder.length > 0) {
         setTaskCategories(data.kanbanCategoryOrder.map(c => c.trim()));
       } else {
