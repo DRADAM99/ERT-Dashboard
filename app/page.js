@@ -42,6 +42,7 @@ import {
   collection,
   getDocs,
   getDoc,
+  getDocFromServer,
   addDoc,
   updateDoc,
   onSnapshot,
@@ -1141,14 +1142,19 @@ const updateKanbanCategoryOrder = async (newOrder) => {
     setLoading(false);
   }, [loading, currentUser, router]);
 
-  // Create a Firestore profile doc for brand-new social/Google sign-ins that have no doc yet.
+  // Create a Firestore profile doc ONLY for brand-new social/Google sign-ins that have no doc yet.
+  // NEVER auto-create for password-provider users — those are provisioned through AdminPanel
+  // (auto-creating would overwrite their real profile if a transient read returns a false-negative).
   // The onSnapshot listener above will pick up the new doc and populate the UI automatically.
   useEffect(() => {
     const ensureUserDoc = async () => {
       if (!currentUser) return;
+      const providerId = currentUser.providerData?.[0]?.providerId;
+      if (providerId === 'password') return;
       try {
         const userRef = doc(db, "users", currentUser.uid);
-        const userSnap = await getDoc(userRef);
+        // Force a fresh server read — stale local state must never trigger a full-overwrite setDoc.
+        const userSnap = await getDocFromServer(userRef);
         if (!userSnap.exists()) {
           await setDoc(userRef, {
             email: currentUser.email,
