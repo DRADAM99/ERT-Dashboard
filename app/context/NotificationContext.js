@@ -9,6 +9,19 @@ import { toast } from '@/components/ui/use-toast';
 
 const NotificationContext = createContext();
 
+// Notification creators emit singular types ('task', 'resident', 'event'),
+// but the settings document is keyed by plural names ('tasks', 'residents', 'events').
+const TYPE_TO_SETTINGS_KEY = {
+  task: 'tasks',
+  resident: 'residents',
+  event: 'events',
+};
+const resolveSettingsKey = (type) => {
+  if (!type) return type;
+  const lower = type.toLowerCase();
+  return TYPE_TO_SETTINGS_KEY[lower] || lower;
+};
+
 export function useNotifications() {
   return useContext(NotificationContext);
 }
@@ -120,7 +133,8 @@ export function NotificationProvider({ children }) {
           snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
               const notificationData = change.doc.data();
-              const type = notificationData.type?.toLowerCase();
+              const rawType = notificationData.type?.toLowerCase();
+              const type = resolveSettingsKey(rawType);
               const subType = notificationData.subType?.toLowerCase();
 
               if (settings && settings[type] && settings[type][subType]) {
@@ -134,7 +148,7 @@ export function NotificationProvider({ children }) {
                   toast({
                     title: "התראה חדשה",
                     description: notificationData.message,
-                    variant: type === 'resident' ? "destructive" : "default",
+                    variant: rawType === 'resident' ? "destructive" : "default",
                   });
                 }
               }
@@ -195,7 +209,9 @@ export function NotificationProvider({ children }) {
       const unsubscribe = onMessage(messaging, (payload) => {
         console.log('Message received. ', payload);
         // Handle foreground message
-        const { type, subType } = payload.data;
+        const { type: rawType, subType: rawSubType } = payload.data || {};
+        const type = resolveSettingsKey(rawType);
+        const subType = rawSubType?.toLowerCase();
         if (settings && settings[type] && settings[type][subType] && settings[type][subType].sound) {
           playNotificationSound();
         }
