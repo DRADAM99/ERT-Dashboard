@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
 import { db } from '../../../firebase';
 import { collection, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { validateApiSecret } from '@/lib/api-auth';
 
 export async function POST(request) {
   try {
+    const authResult = validateApiSecret(request);
+    if (!authResult.ok) {
+      return NextResponse.json(authResult.body, { status: authResult.status });
+    }
+
     // Parse the request body
     const body = await request.json();
     
@@ -73,8 +79,13 @@ export async function POST(request) {
 }
 
 // Optional: GET endpoint to check the webhook is working
-export async function GET() {
+export async function GET(request) {
   try {
+    const authResult = validateApiSecret(request);
+    if (!authResult.ok) {
+      return NextResponse.json(authResult.body, { status: authResult.status });
+    }
+
     const residentsRef = collection(db, 'residents');
     const snapshot = await getDocs(residentsRef);
     const residents = snapshot.docs.map(doc => ({

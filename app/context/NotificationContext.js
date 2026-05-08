@@ -22,6 +22,17 @@ const resolveSettingsKey = (type) => {
   return TYPE_TO_SETTINGS_KEY[lower] || lower;
 };
 
+const isRecoverableFcmTokenError = (error) => {
+  const code = error?.code || "";
+  const message = error?.message || "";
+  return (
+    code === "messaging/token-subscribe-failed" ||
+    code === "messaging/permission-blocked" ||
+    message.includes("token-subscribe-failed") ||
+    message.includes("missing required authentication credential")
+  );
+};
+
 export function useNotifications() {
   return useContext(NotificationContext);
 }
@@ -86,11 +97,17 @@ export function NotificationProvider({ children }) {
     if (permission === 'granted') {
       const messaging = getMessaging(app);
       try {
+        const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
+        if (!vapidKey) {
+          console.warn('FCM VAPID key is missing (NEXT_PUBLIC_FIREBASE_VAPID_KEY). Skipping push token registration.');
+          return;
+        }
+
         // Explicitly get the service worker registration.
         const registration = await navigator.serviceWorker.ready;
         
         const currentToken = await getToken(messaging, { 
-          vapidKey: "BMe-3J-3_A8-9o-1o_p-2C-1E-1F-9o-1o_p-2C-1E-1F-9o-1o_p-2C-1E-1F-9o-1o",
+          vapidKey,
           serviceWorkerRegistration: registration // Pass the registration to getToken
         });
 
@@ -106,6 +123,10 @@ export function NotificationProvider({ children }) {
           console.log('No registration token available. Request permission to generate one.');
         }
       } catch (err) {
+        if (isRecoverableFcmTokenError(err)) {
+          console.warn('FCM token registration skipped:', err?.message || err);
+          return;
+        }
         console.error('An error occurred while retrieving token. ', err);
       }
     }

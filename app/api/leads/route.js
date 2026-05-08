@@ -2,6 +2,7 @@
 
 import { db } from "@/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { getApiAuthHeaders, validateApiSecret } from "@/lib/api-auth";
 
 // Helper function to create a response with CORS headers
 function createResponse(data, status = 200) {
@@ -11,7 +12,7 @@ function createResponse(data, status = 200) {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
+      'Access-Control-Allow-Headers': getApiAuthHeaders()
     }
   });
 }
@@ -23,9 +24,20 @@ export async function OPTIONS() {
 
 export async function POST(req) {
   try {
+    const authResult = validateApiSecret(req);
+    if (!authResult.ok) {
+      return createResponse(authResult.body, authResult.status);
+    }
+
+    const safeHeaders = {};
+    for (const [key, value] of req.headers.entries()) {
+      const lower = key.toLowerCase();
+      safeHeaders[key] = lower === "authorization" || lower === "x-api-key" ? "[REDACTED]" : value;
+    }
+
     // Log the raw request
     console.log("Received lead request:", {
-      headers: Object.fromEntries(req.headers),
+      headers: safeHeaders,
       url: req.url
     });
 
