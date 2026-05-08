@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, ChevronDown, Upload, ChevronLeft, ChevronRight, Flame } from "lucide-react";
+import { ChevronDown, ChevronLeft, Upload, Link, Edit2, ClipboardList } from "lucide-react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "@/components/ui/use-toast";
@@ -32,6 +32,19 @@ const statusColors = {
 const departmentOptions = [
   "לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"
 ];
+
+// Department color map
+const getDepartmentBadgeColor = (dept) => {
+  const colorMap = {
+    'לוגיסטיקה': 'bg-blue-100 text-blue-800',
+    'אוכלוסיה': 'bg-pink-100 text-pink-800',
+    'רפואה': 'bg-red-100 text-red-800',
+    'חוסן': 'bg-green-100 text-green-800',
+    'חמ"ל': 'bg-purple-100 text-purple-800',
+    'אחר': 'bg-gray-100 text-gray-800'
+  };
+  return colorMap[dept] || 'bg-gray-100 text-gray-800';
+};
 
 function formatDateTime(ts) {
   if (!ts) return "";
@@ -58,7 +71,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
   const [taskEvent, setTaskEvent] = useState(null);
   const [taskPriority, setTaskPriority] = useState("רגיל");
   const [taskDepartment, setTaskDepartment] = useState("");
-  const [taskStatus, setTaskStatus] = useState("פתוח");
+  const [taskStatus, setTaskStatus] = useState("מחכה");
   const [userFullName, setUserFullName] = useState("");
 
   // Add event form state
@@ -68,6 +81,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
     description: "",
     department: "",
     status: "מחכה",
+    link: "",
   });
 
 
@@ -158,18 +172,39 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
     console.log("Attempting to create event log with data:", eventData);
     
     try {
-      await addDoc(collection(db, "eventLogs"), eventData);
-      console.log("Event log created successfully");
+      const docRef = await addDoc(collection(db, "eventLogs"), eventData);
+      console.log("Event log created successfully with ID:", docRef.id);
 
-      // Notify users in the assigned department
-      await notifyUsersInDepartment(form.department, {
-        message: `אירוע חדש ביומן: ${form.description}`,
-        type: 'event',
-        subType: 'newEvent',
-        link: `/`
-      });
+      // Automatically create a task in Task Manager for the department if department is selected
+      if (form.department && form.department.trim()) {
+        if (typeof window !== 'undefined' && window.createTaskFromExternal) {
+          const taskData = {
+            title: form.description || '',
+            subtitle: form.link ? `קישור: ${form.link}` : '',
+            priority: 'רגיל',
+            category: form.department,
+            department: form.department,
+            status: 'מחכה',
+            dueDate: new Date(),
+            eventId: docRef.id,
+            eventStatus: form.status || 'מחכה',
+            link: form.link || "",
+          };
+          
+          console.log("Automatically creating task for event:", taskData);
+          await window.createTaskFromExternal(taskData);
+        }
 
-      setForm({ reporter: "", recipient: userFullName || alias || "", description: "", department: "", status: "מחכה" });
+        // Notify users in the assigned department
+        await notifyUsersInDepartment(form.department, {
+          message: `אירוע חדש ביומן: ${form.description}`,
+          type: 'event',
+          subType: 'newevent',
+          link: `/`
+        });
+      }
+
+      setForm({ reporter: "", recipient: userFullName || alias || "", description: "", department: "", status: "מחכה", link: "" });
       setShowAddEventModal(false);
     } catch (error) {
       console.error("Error creating event log:", error);
@@ -178,7 +213,6 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
         message: error.message,
         data: eventData
       });
-      // You might want to show an error message to the user here
     }
   };
 
@@ -273,12 +307,14 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
       // Notify users in the assigned department
       const eventDoc = await getDoc(eventRef);
       const eventData = eventDoc.data();
-      await notifyUsersInDepartment(eventData.department, {
-        message: `סטטוס אירוע התעדכן: ${eventData.description} - ${newStatus}`,
-        type: 'event',
-        subType: 'statusChange',
-        link: `/`
-      });
+      if (eventData.department && eventData.department.trim()) {
+        await notifyUsersInDepartment(eventData.department, {
+          message: `סטטוס אירוע התעדכן: ${eventData.description} - ${newStatus}`,
+          type: 'event',
+          subType: 'statuschange',
+          link: `/`
+        });
+      }
 
     } catch (error) {
       console.error('Error updating event status:', error);
@@ -296,7 +332,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
     setTaskEvent(event);
     setTaskPriority("רגיל");
     setTaskDepartment(event.department || "");
-    setTaskStatus("פתוח");
+    setTaskStatus("מחכה");
     setShowTaskModal(true);
   };
   const createTask = async () => {
@@ -366,12 +402,14 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
         await setDoc(taskRef, taskData);
 
         // Notify users in the assigned department
-        await notifyUsersInDepartment(taskDepartment, {
-          message: `משימה חדשה מאירוע: ${taskEvent.description || ''}`,
-          type: 'task',
-          subType: 'created',
-          link: `/`
-        });
+        if (taskDepartment && taskDepartment.trim()) {
+          await notifyUsersInDepartment(taskDepartment, {
+            message: `משימה חדשה מאירוע: ${taskEvent.description || ''}`,
+            type: 'task',
+            subType: 'created',
+            link: `/`
+          });
+        }
         
         toast({
           title: "Success",
@@ -381,7 +419,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
       
       setShowTaskModal(false);
       setTaskEvent(null);
-      setTaskStatus("פתוח");
+      setTaskStatus("מחכה");
     } catch (error) {
       console.error("Error creating task from event:", error);
       toast({
@@ -420,7 +458,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
             )}
           </div>
           <div className="flex w-full mt-2 mb-1">
-            <Button size="xs" onClick={() => setShowAddEventModal(true)} className="bg-blue-200 text-blue-900 hover:bg-blue-300 border-blue-200 w-full sm:w-auto">
+            <Button size="xs" onClick={() => setShowAddEventModal(true)} className="w-full sm:w-auto">
               + עדכון
             </Button>
           </div>
@@ -437,98 +475,172 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
           </Button>
         </div>
       </CardHeader>
-      <CardContent className={`p-0 ${!isFullView ? 'overflow-hidden' : 'overflow-x-auto'}`}>
-        <table className={`w-full text-sm border-collapse ${!isFullView ? 'table-auto' : 'table-fixed'}`}>
-          <thead className="sticky top-0 bg-gray-100 z-10">
-            <tr>
-              <th className="w-2"></th>
-              {isFullView ? (
-                <>
-                  <th className="px-2 py-2 text-right font-semibold w-32">תאריך</th>
-                  <th className="px-2 py-2 text-right font-semibold w-32">המדווח</th>
-                  <th className="px-2 py-2 text-right font-semibold w-32">מקבל הדיווח</th>
-                  <th className="px-2 py-2 text-right font-semibold">תיאור האירוע</th>
-                  <th className="px-2 py-2 text-right font-semibold w-32">מחלקה</th>
-                  <th className="px-2 py-2 text-right font-semibold w-24">סטטוס</th>
-                  <th className="px-2 py-2 text-right font-semibold w-32">מעדכן אחרון</th>
-                  <th className="px-2 py-2 text-right font-semibold w-24">פעולות</th>
-                </>
-              ) : (
-                <>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-20">תאריך</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-16">מדווח</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-16">מקבל</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-24">תיאור</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-16">מחלקה</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-16">סטטוס</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-16">מעדכן</th>
-                  <th className="px-1 py-2 text-right font-semibold text-xs w-12">פעולות</th>
-                </>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {displayEvents.map(event => (
-              <React.Fragment key={event.id}>
-                <tr className="border-b hover:bg-gray-50 group">
-                  <td className="px-1 align-top">
-                    <div className={`w-2 h-8 rounded ${statusColors[event.status] || 'bg-gray-300'}`}></div>
-                  </td>
-                  {editingId === event.id ? (
-                    <>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}>{formatDateTime(event.createdAt)}</td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}><Input value={editFields.reporter} onChange={e => setEditFields(f => ({ ...f, reporter: e.target.value }))} className="h-8 text-sm" /></td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}><Input value={editFields.recipient} onChange={e => setEditFields(f => ({ ...f, recipient: e.target.value }))} className="h-8 text-sm" /></td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}><Input value={editFields.description} onChange={e => setEditFields(f => ({ ...f, description: e.target.value }))} className="h-8 text-sm" /></td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}>
-                        <Select value={editFields.department} onValueChange={v => setEditFields(f => ({ ...f, department: v }))}>
-                          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="בחר..." /></SelectTrigger>
-                          <SelectContent>{departmentOptions.map(dep => <SelectItem key={dep} value={dep}>{dep}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}>
-                        <Select value={editFields.status} onValueChange={v => setEditFields(f => ({ ...f, status: v }))}>
-                          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="בחר..." /></SelectTrigger>
-                          <SelectContent>{["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}>{event.lastUpdater}</td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}>
-                        <Button size="sm" onClick={() => saveEdit(event)}>שמור</Button>
-                        <Button size="sm" variant="outline" onClick={cancelEdit}>ביטול</Button>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${isFullView ? 'whitespace-nowrap' : 'text-xs'}`}>{isFullView ? formatDateTime(event.createdAt) : formatDateTime(event.createdAt).split(' ')[1]}</td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate' : ''}`} title={event.reporter}>{event.reporter}</td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate' : ''}`} title={event.recipient}>{event.recipient}</td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs' : ''} truncate`} title={event.description}>{event.description}</td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs' : ''}`}>{event.department}</td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}>
-                        <Select value={event.status || "מחכה"} onValueChange={(newStatus) => handleEventStatusChange(event.id, newStatus)}>
-                          <SelectTrigger className={`${isFullView ? 'h-6 text-xs' : 'h-5 text-xs'} border-0 p-0 bg-transparent`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top ${!isFullView ? 'text-xs truncate' : ''}`} title={event.lastUpdater}>{event.lastUpdater}</td>
-                      <td className={`${isFullView ? 'px-2' : 'px-1'} py-2 align-top`}>
-                        <Button size="icon" variant="ghost" className={`${isFullView ? 'w-6 h-6' : 'w-4 h-4'} text-gray-500 hover:text-blue-600`} title="ערוך" onClick={() => startEdit(event)}><span role="img" aria-label="Edit">✎</span></Button>
-                        <Button size="icon" variant="ghost" className={`${isFullView ? 'w-6 h-6' : 'w-4 h-4'} text-blue-600 hover:text-blue-700`} title="הרחב" onClick={() => setExpandedId(expandedId === event.id ? null : event.id)}><span role="img" aria-label="Expand">{expandedId === event.id ? '🔽' : '▶️'}</span></Button>
-                      </td>
-                    </>
-                  )}
-                </tr>
-                {expandedId === event.id && (
-                  <tr className="border-b bg-blue-50">
-                    <td colSpan={9} className="p-4">
-                      <div className="mb-2 font-semibold text-sm">היסטוריית עדכונים:</div>
+      <CardContent className="p-0">
+        <div className="overflow-y-auto max-h-[70vh] p-2 bg-gray-50 space-y-3">
+          {displayEvents.map(event => {
+            const isExpanded = expandedId === event.id;
+            const isEditing = editingId === event.id;
+            const linkedTasks = allTasks.filter(t => t.eventId === event.id);
+            const pendingCount = linkedTasks.filter(t => !t.done && (t.status === 'מחכה' || !t.status)).length;
+            const inProgressCount = linkedTasks.filter(t => !t.done && t.status === 'בטיפול').length;
+            const doneCount = linkedTasks.filter(t => t.done || t.status === 'טופל').length;
+            const hasLinkedTasks = linkedTasks.length > 0;
+
+            return (
+              <div key={event.id} className="rounded-lg border bg-white shadow-md overflow-hidden">
+                {/* Card body */}
+                <div className="p-3">
+                  <div className="flex items-start gap-3">
+                    {/* Left: chevron + status bar + task dots */}
+                    <div className="relative flex flex-col items-center gap-1.5 pt-0.5 flex-shrink-0">
+                      <button
+                        onClick={() => setExpandedId(isExpanded ? null : event.id)}
+                        className="hover:bg-gray-100 rounded p-0.5 -mt-0.5"
+                        aria-label={isExpanded ? 'סגור פרטים' : 'פתח פרטים'}
+                      >
+                        {isExpanded
+                          ? <ChevronDown className="h-4 w-4 text-gray-500" />
+                          : <ChevronLeft className="h-4 w-4 text-gray-500" />}
+                      </button>
+                      <span
+                        className={`inline-block w-2.5 h-9 rounded-full shadow-sm ${statusColors[event.status] || 'bg-gray-300'}`}
+                        title={`סטטוס: ${event.status || 'ללא'}`}
+                      />
+                      {hasLinkedTasks && (
+                        <div className="flex flex-col gap-1 mt-1">
+                          {pendingCount > 0 && <div className="w-2 h-2 rounded-full bg-red-500 shadow-sm" title={`${pendingCount} משימות מחכות`} />}
+                          {inProgressCount > 0 && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-sm" title={`${inProgressCount} משימות בטיפול`} />}
+                          {doneCount > 0 && <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm" title={`${doneCount} משימות טופלו`} />}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right: content */}
+                    <div className="flex-1 min-w-0">
+                      {isEditing ? (
+                        /* ── Inline edit mode ── */
+                        <div className="space-y-2">
+                          <Input
+                            value={editFields.description}
+                            onChange={e => setEditFields(f => ({ ...f, description: e.target.value }))}
+                            className="text-sm h-8"
+                            placeholder="תיאור האירוע"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              value={editFields.reporter}
+                              onChange={e => setEditFields(f => ({ ...f, reporter: e.target.value }))}
+                              className="text-sm h-8"
+                              placeholder="המדווח"
+                            />
+                            <Input
+                              value={editFields.recipient}
+                              onChange={e => setEditFields(f => ({ ...f, recipient: e.target.value }))}
+                              className="text-sm h-8"
+                              placeholder="מקבל הדיווח"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Select value={editFields.department} onValueChange={v => setEditFields(f => ({ ...f, department: v }))}>
+                              <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="מחלקה" /></SelectTrigger>
+                              <SelectContent>{departmentOptions.map(dep => <SelectItem key={dep} value={dep}>{dep}</SelectItem>)}</SelectContent>
+                            </Select>
+                            <Select value={editFields.status} onValueChange={v => setEditFields(f => ({ ...f, status: v }))}>
+                              <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="סטטוס" /></SelectTrigger>
+                              <SelectContent>{["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex gap-2 justify-end pt-1">
+                            <Button size="sm" onClick={() => saveEdit(event)}>שמור</Button>
+                            <Button size="sm" variant="outline" onClick={cancelEdit}>ביטול</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* ── Normal view mode ── */
+                        <>
+                          {/* Title row: description */}
+                          <div className="min-w-0">
+                            <div className={`font-semibold text-gray-900 ${isFullView ? '' : 'truncate'}`} title={event.description}>
+                              {event.description || <span className="text-gray-400 italic">ללא תיאור</span>}
+                            </div>
+                            {event.link && (
+                              <a
+                                href={event.link.startsWith('http') ? event.link : `https://${event.link}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-500 hover:underline flex items-center gap-1 mt-0.5 text-[10px]"
+                              >
+                                <Link size={10} /> קישור חיצוני
+                              </a>
+                            )}
+                          </div>
+
+                          {/* Reporter → Recipient */}
+                          <div className="text-xs text-gray-600 mt-1 truncate">
+                            <span className="font-semibold">מדווח:</span> {event.reporter || '—'}
+                            {' '}<span className="text-gray-400">→</span>{' '}
+                            <span className="font-semibold">מקבל:</span> {event.recipient || '—'}
+                          </div>
+
+                          {/* Date + dept badge */}
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <span className="text-xs text-gray-500">
+                              {isFullView ? formatDateTime(event.createdAt) : formatDateTime(event.createdAt).split(' ')[0]}
+                            </span>
+                            {event.department && (
+                              <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${getDepartmentBadgeColor(event.department)}`}>
+                                {event.department}
+                              </span>
+                            )}
+                            {isFullView && event.lastUpdater && (
+                              <span className="text-[11px] text-gray-400 truncate">
+                                <span className="font-semibold">עודכן ע״י:</span> {event.lastUpdater}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Task count tags */}
+                          {hasLinkedTasks && (pendingCount > 0 || inProgressCount > 0) && (
+                            <div className="flex gap-1 mt-1.5 flex-wrap">
+                              {pendingCount > 0 && (
+                                <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
+                                  {pendingCount} מחכות
+                                </span>
+                              )}
+                              {inProgressCount > 0 && (
+                                <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
+                                  {inProgressCount} בטיפול
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Edit button */}
+                          <div className="mt-3">
+                            <button
+                              onClick={e => { e.stopPropagation(); startEdit(event); }}
+                              className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200"
+                              title="ערוך אירוע"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded panel */}
+                {isExpanded && !isEditing && (
+                  <div className="border-t bg-gray-50 p-3 space-y-4">
+                    {/* History */}
+                    <div>
+                      <div className="font-semibold text-sm mb-2">היסטוריית עדכונים:</div>
                       <ul className="space-y-1.5 max-h-40 overflow-y-auto border rounded p-2 bg-white">
-                        {(event.history || []).length === 0 && <li className="text-xs text-gray-500 text-center py-2">אין עדכונים.</li>}
+                        {(event.history || []).length === 0 && (
+                          <li className="text-xs text-gray-500 text-center py-2">אין עדכונים.</li>
+                        )}
                         {(event.history || []).map((c, idx) => (
                           <li key={idx} className="text-xs bg-gray-50 p-1.5 border rounded">
                             <div className="font-semibold text-gray-700">{formatDateTime(c.timestamp)}</div>
@@ -536,49 +648,67 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
                           </li>
                         ))}
                       </ul>
-                      <div className="flex gap-2 mt-3">
-                        <Textarea className="text-sm" rows={2} value={addUpdateText} onChange={e => setAddUpdateText(e.target.value)} placeholder="כתוב עדכון..." />
+                      <div className="flex gap-2 mt-2">
+                        <Textarea
+                          className="text-sm"
+                          rows={2}
+                          value={addUpdateText}
+                          onChange={e => setAddUpdateText(e.target.value)}
+                          placeholder="כתוב עדכון..."
+                        />
                         <Button size="sm" onClick={() => addUpdate(event)}>הוסף עדכון</Button>
                       </div>
-                      {/* Linked tasks for this event */}
-                      <div className="mt-6">
-                        <div className="font-semibold text-sm mb-2">משימות מקושרות לאירוע זה:</div>
-                        <ul className="space-y-2">
-                          {allTasks.filter(t => t.eventId === event.id).length === 0 && (
-                            <li className="text-xs text-gray-500">אין משימות מקושרות.</li>
-                          )}
-                          {allTasks.filter(t => t.eventId === event.id).map(task => (
-                            <li key={task.id} className="flex items-center gap-2 border rounded p-2 bg-white">
-                              <div className={`w-2 h-6 rounded ${statusColors[task.status] || 'bg-gray-300'}`}></div>
-                              <div className="flex-grow">
-                                <div className="font-bold text-sm">{task.title}</div>
-                                <div className="text-xs text-gray-600">{task.priority} | {task.category} | {task.status}</div>
+                    </div>
+
+                    {/* Linked tasks */}
+                    <div>
+                      <div className="font-semibold text-sm mb-2">משימות מקושרות לאירוע זה:</div>
+                      <ul className="space-y-2">
+                        {linkedTasks.length === 0 && (
+                          <li className="text-xs text-gray-500">אין משימות מקושרות.</li>
+                        )}
+                        {linkedTasks.map(task => (
+                          <li key={task.id} className="flex items-center gap-2 border rounded p-2 bg-white">
+                            <div className={`w-2 h-6 rounded flex-shrink-0 ${statusColors[task.status] || 'bg-gray-300'}`} />
+                            <div className="flex-grow min-w-0">
+                              <div className="font-bold text-sm truncate">{task.title}</div>
+                              <div className="text-xs text-gray-600">
+                                <span className="font-semibold">עדיפות:</span> {task.priority}
+                                {' · '}
+                                <span className="font-semibold">מחלקה:</span> {task.category}
+                                {' · '}
+                                <span className="font-semibold">סטטוס:</span> {task.status}
                               </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div className="flex gap-2 mt-4 justify-end">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium">סטטוס אירוע:</span>
-                          <Select value={event.status || "מחכה"} onValueChange={(newStatus) => handleEventStatusChange(event.id, newStatus)}>
-                            <SelectTrigger className="h-6 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <Button size="sm" variant="outline" onClick={() => openTaskModal(event)}>שלח משימה</Button>
-                      </div>
-                    </td>
-                  </tr>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Footer: status + task button — right side (RTL start) */}
+                    <div className="flex items-center justify-start pt-1 border-t gap-2">
+                      <span className="text-xs font-semibold">סטטוס אירוע:</span>
+                      <Select value={event.status || "מחכה"} onValueChange={(newStatus) => handleEventStatusChange(event.id, newStatus)}>
+                        <SelectTrigger className={`h-6 text-xs font-semibold ${
+                          event.status === 'מחכה' ? 'bg-red-500/50 border-red-400' :
+                          event.status === 'בטיפול' ? 'bg-orange-500/50 border-orange-400' :
+                          event.status === 'טופל' ? 'bg-green-500/50 border-green-400' :
+                          'bg-gray-200/50'
+                        }`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Button size="sm" onClick={() => openTaskModal(event)}>שלח משימה</Button>
+                    </div>
+                  </div>
                 )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
+              </div>
+            );
+          })}
+        </div>
         {/* Add Event Modal */}
         {showAddEventModal && (
           <Dialog open={showAddEventModal} onOpenChange={setShowAddEventModal}>
@@ -590,6 +720,15 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
                 <Input placeholder="המדווח" value={form.reporter} onChange={e => setForm(f => ({ ...f, reporter: e.target.value }))} className="text-right" />
                 <Input placeholder="מקבל הדיווח" value={form.recipient} onChange={e => setForm(f => ({ ...f, recipient: e.target.value }))} className="text-right" />
                 <Textarea placeholder="תיאור האירוע" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="text-right" />
+                <div className="relative">
+                  <Input 
+                    placeholder="קישור (אופציונלי)" 
+                    value={form.link} 
+                    onChange={e => setForm(f => ({ ...f, link: e.target.value }))} 
+                    className="text-right pr-10" 
+                  />
+                  <Link className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                </div>
                 <Select value={form.department} onValueChange={val => setForm(f => ({ ...f, department: val }))}>
                   <SelectTrigger className="text-right"><SelectValue placeholder="בחר מחלקה" /></SelectTrigger>
                   <SelectContent>
@@ -604,7 +743,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
                 </Select>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setShowAddEventModal(false)} className="ml-2">ביטול</Button>
-                  <Button type="submit" className="bg-blue-600 text-white hover:bg-blue-700">הוסף אירוע</Button>
+                  <Button type="submit">הוסף אירוע</Button>
                 </div>
               </form>
             </DialogContent>
@@ -634,7 +773,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
               <Label className="block mb-1">סטטוס</Label>
                               <Select value={taskStatus} onValueChange={setTaskStatus}>
                   <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="בחר..." /></SelectTrigger>
-                  <SelectContent>{["פתוח", "בטיפול", "הושלם"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                  <SelectContent>{["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                 </Select>
             </div>
             <div className="mb-2">

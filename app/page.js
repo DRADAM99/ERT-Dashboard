@@ -1,4 +1,4 @@
-// Version 7.5 - added notification system and modified Task Manager
+// Version 8.0 - sync tasks and residents status, notifications 
 "use client";
 
 // Utility functions for layout persistence
@@ -34,12 +34,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, RotateCcw, Bell, ChevronDown, Pencil, MessageCircle, Check, X, ChevronLeft, UserPlus } from 'lucide-react';
+import { Search, RotateCcw, Bell, ChevronDown, Pencil, MessageCircle, Check, X, ChevronLeft, UserPlus, Menu, Link2, Settings } from 'lucide-react';
 import NotesAndLinks from "@/components/NotesAndLinks";
+import AdminLogsPanel from "@/components/AdminLogsPanel";
+import AdminPanel from "@/components/AdminPanel";
 import {
   collection,
   getDocs,
   getDoc,
+  getDocFromServer,
   addDoc,
   updateDoc,
   onSnapshot,
@@ -223,6 +226,11 @@ moment.tz.setDefault("Asia/Jerusalem");
 const localizer = momentLocalizer(moment);
 const messages = { allDay: "כל היום", previous: "הקודם", next: "הבא", today: "היום", month: "חודש", week: "שבוע", day: "יום", agenda: "סדר יום", date: "תאריך", time: "זמן", event: "אירוע", noEventsInRange: "אין אירועים בטווח זה", showMore: (total) => `+ ${total} נוספים`, };
 
+const LIVE_GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwNuUYL_Acq82G5Pb7lho-XzFIAOExn5ak6JqsQIwYUHOzErHmPO5lo4UcCinCzRqWkRA/exec";
+const EMERGENCY_SETTINGS_DOC = { collection: "systemSettings", id: "emergencyMode" };
+const isValidGoogleScriptExecUrl = (url) =>
+  /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(url.trim());
+
 
 // Updated lead statuses and colors (order matters)
 const leadStatusConfig = { "אנחנו זקוקים לסיוע": { color: "bg-red-500", priority: 1 }, "אין מידע על כל בני הבית": { color: "bg-orange-500", priority: 2 }, "לא כולם בבית, כולם בסדר": { color: "bg-orange-200", priority: 3 }, "כולם בבית וכולם בסדר": { color: "bg-green-500", priority: 4 }, "אין מידע על כל בני הבית": { color: "bg-yellow-500", priority: 5 }, };
@@ -245,8 +253,9 @@ const taskPriorities = ["דחוף", "רגיל", "נמוך"];
 
 
 
+const defaultTaskCategories = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"];
+
 export default function Dashboard() {
-  const defaultTaskCategories = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"];
   const [taskCategories, setTaskCategories] = useState(defaultTaskCategories);
   const { currentUser } = useAuth();
   const { toast } = useToast();
@@ -274,6 +283,33 @@ export default function Dashboard() {
   // Green Eyes functionality
   const [showGreenEyesDialog, setShowGreenEyesDialog] = useState(false);
   const [showEventStatus, setShowEventStatus] = useState(false);
+  const [isDrillMode, setIsDrillMode] = useState(false);
+  const [emergencyMode, setEmergencyMode] = useState("exercise");
+  const [exerciseGreenEyesUrl, setExerciseGreenEyesUrl] = useState("");
+  const [isEmergencyConfigLoaded, setIsEmergencyConfigLoaded] = useState(false);
+  const [isSavingEmergencyConfig, setIsSavingEmergencyConfig] = useState(false);
+  const [showEmergencyConfigDialog, setShowEmergencyConfigDialog] = useState(false);
+  const [emergencyConfigUpdatedBy, setEmergencyConfigUpdatedBy] = useState("");
+  const [emergencyConfigUpdatedAt, setEmergencyConfigUpdatedAt] = useState(null);
+  const isAdminUser = currentUser?.role === "admin" || role === "admin";
+  const [showAdminLogs, setShowAdminLogs] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const emergencyModeLabel = emergencyMode === "live" ? "חי" : "תרגיל";
+  const hasExerciseGreenEyesUrl = exerciseGreenEyesUrl.trim().length > 0;
+  const isEmergencyActionsDisabled =
+    !isEmergencyConfigLoaded ||
+    isSavingEmergencyConfig ||
+    (emergencyMode === "exercise" && !hasExerciseGreenEyesUrl);
+  const getEmergencyScriptUrl = useCallback(() => {
+    if (emergencyMode === "live") return LIVE_GOOGLE_APPS_SCRIPT_URL;
+    return exerciseGreenEyesUrl.trim();
+  }, [emergencyMode, exerciseGreenEyesUrl]);
+  const formattedEmergencyConfigUpdatedAt = useMemo(() => {
+    if (!emergencyConfigUpdatedAt) return "לא זמין";
+    const asDate = emergencyConfigUpdatedAt?.toDate?.() || new Date(emergencyConfigUpdatedAt);
+    if (Number.isNaN(asDate.getTime())) return "לא זמין";
+    return asDate.toLocaleString("he-IL");
+  }, [emergencyConfigUpdatedAt]);
 // Add this handler for category drag end
 const handleCategoryDragEnd = (event) => {
   const { active, over } = event;
@@ -322,6 +358,133 @@ const handleClick2Call = async (phoneNumber) => {
   }
 };
 
+  useEffect(() => {
+    if (!currentUser) {
+      setIsEmergencyConfigLoaded(false);
+      setEmergencyMode("exercise");
+      setExerciseGreenEyesUrl("");
+      setEmergencyConfigUpdatedBy("");
+      setEmergencyConfigUpdatedAt(null);
+      return;
+    }
+
+    const configRef = doc(db, EMERGENCY_SETTINGS_DOC.collection, EMERGENCY_SETTINGS_DOC.id);
+    const unsubscribe = onSnapshot(
+      configRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          const mode = data?.mode === "live" ? "live" : "exercise";
+          setEmergencyMode(mode);
+          setIsDrillMode(mode !== "live");
+          setExerciseGreenEyesUrl(typeof data?.exerciseGreenEyesUrl === "string" ? data.exerciseGreenEyesUrl : "");
+          setEmergencyConfigUpdatedBy(typeof data?.updatedBy === "string" ? data.updatedBy : "");
+          setEmergencyConfigUpdatedAt(data?.updatedAt || null);
+        } else {
+          setEmergencyMode("exercise");
+          setIsDrillMode(true);
+          setExerciseGreenEyesUrl("");
+          setEmergencyConfigUpdatedBy("");
+          setEmergencyConfigUpdatedAt(null);
+        }
+        setIsEmergencyConfigLoaded(true);
+      },
+      (error) => {
+        console.error("Error loading emergency settings:", error);
+        setEmergencyMode("exercise");
+        setIsDrillMode(true);
+        setExerciseGreenEyesUrl("");
+        setEmergencyConfigUpdatedBy("");
+        setEmergencyConfigUpdatedAt(null);
+        setIsEmergencyConfigLoaded(true);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  const updateEmergencyMode = async (nextMode) => {
+    if (!isAdminUser) return;
+    setIsSavingEmergencyConfig(true);
+    setIsDrillMode(nextMode === "exercise");
+    try {
+      const configRef = doc(db, EMERGENCY_SETTINGS_DOC.collection, EMERGENCY_SETTINGS_DOC.id);
+      await setDoc(
+        configRef,
+        {
+          mode: nextMode,
+          updatedBy: alias || currentUser?.email || "System",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      toast({
+        title: "מצב חירום עודכן",
+        description: `המערכת עברה למצב ${nextMode === "live" ? "חי" : "תרגיל"}`,
+      });
+    } catch (error) {
+      console.error("Error updating emergency mode:", error);
+      toast({
+        title: "שגיאה בעדכון מצב",
+        description: error.message || "לא ניתן לעדכן מצב חירום",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingEmergencyConfig(false);
+    }
+  };
+
+  const saveExerciseGreenEyesUrl = async () => {
+    if (!isAdminUser) return;
+    const trimmedUrl = exerciseGreenEyesUrl.trim();
+
+    if (!trimmedUrl) {
+      toast({
+        title: "נדרש קישור תרגיל",
+        description: "יש להזין קישור Google Apps Script עבור תרגיל",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isValidGoogleScriptExecUrl(trimmedUrl)) {
+      toast({
+        title: "קישור לא תקין",
+        description: "יש להזין קישור מלא שמסתיים ב-exec",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingEmergencyConfig(true);
+    try {
+      const configRef = doc(db, EMERGENCY_SETTINGS_DOC.collection, EMERGENCY_SETTINGS_DOC.id);
+      await setDoc(
+        configRef,
+        {
+          exerciseGreenEyesUrl: trimmedUrl,
+          updatedBy: alias || currentUser?.email || "System",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setShowEmergencyConfigDialog(false);
+      toast({
+        title: "קישור תרגיל נשמר",
+        description: "קישור ירוק בעיניים לתרגיל עודכן בהצלחה",
+      });
+    } catch (error) {
+      console.error("Error saving exercise green eyes URL:", error);
+      toast({
+        title: "שגיאה בשמירת קישור",
+        description: error.message || "לא ניתן לשמור את קישור התרגיל",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingEmergencyConfig(false);
+    }
+  };
+
   // --- Add Kanban collapse/expand handler ---
   const handleToggleKanbanCollapse = async (category) => {
     setKanbanCollapsed((prev) => {
@@ -334,13 +497,28 @@ const handleClick2Call = async (phoneNumber) => {
       return updated;
     });
   };
-// Fetch and listen for user's Kanban category order from Firestore
+// Write lastSeen on mount and keep it fresh every 5 minutes while the tab is open
+useEffect(() => {
+  if (!currentUser) return;
+  const userRef = doc(db, 'users', currentUser.uid);
+  const ping = () => updateDoc(userRef, { lastSeen: serverTimestamp() }).catch(() => {});
+  ping();
+  const interval = setInterval(ping, 5 * 60 * 1000);
+  return () => clearInterval(interval);
+}, [currentUser]);
+
+// Single real-time listener for the current user's Firestore document.
+// Keeps alias, role, department, and kanban order in sync automatically,
+// so heartbeat writes (lastSeen) or any other update never cause stale UI.
 useEffect(() => {
   if (!currentUser) return;
   const userRef = doc(db, 'users', currentUser.uid);
   const unsubscribe = onSnapshot(userRef, (snap) => {
     if (snap.exists()) {
       const data = snap.data();
+      setAlias(data.alias || data.email || currentUser.email);
+      setRole(data.role || "staff");
+      setDepartment(data.department?.trim() || "אחר");
       if (Array.isArray(data.kanbanCategoryOrder) && data.kanbanCategoryOrder.length > 0) {
         setTaskCategories(data.kanbanCategoryOrder.map(c => c.trim()));
       } else {
@@ -652,6 +830,17 @@ const handleFollowUpClick = async (lead) => {
   };
 
   const handleEndEmergencyEvent = async () => {
+    if (isEmergencyActionsDisabled) {
+      toast({
+        title: "הפעולה חסומה",
+        description: emergencyMode === "exercise"
+          ? "יש להזין קישור תרגיל לפני הפעלת פעולות חירום"
+          : "הגדרות מצב החירום עדיין נטענות",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       console.log("🏁 Ending emergency event...");
       
@@ -701,9 +890,9 @@ const handleFollowUpClick = async (lead) => {
           }
           
           // Call Google Apps Script to clear all resident statuses and residents
-          const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzn4sgqomgZu0DQxd32u4aosx5yoFNdhvBIWKjrrxB9k3DzADJnVuh5DpSlglZDo9fF/exec"; // Your actual Google Apps Script URL
+          const GOOGLE_APPS_SCRIPT_URL = getEmergencyScriptUrl();
           
-          console.log("🔄 Calling Google Apps Script webhook:", GOOGLE_APPS_SCRIPT_URL);
+          console.log(`🔄 Calling Google Apps Script webhook [${emergencyModeLabel}]:`, GOOGLE_APPS_SCRIPT_URL);
           
           let clearResponse;
           try {
@@ -775,17 +964,31 @@ const handleFollowUpClick = async (lead) => {
     }
   };
 
-  // Green Eyes Activation Function
+  // Green Eyes Activation Function (v7.0 — Firebase-centered, dual mode)
   const handleGreenEyesActivation = async () => {
+    if (isEmergencyActionsDisabled) {
+      toast({
+        title: "הפעולה חסומה",
+        description: emergencyMode === "exercise"
+          ? "יש להזין קישור תרגיל לפני הפעלת נוהל ירוק בעיניים"
+          : "הגדרות מצב החירום עדיין נטענות",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setShowGreenEyesDialog(false);
+    const mode = isDrillMode ? "drill" : "live";
     try {
-      console.log("🚨 Activating Green Eyes emergency procedure...");
+      console.log(`🚨 Activating Green Eyes — mode: ${mode}`);
       
       // Create emergency event log entry
       await addDoc(collection(db, "eventLogs"), {
         reporter: alias || currentUser?.email || "System",
         recipient: "חמ\"ל",
-        description: "הפעלת נוהל ירוק בעיניים - אירוע חירום",
+        description: isDrillMode
+          ? "הפעלת תרגיל ירוק בעיניים"
+          : "הפעלת נוהל ירוק בעיניים - אירוע חירום",
         department: "חמ\"ל",
         status: "מחכה",
         createdAt: serverTimestamp(),
@@ -793,42 +996,34 @@ const handleFollowUpClick = async (lead) => {
         lastUpdater: alias || currentUser?.email || "System",
         history: [{
           timestamp: new Date().toISOString(),
-          text: "נוהל ירוק בעיניים הופעל",
+          text: isDrillMode ? "תרגיל ירוק בעיניים הופעל" : "נוהל ירוק בעיניים הופעל",
           userAlias: alias || currentUser?.email || "System"
         }],
         emergencyType: "green_eyes",
+        emergencyMode: mode,
         emergencyEventId: emergencyEventId
       });
 
-      // Call Google Apps Script to trigger ירוק בעיניים
-      const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzn4sgqomgZu0DQxd32u4aosx5yoFNdhvBIWKjrrxB9k3DzADJnVuh5DpSlglZDo9fF/exec";
+      // Write to Firestore emergencyEvents — triggers Cloud Function
+      const eventId = `ge_${mode}_${Date.now()}`;
+      console.log(`🔄 Writing emergency event to Firestore: ${eventId}`);
       
-      console.log("🔄 Calling Google Apps Script for ירוק בעיניים:", GOOGLE_APPS_SCRIPT_URL);
-      
-      try {
-        const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: 'triggerGreenInEyes=1',
-          mode: 'no-cors'
-        });
-        
-        console.log("📥 ירוק בעיניים response status:", response.status);
-      } catch (scriptError) {
-        console.error("❌ Error calling Google Apps Script:", scriptError);
-        toast({
-          title: "שגיאה בקריאה לסקריפט",
-          description: "לא ניתן להפעיל את נוהל ירוק בעיניים",
-          variant: "destructive"
-        });
-      }
+      await setDoc(doc(db, "emergencyEvents", eventId), {
+        type: "green_eyes",
+        mode: mode,
+        triggeredBy: alias || currentUser?.email || "System",
+        triggeredAt: serverTimestamp(),
+        status: "pending",
+        emergencyEventId: emergencyEventId
+      });
 
-      // Send notification to all users (optional)
+      console.log(`✅ Emergency event created: ${eventId}`);
+
       toast({
-        title: "נוהל ירוק בעיניים הופעל",
-        description: "אירוע חירום נרשם במערכת",
+        title: isDrillMode ? "תרגיל ירוק בעיניים הופעל" : "נוהל ירוק בעיניים הופעל",
+        description: isDrillMode
+          ? "תרגיל נרשם במערכת — הודעות תרגיל יישלחו"
+          : "אירוע חירום נרשם במערכת — הודעות חירום יישלחו",
       });
 
     } catch (error) {
@@ -888,16 +1083,6 @@ const fetchUsers = async () => {
     if (holdDelayTimeout.current) clearTimeout(holdDelayTimeout.current);
     if (holdAnimationRef.current) cancelAnimationFrame(holdAnimationRef.current);
   };
-//Add user button 
-const [showAddUserModal, setShowAddUserModal] = useState(false);
-
-// User creation form state
-const [newUserFullName, setNewUserFullName] = useState("");
-const [newUserEmail, setNewUserEmail] = useState("");
-const [newUserPassword, setNewUserPassword] = useState("");
-const [newUserDepartment, setNewUserDepartment] = useState("");
-const [newUserRole, setNewUserRole] = useState("staff");
-const [isCreatingUser, setIsCreatingUser] = useState(false);
 
 const [holdLeadId, setHoldLeadId] = useState(null);
 const [holdProgress, setHoldProgress] = useState(0);
@@ -957,52 +1142,52 @@ const updateKanbanCategoryOrder = async (newOrder) => {
     setLoading(false);
   }, [loading, currentUser, router]);
 
-  // Fetch user's alias and ensure department assignment
+  // Create a Firestore profile doc ONLY for brand-new social/Google sign-ins that have no doc yet.
+  // NEVER auto-create for password-provider users — those are provisioned through AdminPanel
+  // (auto-creating would overwrite their real profile if a transient read returns a false-negative).
+  // The onSnapshot listener above will pick up the new doc and populate the UI automatically.
   useEffect(() => {
-    const fetchUserData = async () => {
+    const ensureUserDoc = async () => {
       if (!currentUser) return;
-      
+      const providerId = currentUser.providerData?.[0]?.providerId;
+      if (providerId === 'password') return;
       try {
         const userRef = doc(db, "users", currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const data = userSnap.data();
-          setAlias(data.alias || currentUser.email || "");
-          setRole(data.role || "staff");
-          
-          // Check if user has department assigned and trim it
-          if (data.department && taskCategories.includes(data.department.trim())) {
-            setDepartment(data.department.trim());
-          } else {
-            // If no department or invalid department, assign default
-            console.warn(`User ${currentUser.email} has no department or invalid department: ${data.department}`);
-            setDepartment("אחר"); // Default department
-          }
-        } else {
-          // Create new user with default Department
-          console.log("Creating new user with default department");
+        // Force a fresh server read — stale local state must never trigger a full-overwrite setDoc.
+        const userSnap = await getDocFromServer(userRef);
+        if (!userSnap.exists()) {
           await setDoc(userRef, {
             email: currentUser.email,
             alias: currentUser.email,
             role: "staff",
-            department: "אחר", // Default department
-            createdAt: serverTimestamp()
+            department: "אחר",
+            createdAt: serverTimestamp(),
           });
-          setAlias(currentUser.email);
-          setRole("staff");
-          setDepartment("אחר");
         }
       } catch (error) {
-        console.error("Error fetching user data:", error);
-        // Set default values on error
-        setAlias(currentUser.email);
-        setRole("staff");
-        setDepartment("אחר");
+        console.error("Error ensuring user doc:", error);
       }
     };
+    ensureUserDoc();
+  }, [currentUser]);
 
-    fetchUserData();
-  }, [currentUser, taskCategories]);
+  // Load departments from Firestore (falls back to default list)
+  useEffect(() => {
+    const loadDepartments = async () => {
+      try {
+        const snap = await getDoc(doc(db, "systemSettings", "taskCategories"));
+        if (snap.exists()) {
+          const cats = snap.data().categories;
+          if (Array.isArray(cats) && cats.length > 0) {
+            setTaskCategories(cats);
+          }
+        }
+      } catch {
+        // Keep default categories on error
+      }
+    };
+    loadDepartments();
+  }, []);
 
   
   /** Task Listener with improved visibility logic */
@@ -1064,20 +1249,6 @@ const updateKanbanCategoryOrder = async (newOrder) => {
     return () => unsubscribe();
   }, [currentUser, users, alias, department]);
 
-/** 🔁 Fetch logged-in user's alias */
-useEffect(() => {
-  if (currentUser) {
-    const fetchAlias = async () => {
-      const userRef = doc(db, "users", currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        setAlias(data.alias || data.email);
-      }
-    };
-    fetchAlias();
-  }
-}, [currentUser]);
 
 
   // ✅ 1. Listen to auth state changes - REMOVED duplicate listener since we use AuthContext
@@ -1142,94 +1313,6 @@ useEffect(() => {
     }
   };
 
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
-    if (!newUserEmail || !newUserPassword || !newUserFullName || !newUserDepartment) {
-      toast({
-        title: "שגיאה",
-        description: "יש למלא את כל השדות הנדרשים",
-        variant: "destructive",
-      });
-      return;
-    }
-    setIsCreatingUser(true);
-    try {
-      // Store current admin credentials
-      const adminEmail = currentUser.email;
-      let adminPassword = window.sessionStorage.getItem('adminPassword');
-      if (!adminPassword) {
-        adminPassword = prompt('הזן את סיסמת הניהול שלך כדי להמשיך ביצירת משתמש חדש:');
-        if (!adminPassword) throw new Error('Admin password required');
-        window.sessionStorage.setItem('adminPassword', adminPassword);
-      }
-      const { createUserWithEmailAndPassword, signInWithEmailAndPassword } = await import("firebase/auth");
-      // Create user (this will sign in as the new user)
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        newUserEmail,
-        newUserPassword
-      );
-      const newUser = userCredential.user;
-      await setDoc(doc(db, "users", newUser.uid), {
-        email: newUserEmail,
-        alias: newUserFullName,
-        fullName: newUserFullName,
-        department: newUserDepartment.trim(),
-        role: newUserRole,
-        createdAt: serverTimestamp(),
-        createdBy: currentUser.uid,
-      });
-
-      // Auto-sync user to emergency locator
-      try {
-        const { autoSyncUserToEmergencyLocator } = await import("../lib/auto-sync-emergency-locator");
-        await autoSyncUserToEmergencyLocator(newUser.uid, {
-          email: newUserEmail,
-          name: newUserFullName,
-          role: newUserRole,
-          alias: newUserFullName
-        });
-        console.log(`✅ Auto-synced new user to emergency locator: ${newUserEmail}`);
-      } catch (error) {
-        console.error(`❌ Failed to auto-sync user to emergency locator: ${newUserEmail}`, error);
-        // Don't fail the user creation if emergency locator sync fails
-      }
-      toast({
-        title: "משתמש נוצר בהצלחה",
-        description: `המשתמש ${newUserFullName} נוצר בהצלחה במחלקת ${newUserDepartment}`,
-      });
-      // Immediately sign back in as the admin
-      await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
-      // Reset form
-      setNewUserFullName("");
-      setNewUserEmail("");
-      setNewUserPassword("");
-      setNewUserDepartment("");
-      setNewUserRole("staff");
-      setShowAddUserModal(false);
-      // Refresh users list
-      fetchUsers();
-    } catch (error) {
-      console.error("Error creating user:", error);
-      let errorMessage = "שגיאה ביצירת המשתמש";
-      if (error.code === "auth/email-already-in-use") {
-        errorMessage = "כתובת המייל כבר קיימת במערכת";
-      } else if (error.code === "auth/weak-password") {
-        errorMessage = "הסיסמה חייבת להכיל לפחות 6 תווים";
-      } else if (error.code === "auth/invalid-email") {
-        errorMessage = "כתובת המייל אינה תקינה";
-      } else if (error.message === 'Admin password required') {
-        errorMessage = "יש להזין סיסמת ניהול כדי להמשיך";
-      }
-      toast({
-        title: "שגיאה ביצירת משתמש",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreatingUser(false);
-    }
-  };
   
   const [justClosedLeadId, setJustClosedLeadId] = useState(null);
   const justClosedLeadIdRef = useRef(null);
@@ -1345,7 +1428,7 @@ useEffect(() => {
         subtitle: newTaskSubtitle,
         priority: newTaskPriority,
         category: newTaskCategory,
-        status: "פתוח",
+        status: "מחכה",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         creatorAlias: alias || currentUser.email || "",
@@ -2729,111 +2812,140 @@ useEffect(() => {
     <TooltipProvider>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         
-      <header dir="rtl" className="border-b bg-white shadow-sm sticky top-0 z-20">
+      <header dir="rtl" className="border-b bg-white shadow-sm sticky top-0 z-20 w-full overflow-hidden">
         {/* Mobile Layout */}
-        <div className="block sm:hidden">
-          {/* Top row - Date and user info */}
-          <div className="flex items-center justify-between p-2 text-xs text-gray-600">
+        <div className="block sm:hidden w-full">
+          {/* Top row: Logo, Info, Notifications */}
+          <div className="flex items-center justify-between p-1 w-full">
             <div className="flex items-center gap-2">
-              <span>{currentDateTime || 'טוען תאריך...'}</span>
+              <Image
+                src="/logo.png"
+                alt="Logo"
+                width={128}
+                height={51}
+                className="h-10 w-auto"
+              />
+              {alias && <div className="text-xs text-gray-700">{`שלום, ${alias}`}</div>}
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500">{'Version 7.5'}</span>
-              <NotificationBell />
+            <div className="flex items-center gap-2 text-xs text-gray-600">
+                <div className="text-right">
+                    <div>{currentDateTime || 'טוען תאריך...'}</div>
+                    <div className="text-gray-500">{'Version 8.5'}</div>
+                    {department && <div className="text-xs text-blue-600">{`מחלקה: ${department}`}</div>}
+                </div>
+                <NotificationBell />
+                {(currentUser?.role === 'admin' || role === 'admin') && (
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[10px] text-gray-500">חי</span>
+                    <IOSSwitch
+                      size="small"
+                      checked={!isDrillMode}
+                      onChange={(e) => {
+                        const toLive = e.target.checked;
+                        setIsDrillMode(!toLive);
+                        updateEmergencyMode(toLive ? "live" : "exercise");
+                      }}
+                      sx={{ transform: 'scale(0.7)' }}
+                    />
+                    <span className="text-[10px] text-gray-500">תרגיל</span>
+                  </div>
+                )}
             </div>
           </div>
-          <div className="flex justify-between items-center mb-4">
-      <h1 className="text-lg text-gray-500">Version 7.5</h1>
-      <NotificationBell />
-    </div>
-          {/* Logo row */}
-          <div className="flex items-center justify-center py-2">
-            <Image
-              src="/logo.png"
-              alt="Logo"
-              width={160}
-              height={64}
-              className="h-14 w-auto inline-block object-contain"
-            />
-          </div>
-          
           {/* Action buttons row */}
           <div className="flex items-center justify-between p-2 gap-2">
             <div className="flex gap-1">
               <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs px-2 py-1">תמונת מצב</Button>
               {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button 
-                  size="sm" 
-                  onClick={() => setShowGreenEyesDialog(true)}
-                  className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium px-2 py-1"
-                >
-                  ירוק בעיניים
-                </Button>
-              )}
-              {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button 
-                  size="sm" 
-                  onClick={() => setShowEndEmergencyDialog(true)}
-                  className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium px-2 py-1"
-                >
-                  סיים אירוע
-                </Button>
+                <>
+                  <Button 
+                    size="sm" 
+                    onClick={() => setShowGreenEyesDialog(true)}
+                    className={`text-xs font-medium px-2 py-1 ${isDrillMode ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-red-600 hover:bg-red-700'} text-white`}
+                  >
+                    {isDrillMode ? 'תרגיל 🟡' : 'ירוק בעיניים'}
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    onClick={() => setShowEndEmergencyDialog(true)}
+                    className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium px-2 py-1"
+                  >
+                    סיים אירוע
+                  </Button>
+                </>
               )}
             </div>
             
-            <div className="flex items-center gap-2">
-              {/* Admin-only: Add User Button */}
+            <div className="flex items-center gap-1">
               {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button size="sm" variant="outline" onClick={() => setShowAddUserModal(true)} className="text-xs px-2 py-1">
-                  הוסף משתמש
-                </Button>
+                <button
+                  className="rounded-full p-1.5 hover:bg-gray-100 transition-colors"
+                  onClick={() => setShowAdminPanel(true)}
+                  title="פאנל ניהול"
+                  aria-label="פאנל ניהול"
+                >
+                  <Settings className="h-4 w-4 text-gray-600" />
+                </button>
               )}
-              <button
-                className="text-xs text-red-600 underline"
-                onClick={() => {
-                  import("firebase/auth").then(({ signOut }) =>
-                    signOut(auth).then(() => router.push("/login"))
-                  );
-                }}
-              >
-                התנתק
-              </button> 
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-8 w-8 shrink-0">
+                    <Menu className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {(currentUser?.role === 'admin' || role === 'admin') && (
+                    <DropdownMenuCheckboxItem
+                      onSelect={() => !isEmergencyActionsDisabled && setShowGreenEyesDialog(true)}
+                      disabled={isEmergencyActionsDisabled}
+                    >
+                      <span className="text-red-600">{`ירוק בעיניים (${emergencyModeLabel})`}</span>
+                    </DropdownMenuCheckboxItem>
+                  )}
+                  {(currentUser?.role === 'admin' || role === 'admin') && (
+                    <DropdownMenuCheckboxItem
+                      onSelect={() => !isEmergencyActionsDisabled && setShowEndEmergencyDialog(true)}
+                      disabled={isEmergencyActionsDisabled}
+                    >
+                      <span className="text-green-700">{`סיים אירוע (${emergencyModeLabel})`}</span>
+                    </DropdownMenuCheckboxItem>
+                  )}
+                  {(currentUser?.role === 'admin' || role === 'admin') && <DropdownMenuSeparator />}
+                  <DropdownMenuCheckboxItem onSelect={() => {
+                    import("firebase/auth").then(({ signOut }) =>
+                      signOut(auth).then(() => router.push("/login"))
+                    );
+                  }}>
+                    <span className="text-red-600">התנתק</span>
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
-          
-          {/* Department info row */}
-          {department && (
-            <div className="text-center pb-2">
-              <span className="text-xs text-blue-600">{`מחלקה: ${department}`}</span>
-            </div>
-          )}
+            
+            
         </div>
 
         {/* Desktop Layout */}
-        <div className="hidden sm:flex items-center justify-between p-2 sm:p-4 min-h-[90px]">
-          <div className="w-48 text-right text-sm text-gray-600">
-            <div className="text-right">{currentDateTime || 'טוען תאריך...'}</div>
+        <div className="hidden sm:flex items-center justify-between p-2 sm:p-3 min-h-[72px] max-w-full overflow-x-hidden">
+          <div className="min-w-0 max-w-[200px] text-right text-sm text-gray-600 flex-shrink-0">
+            <div className="text-right truncate text-xs">{currentDateTime || 'טוען תאריך...'}</div>
             {alias && (
-              <div className="text-xs text-gray-700 text-right">
+              <div className="text-xs text-gray-700 text-right truncate">
                 {`שלום, ${alias}`}
                 {department && (
-                  <div className="text-xs text-blue-600 mt-1">{`מחלקה: ${department}`}</div>
+                  <div className="text-xs text-blue-600 mt-0.5 truncate">{`מחלקה: ${department}`}</div>
                 )}
               </div>
             )}
-            {/* Admin-only: Add User Button */}
-            {(currentUser?.role === 'admin' || role === 'admin') && (
-              <Button size="sm" className="mt-2 w-full" variant="outline" onClick={() => setShowAddUserModal(true)}>
-                הוסף משתמש חדש
+            <div className="flex flex-col gap-1 mt-1.5">
+              <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs w-full">
+                <span className="truncate">תמונת מצב</span>
               </Button>
-            )}
-            <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-s px-4 py-4">תמונת מצב</Button>
-
-             
-              
+            </div>
           </div>
 
-          <div className="flex-1 flex items-center justify-center relative px-4">
+          <div className="flex-1 flex items-center justify-center relative px-4 min-w-0">
             <div className="absolute right-2 flex gap-2">
               <NotesAndLinks section="links" />
             </div>
@@ -2851,30 +2963,60 @@ useEffect(() => {
             </div>
           </div>
 
-          <div className="w-48 text-left text-sm text-gray-500 flex items-center gap-2">
-            <span>{'Version 7.5'}</span>
-            <NotificationBell />
-            <div className="flex flex-col gap-2 mt-2">
+          <div className="min-w-0 max-w-[220px] text-left text-sm text-gray-500 flex-shrink-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs">{'Version 8.5'}</span>
+              <NotificationBell />
               {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button 
-                  size="sm" 
-                  onClick={() => setShowGreenEyesDialog(true)}
-                  className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium border border-red-600"
-                >
-                  הפעלת ירוק בעיניים
-                </Button>
+                <div className="flex items-center gap-0.5">
+                  <span className="text-[10px] text-gray-500">חי</span>
+                  <IOSSwitch
+                    size="small"
+                    checked={!isDrillMode}
+                    onChange={(e) => {
+                      const toLive = e.target.checked;
+                      setIsDrillMode(!toLive);
+                      updateEmergencyMode(toLive ? "live" : "exercise");
+                    }}
+                    sx={{ transform: 'scale(0.7)' }}
+                  />
+                  <span className="text-[10px] text-gray-500">תרגיל</span>
+                </div>
               )}
               {(currentUser?.role === 'admin' || role === 'admin') && (
-                <Button 
-                  size="sm" 
-                  onClick={() => setShowEndEmergencyDialog(true)}
-                  className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium border border-green-600"
+                <button
+                  className="rounded-full p-1 hover:bg-gray-100 transition-colors"
+                  onClick={() => setShowAdminPanel(true)}
+                  title="פאנל ניהול"
+                  aria-label="פאנל ניהול"
                 >
-                  סיים אירוע חירום
-                </Button>
+                  <Settings className="h-4 w-4 text-gray-600" />
+                </button>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              {(currentUser?.role === 'admin' || role === 'admin') && (
+                <>
+                  <Button 
+                    size="sm" 
+                    onClick={() => setShowGreenEyesDialog(true)}
+                    className={`text-xs font-medium border ${isDrillMode ? 'bg-yellow-500 hover:bg-yellow-600 border-yellow-500' : 'bg-red-600 hover:bg-red-700 border-red-600'} text-white`}
+                  >
+                    {isDrillMode ? 'תרגיל ירוק בעיניים 🟡' : 'הפעלת ירוק בעיניים'}
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    onClick={() => setShowEndEmergencyDialog(true)}
+                    variant="success"
+                    disabled={isEmergencyActionsDisabled}
+                    className="text-xs w-full"
+                  >
+                    <span className="truncate">{`סיים אירוע (${emergencyModeLabel})`}</span>
+                  </Button>
+                </>
               )}
               <button
-                className="text-xs text-red-600 underline"
+                className="text-xs text-red-600 underline truncate text-center"
                 onClick={() => {
                   import("firebase/auth").then(({ signOut }) =>
                     signOut(auth).then(() => router.push("/login"))
@@ -2883,7 +3025,6 @@ useEffect(() => {
               >
                 התנתק
               </button>
-              
             </div>
           </div>
         </div>
@@ -2891,7 +3032,7 @@ useEffect(() => {
 
 
         
-<div dir="rtl" className="grid grid-cols-1 lg:grid-cols-12 gap-2 sm:gap-4 p-2 sm:p-4 bg-gray-50 min-h-[calc(100vh-120px)] sm:min-h-[calc(100vh-90px)]">
+<div dir="rtl" className="grid grid-cols-1 lg:grid-cols-12 gap-2 sm:gap-4 p-2 sm:p-4 bg-gray-50 min-h-[calc(100vh-120px)] sm:min-h-[calc(100vh-90px)] overflow-x-hidden max-w-full">
           {/* Task Manager Block */}
         <div style={{ order: blockOrder.TM }} className={`col-span-1 ${isTMFullView ? 'lg:col-span-12' : 'lg:col-span-4'} transition-all duration-300 ease-in-out`}>
           <TaskManager2 
@@ -2912,14 +3053,15 @@ useEffect(() => {
 
   
   {/* Residents/Leads Block */}
-  <div style={{ order: blockOrder.Leads }} className={`col-span-1 ${isLeadsFullView ? 'lg:col-span-8' : 'lg:col-span-4'} transition-all duration-300 ease-in-out`}>
-    <Card className="h-full flex flex-col">
+  <div style={{ order: blockOrder.Leads }} className={`col-span-1 ${isLeadsFullView ? 'lg:col-span-8' : 'lg:col-span-4'} transition-all duration-300 ease-in-out min-w-0`}>
+    <Card className="h-full flex flex-col max-w-full">
       <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle>ניהול תושבים</CardTitle>
-          <div className="flex gap-2">
+        <div className="flex flex-wrap justify-between items-center gap-2 min-w-0">
+          <CardTitle className="min-w-0">ניהול תושבים</CardTitle>
+          <div className="flex gap-2 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => setIsLeadsFullView(v => !v)}>
-              {isLeadsFullView ? 'תצוגה מקוצרת' : 'תצוגה מלאה'}
+              <span className="hidden sm:inline">{isLeadsFullView ? 'תצוגה מקוצרת' : 'תצוגה מלאה'}</span>
+              <span className="sm:hidden">{isLeadsFullView ? 'מקוצרת' : 'מלאה'}</span>
             </Button>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -2933,12 +3075,14 @@ useEffect(() => {
       <CardContent className="p-0 flex-grow">
         <ResidentsManagement
           residents={residents}
+          tasks={tasks}
           statusColorMap={leadStatusConfig}
           statusKey="סטטוס"
           currentUser={currentUser}
           alias={alias}
           users={users}
           viewMode={isLeadsFullView ? 'full' : 'compact'}
+          isAdmin={isAdminUser}
         />
       </CardContent>
     </Card>
@@ -2968,14 +3112,15 @@ useEffect(() => {
   </div>
 
   {/* Map Block */}
-  <div style={{ order: blockOrder.Map }} className={`col-span-1 ${isMapFullView ? 'lg:col-span-12' : 'lg:col-span-4'} transition-all duration-300 ease-in-out`}>
-    <Card className="h-full flex flex-col">
+  <div style={{ order: blockOrder.Map }} className={`col-span-1 ${isMapFullView ? 'lg:col-span-12' : 'lg:col-span-4'} transition-all duration-300 ease-in-out min-w-0`}>
+    <Card className="h-full flex flex-col max-w-full">
       <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle>{'מפת מיקומי חירום'}</CardTitle>
-          <div className="flex gap-2">
+        <div className="flex flex-wrap justify-between items-center gap-2 min-w-0">
+          <CardTitle className="min-w-0">{'מפת מיקומי חירום'}</CardTitle>
+          <div className="flex gap-2 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => setIsMapFullView(v => !v)}>
-              {isMapFullView ? 'תצוגה מקוצרת' : 'תצוגה מלאה'}
+              <span className="hidden sm:inline">{isMapFullView ? 'תצוגה מקוצרת' : 'תצוגה מלאה'}</span>
+              <span className="sm:hidden">{isMapFullView ? 'מקוצרת' : 'מלאה'}</span>
             </Button>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -3123,109 +3268,66 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Add User Modal */}
-      <Dialog open={showAddUserModal} onOpenChange={setShowAddUserModal}>
-        <DialogContent className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>הוסף משתמש חדש</DialogTitle>
+      {/* Admin Panel */}
+      <AdminPanel
+        open={showAdminPanel}
+        onClose={() => setShowAdminPanel(false)}
+        taskCategories={taskCategories}
+        onCategoriesChange={setTaskCategories}
+        onOpenLogs={() => setShowAdminLogs(true)}
+        currentUser={currentUser}
+      />
+      {showEventStatus && <EventStatus onClose={() => setShowEventStatus(false)} />}
+      <Dialog open={showEmergencyConfigDialog} onOpenChange={setShowEmergencyConfigDialog}>
+        <DialogContent className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full" style={{ direction: 'rtl', textAlign: 'right' }}>
+          <DialogHeader className="text-right">
+            <DialogTitle className="text-lg font-semibold">הגדרות תרגיל - ירוק בעיניים</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCreateUser} className="space-y-4">
-            <div>
-              <Label htmlFor="fullName" className="text-sm font-medium">שם מלא</Label>
-              <Input
-                id="fullName"
-                type="text"
-                value={newUserFullName}
-                onChange={(e) => setNewUserFullName(e.target.value)}
-                placeholder="הכנס שם מלא"
-                required
-                className="mt-1"
-              />
+          <div className="space-y-3">
+            <Label htmlFor="exercise-green-eyes-url">קישור Google Apps Script לתרגיל</Label>
+            <Input
+              id="exercise-green-eyes-url"
+              dir="ltr"
+              value={exerciseGreenEyesUrl}
+              onChange={(e) => setExerciseGreenEyesUrl(e.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
+            />
+            <p className="text-xs text-gray-600">
+              קישור זה ישמש רק במצב תרגיל. במצב חי המערכת משתמשת בקישור הקבוע של הפרודקשן.
+            </p>
+            <div className="rounded border bg-gray-50 p-2 text-xs text-gray-700">
+              <div>{`עודכן לאחרונה על ידי: ${emergencyConfigUpdatedBy || "לא ידוע"}`}</div>
+              <div>{`תאריך עדכון: ${formattedEmergencyConfigUpdatedAt}`}</div>
             </div>
-            
-            <div>
-              <Label htmlFor="email" className="text-sm font-medium">כתובת מייל</Label>
-              <Input
-                id="email"
-                type="email"
-                value={newUserEmail}
-                onChange={(e) => setNewUserEmail(e.target.value)}
-                placeholder="user@example.com"
-                required
-                className="mt-1"
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="password" className="text-sm font-medium">סיסמה</Label>
-              <Input
-                id="password"
-                type="password"
-                value={newUserPassword}
-                onChange={(e) => setNewUserPassword(e.target.value)}
-                placeholder="לפחות 6 תווים"
-                required
-                minLength={6}
-                className="mt-1"
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="department" className="text-sm font-medium">מחלקה</Label>
-              <Select value={newUserDepartment} onValueChange={(value) => setNewUserDepartment(value.trim())}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="בחר מחלקה" />
-                </SelectTrigger>
-                <SelectContent dir="rtl" className="z-[400] text-right">
-                  {taskCategories.map((dept) => (
-                    <SelectItem key={dept} value={dept}>
-                      {dept}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label htmlFor="role" className="text-sm font-medium">תפקיד</Label>
-              <Select value={newUserRole} onValueChange={setNewUserRole}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent dir="rtl" className="z-[400] text-right">
-                  <SelectItem value="staff">עובד</SelectItem>
-                  <SelectItem value="admin">מנהל</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <DialogFooter className="mt-6">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowAddUserModal(false)}
-                disabled={isCreatingUser}
-              >
-                ביטול
-              </Button>
-              <Button
-                type="submit"
-                disabled={isCreatingUser}
-              >
-                {isCreatingUser ? "יוצר משתמש..." : "צור משתמש"}
-              </Button>
-            </DialogFooter>
-          </form>
+          </div>
+          <DialogFooter className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowEmergencyConfigDialog(false)}>
+              ביטול
+            </Button>
+            <Button onClick={saveExerciseGreenEyesUrl} disabled={isSavingEmergencyConfig}>
+              שמור קישור
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-      {showEventStatus && <EventStatus onClose={() => setShowEventStatus(false)} />}
       {/* Green Eyes Activation Dialog */}
       <Dialog open={showGreenEyesDialog} onOpenChange={setShowGreenEyesDialog}>
         <DialogContent className="bg-white rounded-xl shadow-xl p-8 max-w-xs w-full text-center" style={{ direction: 'rtl', textAlign: 'center' }}>
           <DialogHeader className="text-center">
-            <DialogTitle className="text-lg font-semibold mb-6">הפעלת נוהל ירוק בעיניים</DialogTitle>
+            <DialogTitle className="text-lg font-semibold mb-4">
+              {isDrillMode ? 'הפעלת תרגיל ירוק בעיניים' : 'הפעלת נוהל ירוק בעיניים'}
+            </DialogTitle>
           </DialogHeader>
-          <div className="text-lg font-semibold mb-6">האם אתה בטוח שאתה רוצה להפעיל נוהל ירוק בעיניים?</div>
+          {isDrillMode && (
+            <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-4 text-sm text-yellow-800">
+              ⚠️ מצב תרגיל — תישלח הודעת תרגיל בלבד
+            </div>
+          )}
+          <div className="text-lg font-semibold mb-6">
+            {isDrillMode
+              ? 'האם אתה בטוח שאתה רוצה להפעיל תרגיל?'
+              : 'האם אתה בטוח שאתה רוצה להפעיל נוהל ירוק בעיניים?'}
+          </div>
           <div className="flex justify-between gap-4">
             <Button 
               variant="outline" 
@@ -3236,9 +3338,9 @@ useEffect(() => {
             </Button>
             <Button 
               onClick={handleGreenEyesActivation}
-              className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold"
+              className={`flex-1 py-2 rounded-lg text-white font-bold ${isDrillMode ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-red-600 hover:bg-red-700'}`}
             >
-              כן
+              {isDrillMode ? 'הפעל תרגיל' : 'כן'}
             </Button>
           </div>
         </DialogContent>
@@ -3296,6 +3398,7 @@ useEffect(() => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    <AdminLogsPanel open={showAdminLogs} onClose={() => setShowAdminLogs(false)} />
     </TooltipProvider>
   );
 

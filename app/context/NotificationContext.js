@@ -5,8 +5,22 @@ import { db, app } from '../../firebase'; // Import 'app' from firebase
 import { collection, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { toast } from '@/components/ui/use-toast';
 
 const NotificationContext = createContext();
+
+// Notification creators emit singular types ('task', 'resident', 'event'),
+// but the settings document is keyed by plural names ('tasks', 'residents', 'events').
+const TYPE_TO_SETTINGS_KEY = {
+  task: 'tasks',
+  resident: 'residents',
+  event: 'events',
+};
+const resolveSettingsKey = (type) => {
+  if (!type) return type;
+  const lower = type.toLowerCase();
+  return TYPE_TO_SETTINGS_KEY[lower] || lower;
+};
 
 export function useNotifications() {
   return useContext(NotificationContext);
@@ -119,9 +133,24 @@ export function NotificationProvider({ children }) {
           snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
               const notificationData = change.doc.data();
-              const { type, subType } = notificationData;
-              if (settings && settings[type] && settings[type][subType] && settings[type][subType].sound) {
-                playNotificationSound();
+              const rawType = notificationData.type?.toLowerCase();
+              const type = resolveSettingsKey(rawType);
+              const subType = notificationData.subType?.toLowerCase();
+
+              if (settings && settings[type] && settings[type][subType]) {
+                // Play sound if enabled
+                if (settings[type][subType].sound) {
+                  playNotificationSound();
+                }
+                
+                // Show toast if enabled (visual update)
+                if (settings[type][subType].enabled) {
+                  toast({
+                    title: "התראה חדשה",
+                    description: notificationData.message,
+                    variant: rawType === 'resident' ? "destructive" : "default",
+                  });
+                }
               }
             }
           });
@@ -163,8 +192,8 @@ export function NotificationProvider({ children }) {
           // Create default settings if they don't exist
           const defaultSettings = {
             tasks: { created: { enabled: true, sound: true }, replied: { enabled: true, sound: true }, done: { enabled: true, sound: true } },
-            residents: { statusChange: { enabled: true, sound: true } },
-            events: { newEvent: { enabled: true, sound: true }, statusChange: { enabled: true, sound: true } }
+            residents: { statuschange: { enabled: true, sound: true } },
+            events: { newevent: { enabled: true, sound: true }, statuschange: { enabled: true, sound: true } }
           };
           setDoc(doc.ref, defaultSettings);
           setSettings(defaultSettings);
@@ -180,7 +209,9 @@ export function NotificationProvider({ children }) {
       const unsubscribe = onMessage(messaging, (payload) => {
         console.log('Message received. ', payload);
         // Handle foreground message
-        const { type, subType } = payload.data;
+        const { type: rawType, subType: rawSubType } = payload.data || {};
+        const type = resolveSettingsKey(rawType);
+        const subType = rawSubType?.toLowerCase();
         if (settings && settings[type] && settings[type][subType] && settings[type][subType].sound) {
           playNotificationSound();
         }

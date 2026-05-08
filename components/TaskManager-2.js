@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/use-toast";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
-import { Edit2, MessageSquare, Bell, UserPlus, Search, ChevronDown, ChevronLeft, Pencil, MessageCircle, RotateCcw } from "lucide-react";
+import { Edit2, MessageSquare, Bell, UserPlus, Search, ChevronDown, ChevronLeft, Pencil, MessageCircle, RotateCcw, Link } from "lucide-react";
 import { TaskTabs } from "@/components/TaskTabs";
 import SortableCategoryColumn from "./ui/sortable-category-column";
 import SortableItem from "./ui/sortable-item";
@@ -72,6 +72,19 @@ const formatDuration = (ms) => {
   return "< דקה";
 };
 
+// Helper to get department color
+const getDepartmentColor = (category) => {
+  const colorMap = {
+    'לוגיסטיקה': 'bg-blue-50 border-blue-200',
+    'אוכלוסיה': 'bg-pink-50 border-pink-200',
+    'רפואה': 'bg-red-50 border-red-200',
+    'חוסן': 'bg-green-50 border-green-200',
+    'חמ"ל': 'bg-purple-50 border-purple-200',
+    'אחר': 'bg-gray-50 border-gray-200'
+  };
+  return colorMap[category] || 'bg-gray-50 border-gray-200';
+};
+
 export default function TaskManager2({ 
   currentUser, 
   alias, 
@@ -113,6 +126,7 @@ export default function TaskManager2({
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskSubtitle, setNewTaskSubtitle] = useState("");
+  const [newTaskLink, setNewTaskLink] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState("רגיל");
   const [newTaskCategory, setNewTaskCategory] = useState(taskCategories[0] || "");
   const [newTaskDepartment, setNewTaskDepartment] = useState(taskCategories[0] || "");
@@ -122,16 +136,19 @@ export default function TaskManager2({
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [archivedTasks, setArchivedTasks] = useState([]);
   const [isPersistenceLoading, setIsPersistenceLoading] = useState(true);
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
 
   const sendTaskCreationNotification = async (newTask) => {
-    // Send notification to the assigned department
-    await notifyUsersInDepartment(newTask.department, {
-      message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
-      type: 'task',
-      subType: 'created',
-      link: `/`
-    });
+    // Send notification to the assigned department if department is selected
+    if (newTask.department && newTask.department.trim()) {
+      await notifyUsersInDepartment(newTask.department, {
+        message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
+        type: 'task',
+        subType: 'created',
+        link: `/`
+      });
+    }
   };
 
   // Initialize sensors for drag and drop
@@ -349,11 +366,12 @@ export default function TaskManager2({
         id: taskRef.id,
         userId: currentUser.uid,
         creatorId: currentUser.uid,
+        creatorDepartment: department || "",
         title: taskData.title || "",
         subtitle: taskData.subtitle || "",
         priority: taskData.priority || "רגיל",
         category: taskData.category ? taskData.category.trim() : cleanTaskCategories[0],
-        status: taskData.status || "פתוח",
+        status: taskData.status || "מחכה",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         creatorAlias: alias || currentUser.email || "",
@@ -366,6 +384,7 @@ export default function TaskManager2({
         done: false,
         completedBy: null,
         completedAt: null,
+        link: taskData.link || "",
         // Optional fields with proper validation
         ...(taskData.residentId && {
           residentId: taskData.residentId,
@@ -379,7 +398,7 @@ export default function TaskManager2({
           eventStatus: taskData.eventStatus || ""
         }),
         // Add status fields for all tasks
-        status: taskData.status || "פתוח",
+        status: taskData.status || "מחכה",
         residentStatus: taskData.residentStatus || "",
         eventStatus: taskData.eventStatus || ""
       };
@@ -393,13 +412,15 @@ export default function TaskManager2({
       
       console.log("Task saved to Firestore with ID:", taskRef.id);
       
-      // Send notification to the assigned department
-      await notifyUsersInDepartment(newTask.department, {
-        message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
-        type: 'task',
-        subType: 'created',
-        link: `/`
-      });
+      // Send notification to the assigned department if department is selected
+      if (newTask.department && newTask.department.trim()) {
+        await notifyUsersInDepartment(newTask.department, {
+          message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
+          type: 'task',
+          subType: 'created',
+          link: `/`
+        });
+      }
       
       toast({
         title: "משימה נוצרה",
@@ -496,26 +517,27 @@ export default function TaskManager2({
     try {
       const taskRef = doc(db, 'tasks', taskId);
       const now = new Date();
+      const task = tasks.find(t => t.id === taskId);
+      const newStatus = checked ? 'טופל' : 'בטיפול';
       
       await updateDoc(taskRef, {
         done: checked,
+        status: newStatus,
         completedAt: checked ? now : null,
         completedBy: checked ? (alias || currentUser.email) : null,
         updatedAt: now
       });
 
       // If this is an event-linked task, sync the status back to the event
-      const task = tasks.find(t => t.id === taskId);
       if (task && task.eventId) {
         try {
           const eventRef = doc(db, 'eventLogs', task.eventId);
-          const newEventStatus = checked ? 'טופל' : 'בטיפול';
           await updateDoc(eventRef, {
-            status: newEventStatus,
+            status: newStatus,
             updatedAt: serverTimestamp(),
             lastUpdater: alias || currentUser.email || ""
           });
-          console.log(`Synced task status to event ${task.eventId}: ${newEventStatus}`);
+          console.log(`Synced task status to event ${task.eventId}: ${newStatus}`);
         } catch (eventError) {
           console.error('Error syncing task status to event:', eventError);
         }
@@ -564,19 +586,26 @@ export default function TaskManager2({
       const taskData = taskDoc.data();
       
       // Check if user has permission to reply
+      const userDept = department ? department.trim() : '';
       const hasPermission = 
+        role === 'admin' ||
         taskData.userId === currentUser.uid ||
         taskData.creatorId === currentUser.uid ||
         taskData.assignTo === currentUser.uid ||
         taskData.assignTo === currentUser.email ||
-        taskData.assignTo === alias;
+        taskData.assignTo === alias ||
+        (taskData.assignTo && taskData.assignTo.trim() === userDept) ||
+        (taskData.department && taskData.department.trim() === userDept) ||
+        (taskData.creatorDepartment && taskData.creatorDepartment.trim() === userDept);
       
       if (!hasPermission) {
         console.error('No permission to reply to this task', {
           taskAssignTo: taskData.assignTo,
+          taskDept: taskData.department,
+          creatorDept: taskData.creatorDepartment,
           currentUserUid: currentUser.uid,
-          currentUserEmail: currentUser.email,
-          alias: alias
+          userDept: userDept,
+          role: role
         });
         toast({
           title: "שגיאה",
@@ -603,6 +632,30 @@ export default function TaskManager2({
         lastReplyAt: now,
         updatedAt: now
       });
+
+      // If this task is linked to a resident, also add the reply as a comment to the resident
+      if (taskData.residentId) {
+        console.log(`Syncing reply to resident ${taskData.residentId}`);
+        try {
+          const residentRef = doc(db, 'residents', taskData.residentId);
+          await updateDoc(residentRef, {
+            comments: arrayUnion({
+              text: `[תגובה ממשימה] ${replyText}`,
+              timestamp: now,
+              userId: currentUser.uid,
+              userAlias: alias || currentUser.email,
+              fromTaskId: taskId
+            }),
+            hasNewComment: true,
+            updatedAt: serverTimestamp()
+          });
+          console.log(`Successfully synced task reply to resident ${taskData.residentId} comments`);
+        } catch (residentError) {
+          console.error('Error syncing task reply to resident comments:', residentError);
+        }
+      } else {
+        console.log('Task not linked to a resident, skipping comment sync');
+      }
 
       toast({
         title: "תגובה נשלחה",
@@ -924,11 +977,13 @@ export default function TaskManager2({
         id: taskRef.id,
         userId: currentUser.uid,
         creatorId: currentUser.uid,
+        creatorDepartment: department || "",
         title: newTaskTitle,
         subtitle: newTaskSubtitle,
+        link: newTaskLink,
         priority: newTaskPriority,
         category: newTaskCategory.trim(),
-        status: "פתוח",
+        status: "מחכה",
         residentStatus: "",
         eventStatus: "",
         createdAt: serverTimestamp(),
@@ -950,17 +1005,20 @@ export default function TaskManager2({
       console.log("Saving task with data:", newTask);
       await setDoc(taskRef, newTask);
 
-      // Send notification to the assigned department
-      await notifyUsersInDepartment(newTask.department, {
-        message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
-        type: 'task',
-        subType: 'created',
-        link: `/`
-      });
+      // Send notification to the assigned department if department is selected
+      if (newTask.department && newTask.department.trim()) {
+        await notifyUsersInDepartment(newTask.department, {
+          message: `משימה חדשה לקטגוריה שלך: ${newTask.title}`,
+          type: 'task',
+          subType: 'created',
+          link: `/`
+        });
+      }
 
       // Reset form
       setNewTaskTitle("");
       setNewTaskSubtitle("");
+      setNewTaskLink("");
       setNewTaskPriority("רגיל");
       setNewTaskCategory(cleanTaskCategories[0] || "");
       setNewTaskDepartment(cleanTaskCategories[0] || "");
@@ -1028,6 +1086,20 @@ export default function TaskManager2({
                 className="text-sm" 
                 onKeyDown={e => { if (e.key === ' ' || e.code === 'Space') e.stopPropagation(); }}
               />
+            </div>
+            <div>
+              <Label className="text-xs">קישור (אופציונלי):</Label>
+              <div className="relative">
+                <Input 
+                  type="text" 
+                  value={newTaskLink} 
+                  onChange={(e) => setNewTaskLink(e.target.value)} 
+                  className="h-8 text-sm pr-8" 
+                  placeholder="https://..."
+                  onKeyDown={e => { if (e.key === ' ' || e.code === 'Space') e.stopPropagation(); }}
+                />
+                <Link className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 h-3 w-3" />
+              </div>
             </div>
             <div className="flex gap-2">
               <div className="flex-1">
@@ -1199,6 +1271,16 @@ export default function TaskManager2({
                 {task.subtitle}
               </p>
             )}
+            {task.link && (
+              <a 
+                href={task.link.startsWith('http') ? task.link : `https://${task.link}`} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:underline flex items-center gap-1 mb-2 text-xs"
+              >
+                <Link size={12} /> קישור חיצוני
+              </a>
+            )}
             <div className="text-xs text-gray-500 mt-1 space-x-2 space-x-reverse">
               <span>🗓️ {formatDateTime(task.dueDate)}</span>
               <span>🏢 {task.department}</span>
@@ -1219,8 +1301,8 @@ export default function TaskManager2({
                       // Resident-linked task status options
                       ["כולם בסדר", "זקוקים לסיוע", "לא בטוח"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
                     ) : (
-                      // Regular task status options
-                      ["פתוח", "בטיפול", "הושלם"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
+                      // Regular task status options - Standardized
+                      ["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
                     )}
                   </SelectContent>
                 </Select>
@@ -1351,17 +1433,17 @@ export default function TaskManager2({
 
         {/* Reply input */}
         {!task.done && replyingToTaskId === task.id && (
-          <div className="mt-2">
+          <div className="mt-2 space-y-2">
             <input
               type="text"
               placeholder="הוסף תגובה..."
-              className="w-full text-sm border rounded p-1 rtl"
+              className="w-full text-sm border rounded p-2 rtl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
               autoFocus
               value={replyInputValue}
               onChange={e => setReplyInputValue(e.target.value)}
               onKeyDown={e => {
-                if (e.key === ' ' || e.code === 'Space') {
-                  e.stopPropagation(); // Prevent DnD from hijacking spacebar in input
+                if (e.key === ' ' || e.code === 'Space' || e.key === 'Enter') {
+                  e.stopPropagation(); // Prevent DnD from hijacking keys in input
                 }
                 if (e.key === 'Enter' && replyInputValue.trim()) {
                   handleTaskReply(task.id, replyInputValue.trim());
@@ -1372,11 +1454,35 @@ export default function TaskManager2({
                   setReplyInputValue("");
                 }
               }}
-              onBlur={() => {
-                setReplyingToTaskId(null);
-                setReplyInputValue("");
-              }}
             />
+            <div className="flex gap-2 justify-end">
+              <Button 
+                size="xs" 
+                className="bg-green-600 hover:bg-green-700 text-white font-bold"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (replyInputValue.trim()) {
+                    handleTaskReply(task.id, replyInputValue.trim());
+                    setReplyInputValue("");
+                    setReplyingToTaskId(null);
+                  }
+                }}
+              >
+                אישור
+              </Button>
+              <Button 
+                size="xs" 
+                variant="outline"
+                className="font-bold"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setReplyingToTaskId(null);
+                  setReplyInputValue("");
+                }}
+              >
+                ביטול
+              </Button>
+            </div>
           </div>
         )}
       </div>
@@ -1498,14 +1604,25 @@ export default function TaskManager2({
             )}
             
             <div className="relative flex-1 min-w-0">
-              <Search className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <Input 
-                type="search" 
-                placeholder="חפש משימות..." 
-                className={`h-8 text-sm pr-8 ${isTMFullView ? 'w-[250px]' : 'w-[180px]'}`} 
-                value={taskSearchTerm} 
-                onChange={(e) => setTaskSearchTerm(e.target.value)} 
-              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-gray-400"
+                onClick={() => setIsSearchExpanded(prev => !prev)}
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+              {isSearchExpanded ? (
+                <Input 
+                  type="search" 
+                  placeholder="חפש משימות..." 
+                  className="h-8 text-sm pr-8 w-full transition-all duration-300" 
+                  value={taskSearchTerm} 
+                  onChange={(e) => setTaskSearchTerm(e.target.value)}
+                  autoFocus
+                  onBlur={() => setIsSearchExpanded(false)}
+                />
+              ) : null}
             </div>
             <Button 
               variant="outline"
@@ -1561,8 +1678,8 @@ export default function TaskManager2({
           >
             <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-${Math.min(6, Math.max(1, cleanTaskCategories.length))} gap-3 h-full overflow-y-auto`}>
               {cleanTaskCategories.map((category) => (
-                <SortableCategoryColumn key={category} id={category} className="bg-gray-100 rounded-lg p-2 flex flex-col min-w-[280px] box-border w-full min-w-0">
-                  <div className="flex justify-between items-center mb-2 sticky top-0 bg-gray-100 py-1 px-1 z-10">
+                <SortableCategoryColumn key={category} id={category} className={`${getDepartmentColor(category)} rounded-lg p-2 flex flex-col min-w-[280px] box-border w-full min-w-0 border`}>
+                  <div className={`flex justify-between items-center mb-2 sticky top-0 ${getDepartmentColor(category).split(' ')[0]} py-1 px-1 z-10`}>
                     {/* Collapse/expand chevron (RTL: left side) */}
                     <Button
                       variant="ghost"
@@ -1614,7 +1731,10 @@ export default function TaskManager2({
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <div className="flex-grow truncate text-right">
-                                      <div className={`font-medium truncate ${task.done ? 'line-through text-gray-500' : ''}`}>{task.title}</div>
+                                      <div className={`font-medium truncate ${task.done ? 'line-through text-gray-500' : ''}`}>
+                                        {task.title}
+                                        {task.link && <Link className="inline-block mr-1 h-3 w-3 text-blue-500" />}
+                                      </div>
                                       {task.subtitle && (
                                         <div className={`text-xs text-gray-600 truncate ${task.done ? 'line-through' : ''}`}>{task.subtitle}</div>
                                       )}
@@ -1630,7 +1750,7 @@ export default function TaskManager2({
                                             ) : task.residentId ? (
                                               ["כולם בסדר", "זקוקים לסיוע", "לא בטוח"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
                                             ) : (
-                                              ["פתוח", "בטיפול", "הושלם"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
+                                              ["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
                                             )}
                                           </SelectContent>
                                         </Select>

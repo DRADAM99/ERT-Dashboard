@@ -88,8 +88,8 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       // Users can update their own profile, and admins can update any profile
       allow update: if request.auth.uid == userId || isAdmin();
-      // Only admins can create new users
-      allow create: if isAdmin();
+      // Allow users to create their own profile during signup, or admins to create any user
+      allow create: if request.auth.uid == userId || isAdmin();
 
       // Allow users to manage their own notification settings, tokens, and notifications
       match /notificationSettings/{docId} {
@@ -230,10 +230,43 @@ service cloud.firestore {
     }
 
     // ────────────────
+    // Green Eyes Log (written by Cloud Functions; admins can delete/create for UI management)
+    // ────────────────
+    match /greenEyesLog/{docId} {
+      allow read: if isAuthenticated();
+      allow delete, create: if isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ────────────────
+    // Emergency Events (Green Eyes trigger)
+    // ────────────────
+    match /emergencyEvents/{eventId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
+    }
+
+    // ────────────────
+    // System (activeEmergency, etc. — client may read)
+    // ────────────────
+    match /system/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only Cloud Functions write here
+    }
+
+    // ────────────────
     // Residents Collection
     // ────────────────
     match /residents/{residentId} {
       allow read, write: if isAuthenticated();
+    }
+
+    // ────────────────
+    // System Settings Collection
+    // ────────────────
+    match /systemSettings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
   }
