@@ -361,7 +361,7 @@ export default function AdminPanel({
                   <SelectTrigger className="mt-1 text-sm">
                     <SelectValue placeholder="בחר מחלקה" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent dir="rtl" className="z-[400] text-right">
                     {taskCategories.map((dept) => (
                       <SelectItem key={dept} value={dept}>{dept}</SelectItem>
                     ))}
@@ -375,7 +375,7 @@ export default function AdminPanel({
                   <SelectTrigger className="mt-1 text-sm">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent dir="rtl" className="z-[400] text-right">
                     <SelectItem value="staff">עובד</SelectItem>
                     <SelectItem value="admin">מנהל</SelectItem>
                   </SelectContent>
