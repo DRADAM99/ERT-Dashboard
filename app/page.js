@@ -226,10 +226,10 @@ moment.tz.setDefault("Asia/Jerusalem");
 const localizer = momentLocalizer(moment);
 const messages = { allDay: "כל היום", previous: "הקודם", next: "הבא", today: "היום", month: "חודש", week: "שבוע", day: "יום", agenda: "סדר יום", date: "תאריך", time: "זמן", event: "אירוע", noEventsInRange: "אין אירועים בטווח זה", showMore: (total) => `+ ${total} נוספים`, };
 
-const LIVE_GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwNuUYL_Acq82G5Pb7lho-XzFIAOExn5ak6JqsQIwYUHOzErHmPO5lo4UcCinCzRqWkRA/exec";
 const EMERGENCY_SETTINGS_DOC = { collection: "systemSettings", id: "emergencyMode" };
-const isValidGoogleScriptExecUrl = (url) =>
-  /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(url.trim());
+const EMERGENCY_SOURCES_DOC = { collection: "systemSettings", id: "emergencySources" };
+const EMERGENCY_MODES = { LIVE: "live", DRILL: "drill" };
+const normalizeEmergencyMode = (mode) => mode === EMERGENCY_MODES.LIVE ? EMERGENCY_MODES.LIVE : EMERGENCY_MODES.DRILL;
 
 
 // Updated lead statuses and colors (order matters)
@@ -284,32 +284,19 @@ export default function Dashboard() {
   const [showGreenEyesDialog, setShowGreenEyesDialog] = useState(false);
   const [showEventStatus, setShowEventStatus] = useState(false);
   const [isDrillMode, setIsDrillMode] = useState(false);
-  const [emergencyMode, setEmergencyMode] = useState("exercise");
-  const [exerciseGreenEyesUrl, setExerciseGreenEyesUrl] = useState("");
+  const [emergencyMode, setEmergencyMode] = useState(EMERGENCY_MODES.DRILL);
+  const [emergencySources, setEmergencySources] = useState({});
   const [isEmergencyConfigLoaded, setIsEmergencyConfigLoaded] = useState(false);
   const [isSavingEmergencyConfig, setIsSavingEmergencyConfig] = useState(false);
-  const [showEmergencyConfigDialog, setShowEmergencyConfigDialog] = useState(false);
-  const [emergencyConfigUpdatedBy, setEmergencyConfigUpdatedBy] = useState("");
-  const [emergencyConfigUpdatedAt, setEmergencyConfigUpdatedAt] = useState(null);
   const isAdminUser = currentUser?.role === "admin" || role === "admin";
   const [showAdminLogs, setShowAdminLogs] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
-  const emergencyModeLabel = emergencyMode === "live" ? "חי" : "תרגיל";
-  const hasExerciseGreenEyesUrl = exerciseGreenEyesUrl.trim().length > 0;
-  const isEmergencyActionsDisabled =
+  const emergencyModeLabel = emergencyMode === EMERGENCY_MODES.LIVE ? "חי" : "תרגיל";
+  const isEmergencyActivationDisabled =
     !isEmergencyConfigLoaded ||
-    isSavingEmergencyConfig ||
-    (emergencyMode === "exercise" && !hasExerciseGreenEyesUrl);
-  const getEmergencyScriptUrl = useCallback(() => {
-    if (emergencyMode === "live") return LIVE_GOOGLE_APPS_SCRIPT_URL;
-    return exerciseGreenEyesUrl.trim();
-  }, [emergencyMode, exerciseGreenEyesUrl]);
-  const formattedEmergencyConfigUpdatedAt = useMemo(() => {
-    if (!emergencyConfigUpdatedAt) return "לא זמין";
-    const asDate = emergencyConfigUpdatedAt?.toDate?.() || new Date(emergencyConfigUpdatedAt);
-    if (Number.isNaN(asDate.getTime())) return "לא זמין";
-    return asDate.toLocaleString("he-IL");
-  }, [emergencyConfigUpdatedAt]);
+    isSavingEmergencyConfig;
+  const isEndEmergencyDisabled = isEmergencyActivationDisabled;
+  const activeEmergencySource = emergencySources?.[emergencyMode] || null;
 // Add this handler for category drag end
 const handleCategoryDragEnd = (event) => {
   const { active, over } = event;
@@ -361,10 +348,8 @@ const handleClick2Call = async (phoneNumber) => {
   useEffect(() => {
     if (!currentUser) {
       setIsEmergencyConfigLoaded(false);
-      setEmergencyMode("exercise");
-      setExerciseGreenEyesUrl("");
-      setEmergencyConfigUpdatedBy("");
-      setEmergencyConfigUpdatedAt(null);
+      setEmergencyMode(EMERGENCY_MODES.DRILL);
+      setIsDrillMode(true);
       return;
     }
 
@@ -374,29 +359,41 @@ const handleClick2Call = async (phoneNumber) => {
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
-          const mode = data?.mode === "live" ? "live" : "exercise";
+          const mode = normalizeEmergencyMode(data?.mode);
           setEmergencyMode(mode);
-          setIsDrillMode(mode !== "live");
-          setExerciseGreenEyesUrl(typeof data?.exerciseGreenEyesUrl === "string" ? data.exerciseGreenEyesUrl : "");
-          setEmergencyConfigUpdatedBy(typeof data?.updatedBy === "string" ? data.updatedBy : "");
-          setEmergencyConfigUpdatedAt(data?.updatedAt || null);
+          setIsDrillMode(mode !== EMERGENCY_MODES.LIVE);
         } else {
-          setEmergencyMode("exercise");
+          setEmergencyMode(EMERGENCY_MODES.DRILL);
           setIsDrillMode(true);
-          setExerciseGreenEyesUrl("");
-          setEmergencyConfigUpdatedBy("");
-          setEmergencyConfigUpdatedAt(null);
         }
         setIsEmergencyConfigLoaded(true);
       },
       (error) => {
         console.error("Error loading emergency settings:", error);
-        setEmergencyMode("exercise");
+        setEmergencyMode(EMERGENCY_MODES.DRILL);
         setIsDrillMode(true);
-        setExerciseGreenEyesUrl("");
-        setEmergencyConfigUpdatedBy("");
-        setEmergencyConfigUpdatedAt(null);
         setIsEmergencyConfigLoaded(true);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setEmergencySources({});
+      return;
+    }
+
+    const sourcesRef = doc(db, EMERGENCY_SOURCES_DOC.collection, EMERGENCY_SOURCES_DOC.id);
+    const unsubscribe = onSnapshot(
+      sourcesRef,
+      (snapshot) => {
+        setEmergencySources(snapshot.exists() ? snapshot.data() : {});
+      },
+      (error) => {
+        console.error("Error loading emergency sources:", error);
+        setEmergencySources({});
       }
     );
 
@@ -405,14 +402,16 @@ const handleClick2Call = async (phoneNumber) => {
 
   const updateEmergencyMode = async (nextMode) => {
     if (!isAdminUser) return;
+    const normalizedMode = normalizeEmergencyMode(nextMode);
     setIsSavingEmergencyConfig(true);
-    setIsDrillMode(nextMode === "exercise");
+    setEmergencyMode(normalizedMode);
+    setIsDrillMode(normalizedMode !== EMERGENCY_MODES.LIVE);
     try {
       const configRef = doc(db, EMERGENCY_SETTINGS_DOC.collection, EMERGENCY_SETTINGS_DOC.id);
       await setDoc(
         configRef,
         {
-          mode: nextMode,
+          mode: normalizedMode,
           updatedBy: alias || currentUser?.email || "System",
           updatedAt: serverTimestamp(),
         },
@@ -420,64 +419,13 @@ const handleClick2Call = async (phoneNumber) => {
       );
       toast({
         title: "מצב חירום עודכן",
-        description: `המערכת עברה למצב ${nextMode === "live" ? "חי" : "תרגיל"}`,
+        description: `המערכת עברה למצב ${normalizedMode === EMERGENCY_MODES.LIVE ? "חי" : "תרגיל"}`,
       });
     } catch (error) {
       console.error("Error updating emergency mode:", error);
       toast({
         title: "שגיאה בעדכון מצב",
         description: error.message || "לא ניתן לעדכן מצב חירום",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSavingEmergencyConfig(false);
-    }
-  };
-
-  const saveExerciseGreenEyesUrl = async () => {
-    if (!isAdminUser) return;
-    const trimmedUrl = exerciseGreenEyesUrl.trim();
-
-    if (!trimmedUrl) {
-      toast({
-        title: "נדרש קישור תרגיל",
-        description: "יש להזין קישור Google Apps Script עבור תרגיל",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!isValidGoogleScriptExecUrl(trimmedUrl)) {
-      toast({
-        title: "קישור לא תקין",
-        description: "יש להזין קישור מלא שמסתיים ב-exec",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSavingEmergencyConfig(true);
-    try {
-      const configRef = doc(db, EMERGENCY_SETTINGS_DOC.collection, EMERGENCY_SETTINGS_DOC.id);
-      await setDoc(
-        configRef,
-        {
-          exerciseGreenEyesUrl: trimmedUrl,
-          updatedBy: alias || currentUser?.email || "System",
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-      setShowEmergencyConfigDialog(false);
-      toast({
-        title: "קישור תרגיל נשמר",
-        description: "קישור ירוק בעיניים לתרגיל עודכן בהצלחה",
-      });
-    } catch (error) {
-      console.error("Error saving exercise green eyes URL:", error);
-      toast({
-        title: "שגיאה בשמירת קישור",
-        description: error.message || "לא ניתן לשמור את קישור התרגיל",
         variant: "destructive",
       });
     } finally {
@@ -830,12 +778,10 @@ const handleFollowUpClick = async (lead) => {
   };
 
   const handleEndEmergencyEvent = async () => {
-    if (isEmergencyActionsDisabled) {
+    if (isEndEmergencyDisabled) {
       toast({
         title: "הפעולה חסומה",
-        description: emergencyMode === "exercise"
-          ? "יש להזין קישור תרגיל לפני הפעלת פעולות חירום"
-          : "הגדרות מצב החירום עדיין נטענות",
+        description: "הגדרות מצב החירום עדיין נטענות",
         variant: "destructive"
       });
       return;
@@ -848,96 +794,21 @@ const handleFollowUpClick = async (lead) => {
       const exportSuccess = await exportEmergencyDataToCSV();
       
       if (exportSuccess) {
-        // Clear system for next emergency event
-        console.log("🧹 Clearing system for next emergency event...");
-        
-        try {
-          // Delete all event logs from Firestore
-          console.log("🗑️ Deleting all event logs...");
-          const { collection, getDocs, deleteDoc, doc } = await import("firebase/firestore");
-          const { db } = await import("../firebase");
-          
-          // Get all event logs
-          const eventLogsRef = collection(db, "eventLogs");
-          const eventLogsSnapshot = await getDocs(eventLogsRef);
-          
-          // Delete all event logs
-          const deletePromises = eventLogsSnapshot.docs.map(async (eventDoc) => {
-            await deleteDoc(doc(db, "eventLogs", eventDoc.id));
+        const { getFunctions, httpsCallable } = await import("firebase/functions");
+        const endEmergency = httpsCallable(getFunctions(), "endEmergencyEvent");
+        const result = await endEmergency({ clearSheet: true });
+        const summary = result.data || {};
+        console.log("✅ Emergency cleanup completed:", summary);
+        if (summary.sheetCleanupError) {
+          toast({
+            title: "אירוע החירום הסתיים עם אזהרה",
+            description: `Firebase נוקה, אך ניקוי הגיליון נכשל: ${summary.sheetCleanupError}`,
+            variant: "destructive",
           });
-          
-          await Promise.all(deletePromises);
-          console.log("✅ All event logs deleted successfully");
-          
-          // Delete all residents from Firestore
-          console.log("🗑️ Deleting all residents...");
-          await clearResidentsCollection();
-          console.log("✅ All residents deleted successfully");
-          
-          // Also delete any linked tasks
-          try {
-            const tasksRef = collection(db, "tasks");
-            const tasksSnapshot = await getDocs(tasksRef);
-            
-            const taskDeletePromises = tasksSnapshot.docs.map(async (taskDoc) => {
-              await deleteDoc(doc(db, "tasks", taskDoc.id));
-            });
-            
-            await Promise.all(taskDeletePromises);
-            console.log("✅ All linked tasks deleted successfully");
-          } catch (taskError) {
-            console.error('Error deleting linked tasks:', taskError);
-          }
-          
-          // Call Google Apps Script to clear all resident statuses and residents
-          const GOOGLE_APPS_SCRIPT_URL = getEmergencyScriptUrl();
-          
-          console.log(`🔄 Calling Google Apps Script webhook [${emergencyModeLabel}]:`, GOOGLE_APPS_SCRIPT_URL);
-          
-          let clearResponse;
-          try {
-            clearResponse = await fetch(GOOGLE_APPS_SCRIPT_URL, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-              },
-              body: 'clearSystem=1',
-              mode: 'no-cors' // Add this to handle CORS issues
-            });
-            
-            console.log("📥 Response status:", clearResponse.status);
-            
-            // Try to get response text, but handle potential errors
-            let responseText = '';
-            try {
-              responseText = await clearResponse.text();
-              console.log("📥 Response text:", responseText);
-            } catch (textError) {
-              console.log("📥 Could not read response text:", textError);
-            }
-          } catch (fetchError) {
-            console.error("❌ Fetch error:", fetchError);
-            throw fetchError;
-          }
-          
-          if (clearResponse && clearResponse.ok) {
-            console.log("✅ System cleared successfully");
-            toast({
-              title: "אירוע החירום הסתיים",
-              description: "הנתונים יוצאו לקובץ CSV, כל האירועים והתושבים נמחקו והמערכת נוקתה בהצלחה",
-            });
-          } else {
-            console.warn("⚠️ System clear failed, but export and event deletion succeeded");
-            toast({
-              title: "אירוע החירום הסתיים",
-              description: "הנתונים יוצאו לקובץ CSV, כל האירועים והתושבים נמחקו בהצלחה, אך ניקוי המערכת נכשל",
-            });
-          }
-        } catch (clearError) {
-          console.error("❌ Error clearing system:", clearError);
+        } else {
           toast({
             title: "אירוע החירום הסתיים",
-            description: "הנתונים יוצאו לקובץ CSV, כל האירועים והתושבים נמחקו בהצלחה, אך ניקוי המערכת נכשל",
+            description: `הנתונים יוצאו ונוקו בהצלחה (${summary.deletedResidents || 0} תושבים, ${summary.deletedTasks || 0} משימות)`,
           });
         }
         
@@ -966,19 +837,24 @@ const handleFollowUpClick = async (lead) => {
 
   // Green Eyes Activation Function (v7.0 — Firebase-centered, dual mode)
   const handleGreenEyesActivation = async () => {
-    if (isEmergencyActionsDisabled) {
+    if (isEmergencyActivationDisabled) {
       toast({
         title: "הפעולה חסומה",
-        description: emergencyMode === "exercise"
-          ? "יש להזין קישור תרגיל לפני הפעלת נוהל ירוק בעיניים"
-          : "הגדרות מצב החירום עדיין נטענות",
+        description: "הגדרות מצב החירום עדיין נטענות",
         variant: "destructive"
       });
       return;
     }
 
     setShowGreenEyesDialog(false);
-    const mode = isDrillMode ? "drill" : "live";
+    const mode = normalizeEmergencyMode(emergencyMode);
+    const sourceForMode = emergencySources?.[mode];
+    const sourceOverride = sourceForMode?.sheetId
+      ? {
+          sheetId: sourceForMode.sheetId,
+          sheetName: sourceForMode.sheetName || "גיליון1",
+        }
+      : {};
     try {
       console.log(`🚨 Activating Green Eyes — mode: ${mode}`);
       
@@ -1011,6 +887,7 @@ const handleFollowUpClick = async (lead) => {
       await setDoc(doc(db, "emergencyEvents", eventId), {
         type: "green_eyes",
         mode: mode,
+        ...sourceOverride,
         triggeredBy: alias || currentUser?.email || "System",
         triggeredAt: serverTimestamp(),
         status: "pending",
@@ -2830,7 +2707,7 @@ useEffect(() => {
             <div className="flex items-center gap-2 text-xs text-gray-600">
                 <div className="text-right">
                     <div>{currentDateTime || 'טוען תאריך...'}</div>
-                    <div className="text-gray-500">{'Version 8.5'}</div>
+                    <div className="text-gray-500">{'Version 8.6'}</div>
                     {department && <div className="text-xs text-blue-600">{`מחלקה: ${department}`}</div>}
                 </div>
                 <NotificationBell />
@@ -2839,12 +2716,13 @@ useEffect(() => {
                     <span className="text-[10px] text-gray-500">חי</span>
                     <IOSSwitch
                       size="small"
-                      checked={!isDrillMode}
+                      checked={emergencyMode === EMERGENCY_MODES.LIVE}
+                      disabled={!isEmergencyConfigLoaded || isSavingEmergencyConfig}
                       onChange={(e) => {
                         const toLive = e.target.checked;
-                        setIsDrillMode(!toLive);
-                        updateEmergencyMode(toLive ? "live" : "exercise");
+                        updateEmergencyMode(toLive ? EMERGENCY_MODES.LIVE : EMERGENCY_MODES.DRILL);
                       }}
+                      inputProps={{ "aria-label": "החלפת מצב חי/תרגיל" }}
                       sx={{ transform: 'scale(0.7)' }}
                     />
                     <span className="text-[10px] text-gray-500">תרגיל</span>
@@ -2861,6 +2739,7 @@ useEffect(() => {
                   <Button 
                     size="sm" 
                     onClick={() => setShowGreenEyesDialog(true)}
+                    disabled={isEmergencyActivationDisabled}
                     className={`text-xs font-medium px-2 py-1 ${isDrillMode ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-red-600 hover:bg-red-700'} text-white`}
                   >
                     {isDrillMode ? 'תרגיל 🟡' : 'ירוק בעיניים'}
@@ -2868,6 +2747,7 @@ useEffect(() => {
                   <Button 
                     size="sm" 
                     onClick={() => setShowEndEmergencyDialog(true)}
+                    disabled={isEndEmergencyDisabled}
                     className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium px-2 py-1"
                   >
                     סיים אירוע
@@ -2896,16 +2776,16 @@ useEffect(() => {
                 <DropdownMenuContent align="end">
                   {(currentUser?.role === 'admin' || role === 'admin') && (
                     <DropdownMenuCheckboxItem
-                      onSelect={() => !isEmergencyActionsDisabled && setShowGreenEyesDialog(true)}
-                      disabled={isEmergencyActionsDisabled}
+                      onSelect={() => !isEmergencyActivationDisabled && setShowGreenEyesDialog(true)}
+                      disabled={isEmergencyActivationDisabled}
                     >
                       <span className="text-red-600">{`ירוק בעיניים (${emergencyModeLabel})`}</span>
                     </DropdownMenuCheckboxItem>
                   )}
                   {(currentUser?.role === 'admin' || role === 'admin') && (
                     <DropdownMenuCheckboxItem
-                      onSelect={() => !isEmergencyActionsDisabled && setShowEndEmergencyDialog(true)}
-                      disabled={isEmergencyActionsDisabled}
+                      onSelect={() => !isEndEmergencyDisabled && setShowEndEmergencyDialog(true)}
+                      disabled={isEndEmergencyDisabled}
                     >
                       <span className="text-green-700">{`סיים אירוע (${emergencyModeLabel})`}</span>
                     </DropdownMenuCheckboxItem>
@@ -2965,19 +2845,20 @@ useEffect(() => {
 
           <div className="min-w-0 max-w-[220px] text-left text-sm text-gray-500 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs">{'Version 8.5'}</span>
+              <span className="text-xs">{'Version 8.6'}</span>
               <NotificationBell />
               {(currentUser?.role === 'admin' || role === 'admin') && (
                 <div className="flex items-center gap-0.5">
                   <span className="text-[10px] text-gray-500">חי</span>
                   <IOSSwitch
                     size="small"
-                    checked={!isDrillMode}
+                    checked={emergencyMode === EMERGENCY_MODES.LIVE}
+                    disabled={!isEmergencyConfigLoaded || isSavingEmergencyConfig}
                     onChange={(e) => {
                       const toLive = e.target.checked;
-                      setIsDrillMode(!toLive);
-                      updateEmergencyMode(toLive ? "live" : "exercise");
+                      updateEmergencyMode(toLive ? EMERGENCY_MODES.LIVE : EMERGENCY_MODES.DRILL);
                     }}
+                    inputProps={{ "aria-label": "החלפת מצב חי/תרגיל" }}
                     sx={{ transform: 'scale(0.7)' }}
                   />
                   <span className="text-[10px] text-gray-500">תרגיל</span>
@@ -3000,6 +2881,7 @@ useEffect(() => {
                   <Button 
                     size="sm" 
                     onClick={() => setShowGreenEyesDialog(true)}
+                    disabled={isEmergencyActivationDisabled}
                     className={`text-xs font-medium border ${isDrillMode ? 'bg-yellow-500 hover:bg-yellow-600 border-yellow-500' : 'bg-red-600 hover:bg-red-700 border-red-600'} text-white`}
                   >
                     {isDrillMode ? 'תרגיל ירוק בעיניים 🟡' : 'הפעלת ירוק בעיניים'}
@@ -3008,7 +2890,7 @@ useEffect(() => {
                     size="sm" 
                     onClick={() => setShowEndEmergencyDialog(true)}
                     variant="success"
-                    disabled={isEmergencyActionsDisabled}
+                    disabled={isEndEmergencyDisabled}
                     className="text-xs w-full"
                   >
                     <span className="truncate">{`סיים אירוע (${emergencyModeLabel})`}</span>
@@ -3278,38 +3160,6 @@ useEffect(() => {
         currentUser={currentUser}
       />
       {showEventStatus && <EventStatus onClose={() => setShowEventStatus(false)} />}
-      <Dialog open={showEmergencyConfigDialog} onOpenChange={setShowEmergencyConfigDialog}>
-        <DialogContent className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full" style={{ direction: 'rtl', textAlign: 'right' }}>
-          <DialogHeader className="text-right">
-            <DialogTitle className="text-lg font-semibold">הגדרות תרגיל - ירוק בעיניים</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Label htmlFor="exercise-green-eyes-url">קישור Google Apps Script לתרגיל</Label>
-            <Input
-              id="exercise-green-eyes-url"
-              dir="ltr"
-              value={exerciseGreenEyesUrl}
-              onChange={(e) => setExerciseGreenEyesUrl(e.target.value)}
-              placeholder="https://script.google.com/macros/s/.../exec"
-            />
-            <p className="text-xs text-gray-600">
-              קישור זה ישמש רק במצב תרגיל. במצב חי המערכת משתמשת בקישור הקבוע של הפרודקשן.
-            </p>
-            <div className="rounded border bg-gray-50 p-2 text-xs text-gray-700">
-              <div>{`עודכן לאחרונה על ידי: ${emergencyConfigUpdatedBy || "לא ידוע"}`}</div>
-              <div>{`תאריך עדכון: ${formattedEmergencyConfigUpdatedAt}`}</div>
-            </div>
-          </div>
-          <DialogFooter className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowEmergencyConfigDialog(false)}>
-              ביטול
-            </Button>
-            <Button onClick={saveExerciseGreenEyesUrl} disabled={isSavingEmergencyConfig}>
-              שמור קישור
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       {/* Green Eyes Activation Dialog */}
       <Dialog open={showGreenEyesDialog} onOpenChange={setShowGreenEyesDialog}>
         <DialogContent className="bg-white rounded-xl shadow-xl p-8 max-w-xs w-full text-center" style={{ direction: 'rtl', textAlign: 'center' }}>
@@ -3328,6 +3178,15 @@ useEffect(() => {
               ? 'האם אתה בטוח שאתה רוצה להפעיל תרגיל?'
               : 'האם אתה בטוח שאתה רוצה להפעיל נוהל ירוק בעיניים?'}
           </div>
+          {activeEmergencySource?.sheetId && (
+            <div className="text-xs text-gray-600 mb-4 border rounded p-2 bg-gray-50">
+              {`מקור תושבים: ${emergencyModeLabel} / ${activeEmergencySource.sheetName || "גיליון1"}${
+                activeEmergencySource.lastVerified?.residentCount !== undefined
+                  ? ` / ${activeEmergencySource.lastVerified.residentCount} תושבים אומתו`
+                  : ""
+              }`}
+            </div>
+          )}
           <div className="flex justify-between gap-4">
             <Button 
               variant="outline" 

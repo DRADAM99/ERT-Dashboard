@@ -153,6 +153,48 @@ const STATUS_COLUMN_NAME = "סטטוס";
 const TIMESTAMP_COLUMN_NAME = "updated at";
 const REPLY_COLUMN_NAME = "תגובה";
 
+function normalizeMode(mode) {
+  return mode === "live" ? "live" : "drill";
+}
+
+function extractSpreadsheetId(input) {
+  if (!input || typeof input !== "string") return "";
+  const trimmed = input.trim();
+  const match = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (match) return match[1];
+  return trimmed.replace(/^https?:\/\/docs\.google\.com\/spreadsheets\/d\//, "")
+      .split(/[/?#]/)[0]
+      .trim();
+}
+
+function functionsServiceAccountEmail() {
+  const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "emergency-dashboard-a3842";
+  return `${projectId}@appspot.gserviceaccount.com`;
+}
+
+async function requireAdmin(context) {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Authentication required");
+  }
+  const uid = context.auth.uid;
+  const userSnap = await db.collection("users").doc(uid).get();
+  if (!userSnap.exists || userSnap.data().role !== "admin") {
+    throw new functions.https.HttpsError("permission-denied", "Admin role required");
+  }
+  return {uid, user: userSnap.data()};
+}
+
+function sheetAccessError(err, sheetId, sheetName) {
+  const message = err && err.message ? err.message : String(err);
+  if (/permission|forbidden|caller does not have permission|403/i.test(message)) {
+    return `אין הרשאת גישה לגיליון. יש לשתף את הגיליון ${sheetId} עם חשבון השירות ${functionsServiceAccountEmail()}.`;
+  }
+  if (/not found|404/i.test(message)) {
+    return `הגיליון או הטאב לא נמצאו. ודא שהקישור נכון ושהטאב "${sheetName}" קיים.`;
+  }
+  return message;
+}
+
 function normalizePhone(phone) {
   if (!phone) return "";
   let n = phone.toString().replace(/\D/g, "");
@@ -268,6 +310,39 @@ async function batchUpdateSheetCells(sheetId, sheetName, updates) {
   });
 }
 
+async function clearSheetStatusColumns(sheetId, sheetName, columns, rowIndices) {
+  const validColumns = columns.filter((idx) => idx !== undefined && idx !== -1);
+  if (!sheetId || !sheetName || validColumns.length === 0 || rowIndices.length === 0) {
+    return 0;
+  }
+
+  const updates = [];
+  for (const rowIndex of rowIndices) {
+    for (const colIndex of validColumns) {
+      updates.push({rowIndex, colIndex, value: ""});
+    }
+  }
+
+  const BATCH_SIZE = 450;
+  for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+    await batchUpdateSheetCells(sheetId, sheetName, updates.slice(i, i + BATCH_SIZE));
+  }
+  return updates.length;
+}
+
+async function deleteCollection(collectionPath, batchSize = 450) {
+  let deleted = 0;
+  while (true) {
+    const snap = await db.collection(collectionPath).limit(batchSize).get();
+    if (snap.empty) return deleted;
+
+    const batch = db.batch();
+    snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+    await batch.commit();
+    deleted += snap.size;
+  }
+}
+
 /** Returns current Israel time as "DD.MM.YYYY HH:MM" */
 function israelTime() {
   const now = new Date();
@@ -306,6 +381,163 @@ async function appendSheetLog(sheetId, {event, phone, body, status, notes}) {
 }
 
 // ============================================================================
+// verifyEmergencySheetSource — Callable admin verification for Live/Drill sheets
+// ============================================================================
+
+exports.verifyEmergencySheetSource = functions
+    .runWith({timeoutSeconds: 60, memory: "256MB"})
+    .https.onCall(async (data, context) => {
+      await requireAdmin(context);
+
+      const mode = normalizeMode(data && data.mode);
+      const sheetInput = (data && (data.sheetUrl || data.sheetId)) || "";
+      const sheetId = extractSpreadsheetId(sheetInput);
+      const sheetName = (data && data.sheetName) || "גיליון1";
+
+      if (!sheetId) {
+        throw new functions.https.HttpsError("invalid-argument", "Missing Google Sheet URL or ID");
+      }
+
+      try {
+        const sheetData = await readResidentsFromSheet(sheetId, sheetName);
+        const headers = sheetData.headers || [];
+        const phoneColumnIndex = findColumnIndex(headers, PHONE_COLUMNS);
+        const statusColumnIndex = headers.indexOf(STATUS_COLUMN_NAME);
+        const timestampColumnIndex = headers.indexOf(TIMESTAMP_COLUMN_NAME);
+        const replyColumnIndex = headers.indexOf(REPLY_COLUMN_NAME);
+        const warnings = [];
+
+        if (phoneColumnIndex === -1) {
+          warnings.push("לא נמצאה עמודת טלפון מזוהה");
+        }
+        if (statusColumnIndex === -1) {
+          warnings.push(`לא נמצאה עמודת ${STATUS_COLUMN_NAME}`);
+        }
+        if (timestampColumnIndex === -1) {
+          warnings.push(`לא נמצאה עמודת ${TIMESTAMP_COLUMN_NAME}`);
+        }
+        if (replyColumnIndex === -1) {
+          warnings.push(`לא נמצאה עמודת ${REPLY_COLUMN_NAME}`);
+        }
+
+        await fsLog("verify_sheet", "info", `Verified ${mode} sheet`, {
+          mode,
+          sheetId,
+          sheetName,
+          residentCount: sheetData.residents.length,
+          warnings,
+        });
+
+        return {
+          ok: true,
+          mode,
+          sheetId,
+          sheetName,
+          residentCount: sheetData.residents.length,
+          headers,
+          phoneColumnIndex,
+          statusColumnIndex,
+          timestampColumnIndex,
+          replyColumnIndex,
+          warnings,
+          serviceAccountEmail: functionsServiceAccountEmail(),
+          verifiedAt: new Date().toISOString(),
+        };
+      } catch (err) {
+        const message = sheetAccessError(err, sheetId, sheetName);
+        await fsLog("verify_sheet", "error", `Verify ${mode} sheet failed: ${message}`, {
+          mode,
+          sheetId,
+          sheetName,
+        });
+        throw new functions.https.HttpsError("failed-precondition", message, {
+          sheetId,
+          sheetName,
+          serviceAccountEmail: functionsServiceAccountEmail(),
+        });
+      }
+    });
+
+// ============================================================================
+// endEmergencyEvent — Callable admin cleanup for Firebase-centered emergency mode
+// ============================================================================
+
+exports.endEmergencyEvent = functions
+    .runWith({timeoutSeconds: 540, memory: "512MB"})
+    .https.onCall(async (data, context) => {
+      const {uid, user} = await requireAdmin(context);
+      const clearSheet = data && data.clearSheet !== false;
+      const userAlias = user.alias || user.email || uid;
+      const activeRef = db.doc("system/activeEmergency");
+      const activeSnap = await activeRef.get();
+      const active = activeSnap.exists ? activeSnap.data() : {};
+      const activeEventId = active.eventId || `end_emergency_${Date.now()}`;
+
+      await fsLog(activeEventId, "info", `End emergency started by ${userAlias}`, {
+        uid,
+        clearSheet,
+        active,
+      });
+
+      let clearedSheetCells = 0;
+      let sheetCleanupError = null;
+      if (clearSheet && active.sheetId && active.sheetName) {
+        try {
+          const sheetData = await readResidentsFromSheet(active.sheetId, active.sheetName);
+          const rowIndices = sheetData.residents.map((resident) => resident.rowIndex).filter(Boolean);
+          clearedSheetCells = await clearSheetStatusColumns(
+              active.sheetId,
+              active.sheetName,
+              [active.statusColumnIndex, active.timestampColumnIndex, active.replyColumnIndex],
+              rowIndices,
+          );
+          await appendSheetLog(active.sheetId, {
+            event: "ניקוי אירוע",
+            phone: "",
+            body: "",
+            status: "הסתיים",
+            notes: `נוקה על ידי ${userAlias} דרך Firebase`,
+          });
+        } catch (err) {
+          const message = sheetAccessError(err, active.sheetId, active.sheetName);
+          sheetCleanupError = message;
+          await fsLog(activeEventId, "error", `Sheet cleanup failed: ${message}`);
+        }
+      }
+
+      const deletedEventLogs = await deleteCollection("eventLogs");
+      const deletedResidents = await deleteCollection("residents");
+      const deletedTasks = await deleteCollection("tasks");
+
+      await activeRef.set({
+        mode: "none",
+        previousMode: active.mode || "none",
+        eventId: activeEventId,
+        clearedAt: admin.firestore.FieldValue.serverTimestamp(),
+        clearedBy: uid,
+        clearedByAlias: userAlias,
+      }, {merge: false});
+
+      await fsLog(activeEventId, "info", `End emergency complete by ${userAlias}`, {
+        deletedEventLogs,
+        deletedResidents,
+        deletedTasks,
+        clearedSheetCells,
+        sheetCleanupError,
+      });
+
+      return {
+        success: true,
+        eventId: activeEventId,
+        deletedEventLogs,
+        deletedResidents,
+        deletedTasks,
+        clearedSheetCells,
+        sheetCleanupError,
+      };
+    });
+
+// ============================================================================
 // triggerGreenEyes — Firestore onCreate trigger
 // ============================================================================
 // Triggered when a new document is created in "emergencyEvents/{eventId}".
@@ -321,7 +553,7 @@ exports.triggerGreenEyes = functions
       const eventData = snapshot.data();
       const eventRef = snapshot.ref;
 
-      const mode = eventData.mode || "live";
+      const mode = normalizeMode(eventData.mode || "live");
       console.log(`[GreenEyes] Triggered: ${eventId}, mode: ${mode}`);
       await fsLog(eventId, "info", `Triggered — mode: ${mode}`);
 
