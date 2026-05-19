@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronDown, ChevronLeft, Upload, Link, Edit2, ClipboardList } from "lucide-react";
+import { ChevronDown, ChevronLeft, Upload, Link, Edit2 } from "lucide-react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "@/components/ui/use-toast";
@@ -439,6 +439,79 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
     return () => unsub();
   }, []);
 
+  const getEventStatusSelectClass = (status) => `h-6 text-xs font-semibold ${
+    status === 'מחכה' ? 'bg-red-500/50 border-red-400' :
+    status === 'בטיפול' ? 'bg-orange-500/50 border-orange-400' :
+    status === 'טופל' ? 'bg-green-500/50 border-green-400' :
+    'bg-gray-200/50'
+  }`;
+
+  const renderExpandedEventContent = (event, linkedTasks) => (
+    <div className="space-y-4">
+      <div>
+        <div className="font-semibold text-sm mb-2">היסטוריית עדכונים:</div>
+        <ul className="space-y-1.5 max-h-40 overflow-y-auto border rounded p-2 bg-white">
+          {(event.history || []).length === 0 && (
+            <li className="text-xs text-gray-500 text-center py-2">אין עדכונים.</li>
+          )}
+          {(event.history || []).map((c, idx) => (
+            <li key={idx} className="text-xs bg-gray-50 p-1.5 border rounded">
+              <div className="font-semibold text-gray-700">{formatDateTime(c.timestamp)}</div>
+              <div className="text-gray-800">{c.text}</div>
+            </li>
+          ))}
+        </ul>
+        <div className="flex gap-2 mt-2">
+          <Textarea
+            className="text-sm"
+            rows={2}
+            value={addUpdateText}
+            onChange={e => setAddUpdateText(e.target.value)}
+            placeholder="כתוב עדכון..."
+          />
+          <Button size="sm" onClick={() => addUpdate(event)}>הוסף עדכון</Button>
+        </div>
+      </div>
+
+      <div>
+        <div className="font-semibold text-sm mb-2">משימות מקושרות לאירוע זה:</div>
+        <ul className="space-y-2">
+          {linkedTasks.length === 0 && (
+            <li className="text-xs text-gray-500">אין משימות מקושרות.</li>
+          )}
+          {linkedTasks.map(task => (
+            <li key={task.id} className="flex items-center gap-2 border rounded p-2 bg-white">
+              <div className={`w-2 h-6 rounded flex-shrink-0 ${statusColors[task.status] || 'bg-gray-300'}`} />
+              <div className="flex-grow min-w-0">
+                <div className="font-bold text-sm truncate">{task.title}</div>
+                <div className="text-xs text-gray-600">
+                  <span className="font-semibold">עדיפות:</span> {task.priority}
+                  {' · '}
+                  <span className="font-semibold">מחלקה:</span> {task.category}
+                  {' · '}
+                  <span className="font-semibold">סטטוס:</span> {task.status}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="flex items-center justify-start pt-1 border-t gap-2">
+        <span className="text-xs font-semibold">סטטוס אירוע:</span>
+        <Select value={event.status || "מחכה"} onValueChange={(newStatus) => handleEventStatusChange(event.id, newStatus)}>
+          <SelectTrigger className={getEventStatusSelectClass(event.status)}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button size="sm" onClick={() => openTaskModal(event)}>שלח משימה</Button>
+      </div>
+    </div>
+  );
+
   return (
     <Card className="mb-4 w-full">
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -476,132 +549,239 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="overflow-y-auto max-h-[70vh] p-2 bg-gray-50 space-y-3">
-          {displayEvents.map(event => {
-            const isExpanded = expandedId === event.id;
-            const isEditing = editingId === event.id;
-            const linkedTasks = allTasks.filter(t => t.eventId === event.id);
-            const pendingCount = linkedTasks.filter(t => !t.done && (t.status === 'מחכה' || !t.status)).length;
-            const inProgressCount = linkedTasks.filter(t => !t.done && t.status === 'בטיפול').length;
-            const doneCount = linkedTasks.filter(t => t.done || t.status === 'טופל').length;
-            const hasLinkedTasks = linkedTasks.length > 0;
+        {isFullView ? (
+          <div className="overflow-x-auto overflow-y-auto max-h-[70vh] max-w-full">
+            <table className="w-full table-fixed text-sm border-collapse min-w-[760px]">
+              <thead className="sticky top-0 bg-gray-100 z-10">
+                <tr>
+                  <th className="w-2"></th>
+                  <th className="px-2 py-2 text-right font-semibold w-32">תאריך</th>
+                  <th className="px-2 py-2 text-right font-semibold w-28">המדווח</th>
+                  <th className="px-2 py-2 text-right font-semibold w-28">מקבל הדיווח</th>
+                  <th className="px-2 py-2 text-right font-semibold">תיאור האירוע</th>
+                  <th className="px-2 py-2 text-right font-semibold w-28">מחלקה</th>
+                  <th className="px-2 py-2 text-right font-semibold w-24">סטטוס</th>
+                  <th className="px-2 py-2 text-right font-semibold w-28">מעדכן אחרון</th>
+                  <th className="px-2 py-2 text-right font-semibold w-20">פעולות</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayEvents.map(event => {
+                  const isExpanded = expandedId === event.id;
+                  const linkedTasks = allTasks.filter(t => t.eventId === event.id);
 
-            return (
-              <div key={event.id} className="rounded-lg border bg-white shadow-md overflow-hidden">
-                {/* Card body */}
-                <div className="p-3">
-                  <div className="flex items-start gap-3">
-                    {/* Left: chevron + status bar + task dots */}
-                    <div className="relative flex flex-col items-center gap-1.5 pt-0.5 flex-shrink-0">
-                      <button
-                        onClick={() => setExpandedId(isExpanded ? null : event.id)}
-                        className="hover:bg-gray-100 rounded p-0.5 -mt-0.5"
-                        aria-label={isExpanded ? 'סגור פרטים' : 'פתח פרטים'}
-                      >
-                        {isExpanded
-                          ? <ChevronDown className="h-4 w-4 text-gray-500" />
-                          : <ChevronLeft className="h-4 w-4 text-gray-500" />}
-                      </button>
-                      <span
-                        className={`inline-block w-2.5 h-9 rounded-full shadow-sm ${statusColors[event.status] || 'bg-gray-300'}`}
-                        title={`סטטוס: ${event.status || 'ללא'}`}
-                      />
-                      {hasLinkedTasks && (
-                        <div className="flex flex-col gap-1 mt-1">
-                          {pendingCount > 0 && <div className="w-2 h-2 rounded-full bg-red-500 shadow-sm" title={`${pendingCount} משימות מחכות`} />}
-                          {inProgressCount > 0 && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-sm" title={`${inProgressCount} משימות בטיפול`} />}
-                          {doneCount > 0 && <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm" title={`${doneCount} משימות טופלו`} />}
-                        </div>
+                  return (
+                    <React.Fragment key={event.id}>
+                      <tr className="border-b hover:bg-gray-50 group">
+                        <td className="px-1 align-top">
+                          <div className={`w-2 h-8 rounded ${statusColors[event.status] || 'bg-gray-300'}`}></div>
+                        </td>
+                        {editingId === event.id ? (
+                          <>
+                            <td className="px-2 py-2 align-top whitespace-nowrap">{formatDateTime(event.createdAt)}</td>
+                            <td className="px-2 py-2 align-top"><Input value={editFields.reporter} onChange={e => setEditFields(f => ({ ...f, reporter: e.target.value }))} className="h-8 text-sm" /></td>
+                            <td className="px-2 py-2 align-top"><Input value={editFields.recipient} onChange={e => setEditFields(f => ({ ...f, recipient: e.target.value }))} className="h-8 text-sm" /></td>
+                            <td className="px-2 py-2 align-top"><Input value={editFields.description} onChange={e => setEditFields(f => ({ ...f, description: e.target.value }))} className="h-8 text-sm" /></td>
+                            <td className="px-2 py-2 align-top">
+                              <Select value={editFields.department} onValueChange={v => setEditFields(f => ({ ...f, department: v }))}>
+                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="בחר..." /></SelectTrigger>
+                                <SelectContent>{departmentOptions.map(dep => <SelectItem key={dep} value={dep}>{dep}</SelectItem>)}</SelectContent>
+                              </Select>
+                            </td>
+                            <td className="px-2 py-2 align-top">
+                              <Select value={editFields.status} onValueChange={v => setEditFields(f => ({ ...f, status: v }))}>
+                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="בחר..." /></SelectTrigger>
+                                <SelectContent>{["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                              </Select>
+                            </td>
+                            <td className="px-2 py-2 align-top">{event.lastUpdater}</td>
+                            <td className="px-2 py-2 align-top">
+                              <div className="flex gap-1">
+                                <Button size="sm" onClick={() => saveEdit(event)}>שמור</Button>
+                                <Button size="sm" variant="outline" onClick={cancelEdit}>ביטול</Button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-2 py-2 align-top whitespace-nowrap">{formatDateTime(event.createdAt)}</td>
+                            <td className="px-2 py-2 align-top truncate" title={event.reporter}>{event.reporter}</td>
+                            <td className="px-2 py-2 align-top truncate" title={event.recipient}>{event.recipient}</td>
+                            <td className="px-2 py-2 align-top truncate" title={event.description}>
+                              <div className="flex flex-col">
+                                <span>{event.description}</span>
+                                {event.link && (
+                                  <a
+                                    href={event.link.startsWith('http') ? event.link : `https://${event.link}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-500 hover:underline flex items-center gap-1 mt-1 text-[10px]"
+                                  >
+                                    <Link size={10} /> קישור חיצוני
+                                  </a>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 align-top">
+                              {event.department && (
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getDepartmentBadgeColor(event.department)}`}>
+                                  {event.department}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-2 py-2 align-top">
+                              <Select value={event.status || "מחכה"} onValueChange={(newStatus) => handleEventStatusChange(event.id, newStatus)}>
+                                <SelectTrigger className={getEventStatusSelectClass(event.status)}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                            <td className="px-2 py-2 align-top truncate" title={event.lastUpdater}>{event.lastUpdater}</td>
+                            <td className="px-2 py-2 align-top">
+                              <div className="flex gap-1">
+                                <Button size="icon" variant="ghost" className="w-7 h-7 text-amber-700 hover:text-amber-800 hover:bg-amber-100" title="ערוך" onClick={() => startEdit(event)}>
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="w-7 h-7 text-gray-500 hover:text-blue-600" title="הרחב" onClick={() => setExpandedId(isExpanded ? null : event.id)}>
+                                  {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                                </Button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                      {isExpanded && (
+                        <tr className="border-b bg-blue-50">
+                          <td colSpan={9} className="p-4">
+                            {renderExpandedEventContent(event, linkedTasks)}
+                          </td>
+                        </tr>
                       )}
-                    </div>
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="overflow-y-auto max-h-[70vh] p-2 bg-gray-50 space-y-2">
+            {displayEvents.map(event => {
+              const isExpanded = expandedId === event.id;
+              const isEditing = editingId === event.id;
+              const linkedTasks = allTasks.filter(t => t.eventId === event.id);
+              const pendingCount = linkedTasks.filter(t => !t.done && (t.status === 'מחכה' || !t.status)).length;
+              const inProgressCount = linkedTasks.filter(t => !t.done && t.status === 'בטיפול').length;
+              const doneCount = linkedTasks.filter(t => t.done || t.status === 'טופל').length;
+              const hasLinkedTasks = linkedTasks.length > 0;
 
-                    {/* Right: content */}
-                    <div className="flex-1 min-w-0">
-                      {isEditing ? (
-                        /* ── Inline edit mode ── */
-                        <div className="space-y-2">
-                          <Input
-                            value={editFields.description}
-                            onChange={e => setEditFields(f => ({ ...f, description: e.target.value }))}
-                            className="text-sm h-8"
-                            placeholder="תיאור האירוע"
-                          />
-                          <div className="grid grid-cols-2 gap-2">
+              return (
+                <div key={event.id} className="rounded-lg border bg-white shadow-md overflow-hidden">
+                  <div className="p-2.5">
+                    <div className="flex items-start gap-2.5">
+                      <div className="relative flex flex-col items-center gap-1 pt-0.5 flex-shrink-0">
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : event.id)}
+                          className="hover:bg-gray-100 rounded p-0.5 -mt-0.5"
+                          aria-label={isExpanded ? 'סגור פרטים' : 'פתח פרטים'}
+                        >
+                          {isExpanded
+                            ? <ChevronDown className="h-4 w-4 text-gray-500" />
+                            : <ChevronLeft className="h-4 w-4 text-gray-500" />}
+                        </button>
+                        <span
+                          className={`inline-block w-2.5 h-8 rounded-full shadow-sm ${statusColors[event.status] || 'bg-gray-300'}`}
+                          title={`סטטוס: ${event.status || 'ללא'}`}
+                        />
+                        {hasLinkedTasks && (
+                          <div className="flex flex-col gap-1">
+                            {pendingCount > 0 && <div className="w-2 h-2 rounded-full bg-red-500 shadow-sm" title={`${pendingCount} משימות מחכות`} />}
+                            {inProgressCount > 0 && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-sm" title={`${inProgressCount} משימות בטיפול`} />}
+                            {doneCount > 0 && <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm" title={`${doneCount} משימות טופלו`} />}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        {isEditing ? (
+                          <div className="space-y-2">
                             <Input
-                              value={editFields.reporter}
-                              onChange={e => setEditFields(f => ({ ...f, reporter: e.target.value }))}
+                              value={editFields.description}
+                              onChange={e => setEditFields(f => ({ ...f, description: e.target.value }))}
                               className="text-sm h-8"
-                              placeholder="המדווח"
+                              placeholder="תיאור האירוע"
                             />
-                            <Input
-                              value={editFields.recipient}
-                              onChange={e => setEditFields(f => ({ ...f, recipient: e.target.value }))}
-                              className="text-sm h-8"
-                              placeholder="מקבל הדיווח"
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <Select value={editFields.department} onValueChange={v => setEditFields(f => ({ ...f, department: v }))}>
-                              <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="מחלקה" /></SelectTrigger>
-                              <SelectContent>{departmentOptions.map(dep => <SelectItem key={dep} value={dep}>{dep}</SelectItem>)}</SelectContent>
-                            </Select>
-                            <Select value={editFields.status} onValueChange={v => setEditFields(f => ({ ...f, status: v }))}>
-                              <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="סטטוס" /></SelectTrigger>
-                              <SelectContent>{["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex gap-2 justify-end pt-1">
-                            <Button size="sm" onClick={() => saveEdit(event)}>שמור</Button>
-                            <Button size="sm" variant="outline" onClick={cancelEdit}>ביטול</Button>
-                          </div>
-                        </div>
-                      ) : (
-                        /* ── Normal view mode ── */
-                        <>
-                          {/* Title row: description */}
-                          <div className="min-w-0">
-                            <div className={`font-semibold text-gray-900 ${isFullView ? '' : 'truncate'}`} title={event.description}>
-                              {event.description || <span className="text-gray-400 italic">ללא תיאור</span>}
+                            <div className="grid grid-cols-2 gap-2">
+                              <Input
+                                value={editFields.reporter}
+                                onChange={e => setEditFields(f => ({ ...f, reporter: e.target.value }))}
+                                className="text-sm h-8"
+                                placeholder="המדווח"
+                              />
+                              <Input
+                                value={editFields.recipient}
+                                onChange={e => setEditFields(f => ({ ...f, recipient: e.target.value }))}
+                                className="text-sm h-8"
+                                placeholder="מקבל הדיווח"
+                              />
                             </div>
-                            {event.link && (
-                              <a
-                                href={event.link.startsWith('http') ? event.link : `https://${event.link}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-500 hover:underline flex items-center gap-1 mt-0.5 text-[10px]"
+                            <div className="grid grid-cols-2 gap-2">
+                              <Select value={editFields.department} onValueChange={v => setEditFields(f => ({ ...f, department: v }))}>
+                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="מחלקה" /></SelectTrigger>
+                                <SelectContent>{departmentOptions.map(dep => <SelectItem key={dep} value={dep}>{dep}</SelectItem>)}</SelectContent>
+                              </Select>
+                              <Select value={editFields.status} onValueChange={v => setEditFields(f => ({ ...f, status: v }))}>
+                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="סטטוס" /></SelectTrigger>
+                                <SelectContent>{["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                              </Select>
+                            </div>
+                            <div className="flex gap-2 justify-end pt-1">
+                              <Button size="sm" onClick={() => saveEdit(event)}>שמור</Button>
+                              <Button size="sm" variant="outline" onClick={cancelEdit}>ביטול</Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="font-semibold text-gray-900 truncate" title={event.description}>
+                                  {event.description || <span className="text-gray-400 italic">ללא תיאור</span>}
+                                </div>
+                                {event.link && (
+                                  <a
+                                    href={event.link.startsWith('http') ? event.link : `https://${event.link}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-500 hover:underline flex items-center gap-1 mt-0.5 text-[10px]"
+                                  >
+                                    <Link size={10} /> קישור חיצוני
+                                  </a>
+                                )}
+                              </div>
+                              <button
+                                onClick={e => { e.stopPropagation(); startEdit(event); }}
+                                className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200 flex-shrink-0"
+                                title="ערוך אירוע"
                               >
-                                <Link size={10} /> קישור חיצוני
-                              </a>
-                            )}
-                          </div>
+                                <Edit2 className="h-4 w-4" />
+                              </button>
+                            </div>
 
-                          {/* Reporter → Recipient */}
-                          <div className="text-xs text-gray-600 mt-1 truncate">
-                            <span className="font-semibold">מדווח:</span> {event.reporter || '—'}
-                            {' '}<span className="text-gray-400">→</span>{' '}
-                            <span className="font-semibold">מקבל:</span> {event.recipient || '—'}
-                          </div>
+                            <div className="text-xs text-gray-600 mt-1 truncate">
+                              <span className="font-semibold">מדווח:</span> {event.reporter || '—'}
+                              {' '}<span className="text-gray-400">→</span>{' '}
+                              <span className="font-semibold">מקבל:</span> {event.recipient || '—'}
+                            </div>
 
-                          {/* Date + dept badge */}
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <span className="text-xs text-gray-500">
-                              {isFullView ? formatDateTime(event.createdAt) : formatDateTime(event.createdAt).split(' ')[0]}
-                            </span>
-                            {event.department && (
-                              <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${getDepartmentBadgeColor(event.department)}`}>
-                                {event.department}
-                              </span>
-                            )}
-                            {isFullView && event.lastUpdater && (
-                              <span className="text-[11px] text-gray-400 truncate">
-                                <span className="font-semibold">עודכן ע״י:</span> {event.lastUpdater}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Task count tags */}
-                          {hasLinkedTasks && (pendingCount > 0 || inProgressCount > 0) && (
-                            <div className="flex gap-1 mt-1.5 flex-wrap">
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <span className="text-xs text-gray-500">{formatDateTime(event.createdAt).split(' ')[0]}</span>
+                              {event.department && (
+                                <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${getDepartmentBadgeColor(event.department)}`}>
+                                  {event.department}
+                                </span>
+                              )}
                               {pendingCount > 0 && (
                                 <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
                                   {pendingCount} מחכות
@@ -613,102 +793,22 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
                                 </span>
                               )}
                             </div>
-                          )}
-
-                          {/* Edit button */}
-                          <div className="mt-3">
-                            <button
-                              onClick={e => { e.stopPropagation(); startEdit(event); }}
-                              className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200"
-                              title="ערוך אירוע"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Expanded panel */}
-                {isExpanded && !isEditing && (
-                  <div className="border-t bg-gray-50 p-3 space-y-4">
-                    {/* History */}
-                    <div>
-                      <div className="font-semibold text-sm mb-2">היסטוריית עדכונים:</div>
-                      <ul className="space-y-1.5 max-h-40 overflow-y-auto border rounded p-2 bg-white">
-                        {(event.history || []).length === 0 && (
-                          <li className="text-xs text-gray-500 text-center py-2">אין עדכונים.</li>
+                          </>
                         )}
-                        {(event.history || []).map((c, idx) => (
-                          <li key={idx} className="text-xs bg-gray-50 p-1.5 border rounded">
-                            <div className="font-semibold text-gray-700">{formatDateTime(c.timestamp)}</div>
-                            <div className="text-gray-800">{c.text}</div>
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="flex gap-2 mt-2">
-                        <Textarea
-                          className="text-sm"
-                          rows={2}
-                          value={addUpdateText}
-                          onChange={e => setAddUpdateText(e.target.value)}
-                          placeholder="כתוב עדכון..."
-                        />
-                        <Button size="sm" onClick={() => addUpdate(event)}>הוסף עדכון</Button>
                       </div>
                     </div>
-
-                    {/* Linked tasks */}
-                    <div>
-                      <div className="font-semibold text-sm mb-2">משימות מקושרות לאירוע זה:</div>
-                      <ul className="space-y-2">
-                        {linkedTasks.length === 0 && (
-                          <li className="text-xs text-gray-500">אין משימות מקושרות.</li>
-                        )}
-                        {linkedTasks.map(task => (
-                          <li key={task.id} className="flex items-center gap-2 border rounded p-2 bg-white">
-                            <div className={`w-2 h-6 rounded flex-shrink-0 ${statusColors[task.status] || 'bg-gray-300'}`} />
-                            <div className="flex-grow min-w-0">
-                              <div className="font-bold text-sm truncate">{task.title}</div>
-                              <div className="text-xs text-gray-600">
-                                <span className="font-semibold">עדיפות:</span> {task.priority}
-                                {' · '}
-                                <span className="font-semibold">מחלקה:</span> {task.category}
-                                {' · '}
-                                <span className="font-semibold">סטטוס:</span> {task.status}
-                              </div>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Footer: status + task button — right side (RTL start) */}
-                    <div className="flex items-center justify-start pt-1 border-t gap-2">
-                      <span className="text-xs font-semibold">סטטוס אירוע:</span>
-                      <Select value={event.status || "מחכה"} onValueChange={(newStatus) => handleEventStatusChange(event.id, newStatus)}>
-                        <SelectTrigger className={`h-6 text-xs font-semibold ${
-                          event.status === 'מחכה' ? 'bg-red-500/50 border-red-400' :
-                          event.status === 'בטיפול' ? 'bg-orange-500/50 border-orange-400' :
-                          event.status === 'טופל' ? 'bg-green-500/50 border-green-400' :
-                          'bg-gray-200/50'
-                        }`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {["מחכה", "בטיפול", "טופל"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      <Button size="sm" onClick={() => openTaskModal(event)}>שלח משימה</Button>
-                    </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+
+                  {isExpanded && !isEditing && (
+                    <div className="border-t bg-gray-50 p-3">
+                      {renderExpandedEventContent(event, linkedTasks)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {/* Add Event Modal */}
         {showAddEventModal && (
           <Dialog open={showAddEventModal} onOpenChange={setShowAddEventModal}>

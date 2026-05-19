@@ -1,4 +1,4 @@
-// Version 8.0 - sync tasks and residents status, notifications 
+// Version 8.65 - sync tasks and residents status, notifications
 "use client";
 
 // Utility functions for layout persistence
@@ -2707,7 +2707,7 @@ useEffect(() => {
             <div className="flex items-center gap-2 text-xs text-gray-600">
                 <div className="text-right">
                     <div>{currentDateTime || 'טוען תאריך...'}</div>
-                    <div className="text-gray-500">{'Version 8.6'}</div>
+                    <div className="text-gray-500">{'Version 8.65'}</div>
                     {department && <div className="text-xs text-blue-600">{`מחלקה: ${department}`}</div>}
                 </div>
                 <NotificationBell />
@@ -2845,7 +2845,7 @@ useEffect(() => {
 
           <div className="min-w-0 max-w-[220px] text-left text-sm text-gray-500 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs">{'Version 8.6'}</span>
+              <span className="text-xs">{'Version 8.65'}</span>
               <NotificationBell />
               {(currentUser?.role === 'admin' || role === 'admin') && (
                 <div className="flex items-center gap-0.5">
@@ -2971,7 +2971,7 @@ useEffect(() => {
   </div>
   
   {/* Event Log Block */}
-  <div style={{ order: blockOrder.EventLog }} className={`col-span-1 ${isEventLogFullView ? 'lg:col-span-12' : 'lg:col-span-4'} transition-all`}>
+  <div style={{ order: blockOrder.EventLog }} className={`col-span-1 ${isEventLogFullView ? 'lg:col-span-8' : 'lg:col-span-4'} transition-all`}>
     <EventLogBlock
       isFullView={isEventLogFullView}
       setIsFullView={setIsEventLogFullView}

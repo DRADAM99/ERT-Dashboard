@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { db, app } from '../../firebase'; // Import 'app' from firebase
 import { collection, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { toast } from '@/components/ui/use-toast';
 
@@ -82,6 +82,12 @@ export function NotificationProvider({ children }) {
       return;
     }
 
+    const messagingSupported = await isSupported().catch(() => false);
+    if (!messagingSupported) {
+      console.warn("Firebase messaging is not supported in this browser context.");
+      return;
+    }
+
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       const messaging = getMessaging(app);
@@ -106,7 +112,7 @@ export function NotificationProvider({ children }) {
           console.log('No registration token available. Request permission to generate one.');
         }
       } catch (err) {
-        console.error('An error occurred while retrieving token. ', err);
+        console.warn('Notifications will continue without an FCM browser token.', err);
       }
     }
   }, []); // Removed user from dependency array
@@ -165,7 +171,7 @@ export function NotificationProvider({ children }) {
     } else {
       isInitialLoad.current = true;
     }
-  }, [user, settings]);
+  }, [user, settings, playNotificationSound]);
 
   useEffect(() => {
     if (user) {
@@ -204,7 +210,13 @@ export function NotificationProvider({ children }) {
   }, [user]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && notificationSound.current) {
+    let unsubscribe;
+
+    const setupForegroundMessaging = async () => {
+      if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !notificationSound.current) return;
+      const messagingSupported = await isSupported().catch(() => false);
+      if (!messagingSupported) return;
+
       const messaging = getMessaging(app);
       const unsubscribe = onMessage(messaging, (payload) => {
         console.log('Message received. ', payload);
@@ -216,9 +228,18 @@ export function NotificationProvider({ children }) {
           playNotificationSound();
         }
       });
-      return () => unsubscribe();
-    }
-  }, [settings]);
+
+      return unsubscribe;
+    };
+
+    setupForegroundMessaging().then((handler) => {
+      unsubscribe = handler;
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [settings, playNotificationSound]);
 
   const markAsRead = async (notificationId) => {
     if (user) {
