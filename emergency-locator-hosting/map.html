@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>מפת מיקומי חירום</title>
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    #header { width: 100vw; background: #fff; text-align: center; padding: 8px 0 0 0; }
+    .logo { max-width: 100px; width: 30vw; height: auto; display: block; margin: 0 auto; }
+    #map { height: calc(100vh - 60px); width: 100vw; }
+    @media (max-width: 500px) {
+      .logo { max-width: 60vw; }
+      #map { height: calc(100vh - 50px); }
+    }
+    .infowindow-content {
+      padding: 5px;
+    }
+    .infowindow-content h3 {
+      margin: 0 0 5px;
+      font-size: 1.1em;
+    }
+    .infowindow-content button {
+      font-size: 0.9em;
+      padding: 3px 8px;
+    }
+  </style>
+</head>
+<body>
+  
+  <div id="map" style="width: 100%; height: calc(100vh - 50px); direction: ltr;"></div>
+  <script src="script-map.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_NEW_API_KEY_HERE&callback=initMap" async defer></script>
+</body>
+</html>
