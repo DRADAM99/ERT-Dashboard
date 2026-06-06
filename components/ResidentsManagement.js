@@ -1075,15 +1075,28 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
       {/* Filters and Sorting Controls */}
       <div className="p-4 bg-gray-50 border-b">
         {viewMode === 'full' ? (
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
-            <div className="w-full min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+          <div className={`grid max-w-full min-w-0 gap-2 text-sm ${isAdmin ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-1'} sm:grid-cols-2 md:grid-cols-4`}>
               <Input
                 placeholder="חפש תושב..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-white"
+                className={`bg-white min-w-0 ${isAdmin ? 'col-span-2 sm:col-span-1' : ''}`}
               />
-              {renderStatusFilterControl("w-full")}
+              <div className="min-w-0">
+                {renderStatusFilterControl("w-full")}
+              </div>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="bg-white text-blue-600 border-blue-300 hover:bg-blue-50"
+                  onClick={handleManualSync}
+                  disabled={isSyncing}
+                  title="סנכרן תושבים מהגיליון ללא הפעלת ירוק בעיניים"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                </Button>
+              )}
               <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="bg-white justify-end">
@@ -1154,19 +1167,6 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                   <ArrowUpDown className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
-            {isAdmin && (
-              <Button
-                variant="outline"
-                size="icon"
-                className="shrink-0 bg-white text-blue-600 border-blue-300 hover:bg-blue-50"
-                onClick={handleManualSync}
-                disabled={isSyncing}
-                title="סנכרן תושבים מהגיליון ללא הפעלת ירוק בעיניים"
-              >
-                <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              </Button>
-            )}
           </div>
         ) : (
           <div className="flex flex-col gap-2 text-sm">
