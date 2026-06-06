@@ -360,13 +360,13 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
     setAdvancedFilters(prev => prev.filter(f => !(f.field === filterToRemove.field && f.value === filterToRemove.value)));
   };
 
-  const renderStatusFilterControl = () => (
+  const renderStatusFilterControl = (triggerClassName = "w-full") => (
     <Popover open={statusPopoverOpen} onOpenChange={setStatusPopoverOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className="bg-white justify-between text-right w-full">
-          <span>{statusFilterLabel}</span>
+        <Button variant="outline" className={`bg-white justify-between text-right min-w-0 ${triggerClassName}`}>
+          <span className="truncate">{statusFilterLabel}</span>
           {selectedStatusFilters.length > 0 && (
-            <span className="text-xs text-gray-500">{selectedStatusFilters.length}</span>
+            <span className="text-xs text-gray-500 shrink-0">{selectedStatusFilters.length}</span>
           )}
         </Button>
       </PopoverTrigger>
@@ -1177,7 +1177,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-white flex-1"
               />
-              {renderStatusFilterControl()}
+              {renderStatusFilterControl("w-32 shrink-0 sm:w-full")}
             </div>
             <div className="flex justify-between items-center gap-2">
                <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
