@@ -1072,7 +1072,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
       {/* Filters and Sorting Controls */}
       <div className="p-4 bg-gray-50 border-b">
         {viewMode === 'full' ? (
-          <div className={`grid max-w-full min-w-0 gap-2 text-sm ${isAdmin ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-1'} sm:grid-cols-2 md:grid-cols-4`}>
+          <div className={`grid max-w-full min-w-0 gap-2 text-sm ${isAdmin ? 'grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_minmax(0,1fr)_auto]' : 'grid-cols-1 md:grid-cols-4'} sm:grid-cols-2`}>
               <Input
                 placeholder="חפש תושב..."
                 value={searchQuery}
@@ -1144,7 +1144,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                   </div>
                 </PopoverContent>
               </Popover>
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center justify-end gap-2">
                 <label className="text-sm font-medium">סדר לפי:</label>
                 <Select value={sortBy} onValueChange={setSortBy} dir="rtl">
                   <SelectTrigger className="bg-white w-auto text-right">
