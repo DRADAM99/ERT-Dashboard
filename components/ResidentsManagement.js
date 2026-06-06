@@ -363,7 +363,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
   const renderStatusFilterControl = (triggerClassName = "w-full") => (
     <Popover open={statusPopoverOpen} onOpenChange={setStatusPopoverOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className={`bg-white justify-between text-right min-w-0 ${triggerClassName}`}>
+        <Button variant="outline" className={`bg-white justify-between text-right min-w-0 max-w-full shrink overflow-hidden ${triggerClassName}`}>
           <span className="truncate">{statusFilterLabel}</span>
           {selectedStatusFilters.length > 0 && (
             <span className="text-xs text-gray-500 shrink-0">{selectedStatusFilters.length}</span>
@@ -1075,15 +1075,15 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
       {/* Filters and Sorting Controls */}
       <div className="p-4 bg-gray-50 border-b">
         {viewMode === 'full' ? (
-          <div className="flex items-center gap-2 text-sm">
-            <div className="flex-grow grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
+            <div className="w-full min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
               <Input
                 placeholder="חפש תושב..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-white"
               />
-              {renderStatusFilterControl()}
+              {renderStatusFilterControl("w-full")}
               <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="bg-white justify-end">
@@ -1177,7 +1177,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-white flex-1"
               />
-              {renderStatusFilterControl("w-32 shrink-0 sm:w-full")}
+              {renderStatusFilterControl("w-28 flex-none sm:w-full")}
             </div>
             <div className="flex justify-between items-center gap-2">
                <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
