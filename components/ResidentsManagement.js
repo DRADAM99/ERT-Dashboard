@@ -1169,17 +1169,17 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
               </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-2 text-sm">
-            <div className="flex items-center gap-2">
+          <div className="flex max-w-full min-w-0 flex-col gap-2 text-sm">
+            <div className="grid max-w-full min-w-0 grid-cols-[minmax(0,1fr)_7rem] items-center gap-2 overflow-hidden">
               <Input
                 placeholder="חפש תושב..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-white flex-1"
+                className="min-w-0 bg-white"
               />
-              {renderStatusFilterControl("w-28 flex-none sm:w-full")}
+              {renderStatusFilterControl("w-full")}
             </div>
-            <div className="flex justify-between items-center gap-2">
+            <div className="flex max-w-full min-w-0 items-center justify-between gap-2 overflow-hidden">
                <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="icon" className="bg-white shrink-0">
