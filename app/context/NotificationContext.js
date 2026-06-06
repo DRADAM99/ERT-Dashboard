@@ -8,6 +8,31 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { toast } from '@/components/ui/use-toast';
 
 const NotificationContext = createContext();
+const DEBUG_ENDPOINT = 'http://127.0.0.1:7276/ingest/e0f9c8e4-9a45-4333-a694-51653290076f';
+const FIREBASE_VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
+
+function isPushServiceUnavailableError(error) {
+  return error?.name === 'AbortError' && /push service not available/i.test(error?.message || '');
+}
+
+function isFcmRegistrationConfigError(error) {
+  const message = error?.message || '';
+  return (
+    error?.code === 'messaging/token-subscribe-failed' ||
+    error?.code === 'messaging/invalid-vapid-key' ||
+    /missing required authentication credential/i.test(message) ||
+    /valid authentication credential/i.test(message) ||
+    /vapid/i.test(message)
+  );
+}
+
+function agentDebugLog(payload) {
+  fetch(DEBUG_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '949026' },
+    body: JSON.stringify({ sessionId: '949026', ...payload, timestamp: Date.now() })
+  }).catch(() => {});
+}
 
 // Notification creators emit singular types ('task', 'resident', 'event'),
 // but the settings document is keyed by plural names ('tasks', 'residents', 'events').
@@ -45,8 +70,17 @@ export function NotificationProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const unlockAudio = () => {
+    const unlockAudio = (event) => {
       if (notificationSound.current && !isAudioUnlocked.current) {
+        // #region agent log
+        agentDebugLog({
+          runId: 'pre-fix',
+          hypothesisId: 'H3',
+          location: 'app/context/NotificationContext.js:48',
+          message: 'Notification audio unlock attempted',
+          data: { eventType: event?.type || null, mutedBeforePlay: true, touchPoints: navigator.maxTouchPoints || 0 }
+        });
+        // #endregion
         notificationSound.current.muted = true;
         notificationSound.current.play()
           .then(() => {
@@ -55,12 +89,30 @@ export function NotificationProvider({ children }) {
             notificationSound.current.muted = false;
             isAudioUnlocked.current = true;
             console.log("Notification sound engine unlocked successfully.");
+            // #region agent log
+            agentDebugLog({
+              runId: 'pre-fix',
+              hypothesisId: 'H3',
+              location: 'app/context/NotificationContext.js:63',
+              message: 'Notification audio unlock succeeded',
+              data: { audioUnlocked: true }
+            });
+            // #endregion
             window.removeEventListener('click', unlockAudio);
             window.removeEventListener('keydown', unlockAudio);
             window.removeEventListener('touchstart', unlockAudio);
           })
           .catch(error => {
             console.warn("Could not unlock audio on first interaction:", error);
+            // #region agent log
+            agentDebugLog({
+              runId: 'pre-fix',
+              hypothesisId: 'H3',
+              location: 'app/context/NotificationContext.js:78',
+              message: 'Notification audio unlock failed',
+              data: { name: error?.name, message: error?.message }
+            });
+            // #endregion
           });
       }
     };
@@ -89,19 +141,76 @@ export function NotificationProvider({ children }) {
     }
 
     const permission = await Notification.requestPermission();
+    // #region agent log
+    agentDebugLog({
+      runId: 'pre-fix',
+      hypothesisId: 'H3',
+      location: 'app/context/NotificationContext.js:102',
+      message: 'Notification permission result',
+      data: {
+        permission,
+        hasServiceWorker: 'serviceWorker' in navigator,
+        hasPushManager: 'PushManager' in window,
+        hasNotification: 'Notification' in window
+      }
+    });
+    // #endregion
     if (permission === 'granted') {
       const messaging = getMessaging(app);
       try {
         // Explicitly get the service worker registration.
         const registration = await navigator.serviceWorker.ready;
-        
-        const currentToken = await getToken(messaging, { 
-          vapidKey: "BMe-3J-3_A8-9o-1o_p-2C-1E-1F-9o-1o_p-2C-1E-1F-9o-1o_p-2C-1E-1F-9o-1o",
-          serviceWorkerRegistration: registration // Pass the registration to getToken
+        const existingSubscription = await registration.pushManager.getSubscription();
+        const pushPermissionState = registration.pushManager.permissionState
+          ? await registration.pushManager.permissionState({ userVisibleOnly: true }).catch((error) => `error:${error?.name || 'unknown'}`)
+          : 'unsupported';
+        // #region agent log
+        agentDebugLog({
+          runId: 'post-fix',
+          hypothesisId: 'H6,H7,H8',
+          location: 'app/context/NotificationContext.js:132',
+          message: 'Push registration environment before getToken',
+          data: {
+            hasConfiguredVapidKey: Boolean(FIREBASE_VAPID_KEY),
+            isSecureContext: window.isSecureContext,
+            protocol: window.location.protocol,
+            serviceWorkerScope: registration.scope,
+            activeWorkerScript: registration.active?.scriptURL || null,
+            pushManagerAvailable: Boolean(registration.pushManager),
+            existingSubscription: Boolean(existingSubscription),
+            pushPermissionState,
+            notificationPermission: Notification.permission
+          }
         });
+        // #endregion
+        if (!FIREBASE_VAPID_KEY) {
+          console.warn('Firebase push notifications are disabled because NEXT_PUBLIC_FIREBASE_VAPID_KEY is not configured.');
+          // #region agent log
+          agentDebugLog({
+            runId: 'post-fix',
+            hypothesisId: 'H9',
+            location: 'app/context/NotificationContext.js:171',
+            message: 'FCM token registration skipped because VAPID key is missing',
+            data: { hasConfiguredVapidKey: false }
+          });
+          // #endregion
+          return;
+        }
+
+        const tokenOptions = { vapidKey: FIREBASE_VAPID_KEY, serviceWorkerRegistration: registration };
+        const currentToken = await getToken(messaging, tokenOptions);
 
         if (currentToken) {
           console.log('FCM Token:', currentToken);
+          // #region agent log
+          agentDebugLog({
+            runId: 'pre-fix',
+            hypothesisId: 'H3',
+            location: 'app/context/NotificationContext.js:124',
+            message: 'FCM token retrieved',
+            data: { tokenPresent: true, tokenLength: currentToken.length }
+          });
+          // #endregion
           const userTokensRef = collection(db, `users/${currentUser.uid}/fcmTokens`);
           const tokenDocRef = doc(userTokensRef, currentToken);
           const tokenDoc = await getDoc(tokenDocRef);
@@ -112,7 +221,31 @@ export function NotificationProvider({ children }) {
           console.log('No registration token available. Request permission to generate one.');
         }
       } catch (err) {
-        console.warn('Notifications will continue without an FCM browser token.', err);
+        if (isPushServiceUnavailableError(err)) {
+          console.warn('Push notifications are unavailable in this browser environment.', err);
+          // #region agent log
+          agentDebugLog({
+            runId: 'post-fix',
+            hypothesisId: 'H7',
+            location: 'app/context/NotificationContext.js:198',
+            message: 'Push service unavailable classified as environment limitation',
+            data: { name: err?.name, message: err?.message, code: err?.code }
+          });
+          // #endregion
+        } else if (isFcmRegistrationConfigError(err)) {
+          console.warn('Firebase push notifications are not configured correctly. Token registration was skipped.', err);
+        } else {
+          console.warn('Notifications will continue without an FCM browser token.', err);
+        }
+        // #region agent log
+        agentDebugLog({
+          runId: 'pre-fix',
+          hypothesisId: 'H3',
+          location: 'app/context/NotificationContext.js:142',
+          message: 'FCM token retrieval failed',
+          data: { name: err?.name, message: err?.message, code: err?.code }
+        });
+        // #endregion
       }
     }
   }, []); // Removed user from dependency array
