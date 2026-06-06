@@ -365,9 +365,6 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
       <PopoverTrigger asChild>
         <Button variant="outline" className={`bg-white justify-between text-right min-w-0 max-w-full shrink overflow-hidden ${triggerClassName}`}>
           <span className="truncate">{statusFilterLabel}</span>
-          {selectedStatusFilters.length > 0 && (
-            <span className="text-xs text-gray-500 shrink-0">{selectedStatusFilters.length}</span>
-          )}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-64" align="end" dir="rtl">
