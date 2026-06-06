@@ -1179,8 +1179,8 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
             <div className="flex max-w-full min-w-0 items-center justify-between gap-2 overflow-hidden">
                <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="icon" className="bg-white shrink-0">
-                    <span className="text-xs">סנן</span>
+                  <Button variant="outline" className="h-9 min-w-16 shrink-0 border-black bg-white px-4 text-base text-black hover:bg-gray-50">
+                    <span>סנן</span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-64" align="end">
