@@ -1,31 +1,4 @@
 {
-<<<<<<< HEAD
-    "name": "ניהול אירוע חירום",
-    "short_name": "ERT",
-    "description": "מערכת ניהול אירועי חירום",
-    "icons": [
-      {
-        "src": "/icon-192x192.png",
-        "type": "image/png",
-        "sizes": "192x192",
-        "purpose": "any maskable"
-      },
-      {
-        "src": "/icon-512x512.png",
-        "type": "image/png",
-        "sizes": "512x512",
-        "purpose": "any maskable"
-      }
-    ],
-    "start_url": "/",
-    "display": "standalone",
-    "background_color": "#eaf3f6",
-    "theme_color": "#1b3a78",
-    "orientation": "portrait",
-    "gcm_sender_id": "103953800507"
-  }
-  
-=======
   "name": "ניהול אירוע חירום",
   "short_name": "ERT",
   "description": "מערכת ניהול אירועי חירום",
@@ -57,9 +30,8 @@
   ],
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#007AFF",
+  "background_color": "#eaf3f6",
+  "theme_color": "#1b3a78",
   "orientation": "portrait",
   "gcm_sender_id": "103953800507"
 }
->>>>>>> origin/main
