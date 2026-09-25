@@ -515,7 +515,7 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
   return (
     <Card className="mb-4 w-full">
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col w-full">
+        <div className="flex flex-col w-full sm:w-auto gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             <CardTitle className="text-lg whitespace-nowrap truncate max-w-[160px]">{eventName}</CardTitle>
             {isAdmin && !editingEventName && (
@@ -530,11 +530,13 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
               </form>
             )}
           </div>
+          <div className="flex">
+            <Button size="xs" onClick={() => setShowAddEventModal(true)} className="w-full sm:w-auto">
+              +דיווח
+            </Button>
+          </div>
         </div>
         <div className="flex gap-1 flex-wrap w-full sm:w-auto justify-start sm:justify-end items-center">
-          <Button size="xs" onClick={() => setShowAddEventModal(true)} className="w-full sm:w-auto">
-            +דיווח
-          </Button>
           <Button size="xs" variant="outline" disabled title="ייבוא אירוע — בקרוב">
             <Upload className="inline-block me-1" size={14} /> ייבוא אירוע
           </Button>

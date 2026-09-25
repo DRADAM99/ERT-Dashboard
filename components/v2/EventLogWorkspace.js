@@ -475,9 +475,12 @@ export default function EventLogWorkspace({ openEventId }) {
   return (
     <div className="v2-page-fill" dir="rtl">
       <div className="v2-toolbar">
-        <div>
-          <h1 className="v2-h1">יומן אירועים</h1>
-          <p className="v2-sub">{filtered.length} רשומות</p>
+        <div className="v2-row">
+          <div>
+            <h1 className="v2-h1">יומן אירועים</h1>
+            <p className="v2-sub">{filtered.length} רשומות</p>
+          </div>
+          <button className="v2-btn v2-btn-primary" type="button" onClick={() => setAdding(true)}>+דיווח</button>
         </div>
         <div className="v2-row">
           <label className="v2-btn v2-btn-sm">
@@ -494,7 +497,6 @@ export default function EventLogWorkspace({ openEventId }) {
               }}
             />
           </label>
-          <button className="v2-btn v2-btn-primary" type="button" onClick={() => setAdding(true)}>+דיווח</button>
         </div>
       </div>
       <div className="v2-filters">
