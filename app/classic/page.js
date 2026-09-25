@@ -2738,7 +2738,7 @@ useEffect(() => {
                 size="sm"
                 className="text-xs px-2 py-1 bg-[#1b3a78] hover:bg-[#244a8f] text-white font-medium"
               >
-                עיצוב חדש
+                גרסה חדשה
               </Button>
               <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs px-2 py-1">תמונת מצב</Button>
               {(currentUser?.role === 'admin' || role === 'admin') && (
@@ -2799,7 +2799,7 @@ useEffect(() => {
                   )}
                   {(currentUser?.role === 'admin' || role === 'admin') && <DropdownMenuSeparator />}
                   <DropdownMenuCheckboxItem onSelect={() => router.push("/status")}>
-                    <span className="text-[#1b3a78] font-medium">עיצוב חדש</span>
+                    <span className="text-[#1b3a78] font-medium">גרסה חדשה</span>
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem onSelect={() => {
                     import("firebase/auth").then(({ signOut }) =>
@@ -2834,7 +2834,7 @@ useEffect(() => {
                 size="sm"
                 className="text-xs w-full bg-[#1b3a78] hover:bg-[#244a8f] text-white font-medium"
               >
-                <span className="truncate">עיצוב חדש</span>
+                <span className="truncate">גרסה חדשה</span>
               </Button>
               <Button onClick={() => setShowEventStatus(true)} size="sm" variant="outline" className="text-xs w-full">
                 <span className="truncate">תמונת מצב</span>

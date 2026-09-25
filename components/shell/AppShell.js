@@ -342,7 +342,7 @@ export default function AppShell({ children }) {
                 ⚙ ניהול
               </button>
             )}
-            <Link href="/classic" className="mb-0.5 flex items-center gap-2 rounded-lg px-3 py-2 text-[13.5px] text-[var(--v2-muted)] hover:bg-[var(--v2-bg)]">
+            <Link href="/classic" className="mb-0.5 flex items-center gap-2 rounded-lg px-3 py-2 text-[13.5px] font-medium text-[var(--v2-accent)] hover:bg-[var(--v2-bg)]">
               עיצוב ישן
             </Link>
             <button
@@ -411,7 +411,7 @@ export default function AppShell({ children }) {
                 <NotesAndLinks section="notes" />
                 <NotesAndLinks section="links" />
               </div>
-              <Link className="block rounded-lg px-3 py-2 hover:bg-[var(--v2-bg)]" href="/classic" onClick={() => setMoreOpen(false)}>
+              <Link className="block rounded-lg px-3 py-2 font-medium text-[var(--v2-accent)] hover:bg-[var(--v2-bg)]" href="/classic" onClick={() => setMoreOpen(false)}>
                 עיצוב ישן
               </Link>
               <button className="w-full rounded-lg px-3 py-2 text-right text-red-600" onClick={() => signOut(auth).then(() => router.push("/login"))}>
