@@ -1,12 +1,13 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { ChevronDown, ChevronRight, Edit2, UserPlus, MessageSquare, ArrowUpDown, X, Phone, MessageCircle, RefreshCw } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { doc, updateDoc, arrayUnion, serverTimestamp, collection, setDoc, query, where, getDocs } from "firebase/firestore";
+import { doc, updateDoc, arrayUnion, serverTimestamp, collection, setDoc, query, where, getDocs, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { notifyUsersInDepartment } from "@/lib/notifications";
@@ -14,6 +15,16 @@ import { toast } from "@/components/ui/use-toast";
 
 // Task categories for resident assignments - using the same categories as the main page
 const RESIDENT_TASK_CATEGORIES = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"];
+const STATUS_FILTER_OPTIONS = ["זקוקים לסיוע", "לא בטוח", "פצוע", "כולם בסדר", "ללא סטטוס"];
+const RESIDENT_PREFERENCES_FIELD = "residentsManagement";
+
+const debounce = (func, delay) => {
+  let timeoutId;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func(...args), delay);
+  };
+};
 
 function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statusKey = 'סטטוס', currentUser, alias, users = [], viewMode = 'full', isAdmin = false }) {
   const [expandedRows, setExpandedRows] = useState({});
@@ -30,13 +41,15 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
 
   // New states for filtering and sorting
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("הכל");
+  const [selectedStatusFilters, setSelectedStatusFilters] = useState([]);
   const [sortBy, setSortBy] = useState("syncedAt"); // 'syncedAt' or 'status'
   const [sortDirection, setSortDirection] = useState("desc"); // 'asc' or 'desc'
   const [advancedFilters, setAdvancedFilters] = useState([]); // e.g., [{field: 'שכונה', value: 'נופים'}]
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [statusPopoverOpen, setStatusPopoverOpen] = useState(false);
   const [currentAdvancedFilter, setCurrentAdvancedFilter] = useState({ field: '', value: '' });
   const [isSyncing, setIsSyncing] = useState(false);
+  const preferencesLoadedRef = useRef(false);
 
   const handleManualSync = async () => {
     if (isSyncing) return;
@@ -175,6 +188,97 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
 
   const ADVANCED_FILTER_FIELDS = ['שכונה', 'הורה/ילד', 'סטטוס מגורים'];
 
+  const sanitizeResidentPreferences = (rawPreferences = {}) => {
+    const preferences = rawPreferences || {};
+    const selectedStatusFilters = Array.isArray(preferences.selectedStatusFilters)
+      ? preferences.selectedStatusFilters.filter(status => STATUS_FILTER_OPTIONS.includes(status))
+      : [];
+
+    const advancedFilters = Array.isArray(preferences.advancedFilters)
+      ? preferences.advancedFilters.filter(filter =>
+          filter &&
+          ADVANCED_FILTER_FIELDS.includes(filter.field) &&
+          typeof filter.value === 'string' &&
+          filter.value.trim()
+        )
+      : [];
+
+    return {
+      selectedStatusFilters,
+      advancedFilters,
+      sortBy: preferences.sortBy === 'status' ? 'status' : 'syncedAt',
+      sortDirection: preferences.sortDirection === 'asc' ? 'asc' : 'desc'
+    };
+  };
+
+  const debouncedSaveResidentPreferences = useCallback(debounce((userId, preferences) => {
+    const prefRef = doc(db, "userPreferences", userId);
+    setDoc(prefRef, { [RESIDENT_PREFERENCES_FIELD]: preferences }, { merge: true }).catch(error => {
+      console.error("Error saving resident preferences:", error);
+    });
+  }, 1200), []);
+
+  useEffect(() => {
+    preferencesLoadedRef.current = false;
+    setSelectedStatusFilters([]);
+    setAdvancedFilters([]);
+    setSortBy("syncedAt");
+    setSortDirection("desc");
+
+    if (!currentUser?.uid) {
+      preferencesLoadedRef.current = true;
+      return;
+    }
+
+    let isCancelled = false;
+    const prefRef = doc(db, "userPreferences", currentUser.uid);
+
+    getDoc(prefRef).then(docSnap => {
+      if (!docSnap.exists() || isCancelled) return;
+
+      const savedPreferences = sanitizeResidentPreferences(docSnap.data()?.[RESIDENT_PREFERENCES_FIELD]);
+      setSelectedStatusFilters(savedPreferences.selectedStatusFilters);
+      setAdvancedFilters(savedPreferences.advancedFilters);
+      setSortBy(savedPreferences.sortBy);
+      setSortDirection(savedPreferences.sortDirection);
+    }).catch(error => {
+      console.error("Error loading resident preferences:", error);
+    }).finally(() => {
+      if (!isCancelled) {
+        preferencesLoadedRef.current = true;
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (!currentUser?.uid || !preferencesLoadedRef.current) return;
+
+    debouncedSaveResidentPreferences(currentUser.uid, {
+      selectedStatusFilters,
+      advancedFilters,
+      sortBy,
+      sortDirection
+    });
+  }, [currentUser?.uid, selectedStatusFilters, advancedFilters, sortBy, sortDirection, debouncedSaveResidentPreferences]);
+
+  const statusFilterLabel = useMemo(() => {
+    if (selectedStatusFilters.length === 0) return "כל הסטטוסים";
+    if (selectedStatusFilters.length === 1) return selectedStatusFilters[0];
+    return `${selectedStatusFilters.length} סטטוסים`;
+  }, [selectedStatusFilters]);
+
+  const toggleStatusFilter = (status) => {
+    setSelectedStatusFilters(prev =>
+      prev.includes(status)
+        ? prev.filter(item => item !== status)
+        : [...prev, status]
+    );
+  };
+
   const advancedFilterOptions = useMemo(() => {
     const options = {};
     ADVANCED_FILTER_FIELDS.forEach(field => {
@@ -197,12 +301,13 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
     }
 
     // 2. Status filter
-    if (statusFilter !== 'הכל') {
-      if (statusFilter === 'ללא סטטוס') {
-        filtered = filtered.filter(r => !getFieldValue(r, 'סטטוס'));
-      } else {
-        filtered = filtered.filter(r => getFieldValue(r, 'סטטוס') === statusFilter);
-      }
+    if (selectedStatusFilters.length > 0) {
+      filtered = filtered.filter(r => {
+        const residentStatus = getFieldValue(r, 'סטטוס') || '';
+        return selectedStatusFilters.some(status =>
+          status === 'ללא סטטוס' ? !residentStatus : residentStatus === status
+        );
+      });
     }
 
     // 3. Advanced filters
@@ -238,7 +343,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
     });
 
     return filtered;
-  }, [residents, searchQuery, statusFilter, advancedFilters, sortBy, sortDirection]);
+  }, [residents, searchQuery, selectedStatusFilters, advancedFilters, sortBy, sortDirection]);
 
 
   const handleAddAdvancedFilter = () => {
@@ -253,6 +358,182 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
 
   const handleRemoveAdvancedFilter = (filterToRemove) => {
     setAdvancedFilters(prev => prev.filter(f => !(f.field === filterToRemove.field && f.value === filterToRemove.value)));
+  };
+
+  const renderStatusFilterControl = (triggerClassName = "w-full") => (
+    <Popover open={statusPopoverOpen} onOpenChange={setStatusPopoverOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className={`bg-white justify-between text-right min-w-0 max-w-full shrink overflow-hidden ${triggerClassName}`}>
+          <span className="truncate">{statusFilterLabel}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64" align="end" dir="rtl">
+        <div className="space-y-3">
+          <div>
+            <h4 className="font-medium leading-none">סינון לפי סטטוס</h4>
+            <p className="text-sm text-muted-foreground mt-1">ניתן לבחור כמה סטטוסים יחד.</p>
+          </div>
+          <div className="space-y-2">
+            {STATUS_FILTER_OPTIONS.map(status => (
+              <label key={status} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-gray-50 cursor-pointer">
+                <Checkbox
+                  checked={selectedStatusFilters.includes(status)}
+                  onCheckedChange={() => toggleStatusFilter(status)}
+                />
+                <span className="text-sm">{status}</span>
+              </label>
+            ))}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => setSelectedStatusFilters([])}
+            disabled={selectedStatusFilters.length === 0}
+          >
+            כל הסטטוסים
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+
+  const renderMobileResidentCard = (row, idx) => {
+    const status = getFieldValue(row, statusKey) || '';
+    const colorClass = getStatusColor(status);
+    const rowId = row.id || `row-${idx}`;
+    const isExpanded = expandedRows[rowId];
+    const phoneValue = getFieldValue(row, 'טלפון');
+    const phoneHref = getPhoneHref(phoneValue);
+    const whatsappHref = getWhatsAppHref(phoneValue);
+    const taskSummary = getResidentTaskSummary(row.id);
+
+    return (
+      <div key={rowId} className="rounded-lg border bg-white shadow-md overflow-hidden">
+        <div className="p-3">
+          <div className="flex items-start gap-3">
+            <div className="relative flex flex-col items-center gap-1.5 pt-0.5">
+              <span className={`inline-block w-2.5 h-9 rounded-full shadow-sm ${colorClass}`} title={`סטטוס: ${status || 'ללא'}`}></span>
+              {(taskSummary?.hasUnreadReplies || row.hasNewComment || row.hasNewReply) && (
+                <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-600 border-2 border-white animate-pulse z-10" title="יש תגובה או הערה חדשה!" />
+              )}
+              {taskSummary && (
+                <div className="flex flex-col gap-1">
+                  {taskSummary.pending > 0 && <div className="w-2 h-2 rounded-full bg-red-500 shadow-sm" title={`${taskSummary.pending} משימות מחכות`} />}
+                  {taskSummary.inProgress > 0 && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-sm" title={`${taskSummary.inProgress} משימות בטיפול`} />}
+                  {taskSummary.completed > 0 && <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm" title={`${taskSummary.completed} משימות טופלו`} />}
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-semibold text-gray-900 truncate">
+                    {`${getFieldValue(row, 'שם פרטי')} ${getFieldValue(row, 'שם משפחה')}`.trim() || 'ללא שם'}
+                  </div>
+                  <div className="text-sm text-gray-600 truncate">
+                    <span className="font-semibold">סטטוס:</span> {status || 'ללא סטטוס'}
+                  </div>
+                  {getFieldValue(row, 'שכונה') && (
+                    <div className="text-xs text-gray-500 truncate mt-0.5">
+                      <span className="font-semibold">שכונה:</span> {getFieldValue(row, 'שכונה')}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => toggleRowExpansion(rowId)}
+                  className="hover:bg-gray-100 rounded p-1 flex-shrink-0"
+                  aria-label={isExpanded ? 'סגור פרטים' : 'פתח פרטים'}
+                >
+                  {isExpanded ? (
+                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-gray-500" />
+                  )}
+                </button>
+              </div>
+
+              {taskSummary && (taskSummary.pending > 0 || taskSummary.inProgress > 0) && (
+                <div className="flex gap-1 mt-1.5 flex-wrap">
+                  {taskSummary.pending > 0 && (
+                    <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
+                      {taskSummary.pending} מחכות
+                    </span>
+                  )}
+                  {taskSummary.inProgress > 0 && (
+                    <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
+                      {taskSummary.inProgress} בטיפול
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-3 flex items-center justify-center gap-2.5 flex-wrap">
+                {currentUser && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingStatus(rowId);
+                      setNewStatus(status || 'NO_STATUS');
+                      if (!isExpanded) toggleRowExpansion(rowId);
+                    }}
+                    className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200"
+                    title="ערוך סטטוס"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </button>
+                )}
+
+                {phoneHref ? (
+                  <a href={phoneHref} className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-sky-300 bg-sky-100 text-sky-700 hover:bg-sky-200" title={`התקשר ל-${phoneValue}`}>
+                    <Phone className="h-4 w-4" />
+                  </a>
+                ) : (
+                  <span className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-sky-200 bg-sky-50 text-sky-300">
+                    <Phone className="h-4 w-4" />
+                  </span>
+                )}
+
+                {whatsappHref ? (
+                  <a
+                    href={whatsappHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-green-600 bg-green-600 text-white hover:bg-green-700"
+                    title={`WhatsApp ל-${phoneValue}`}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </a>
+                ) : (
+                  <span className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-green-200 bg-green-100 text-green-300">
+                    <MessageCircle className="h-4 w-4" />
+                  </span>
+                )}
+
+                <Button
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowAssignDialog(row);
+                  }}
+                  className={`text-xs h-9 px-3 border ${row.assignedTasks && row.assignedTasks.length > 0 ? 'bg-indigo-200 border-indigo-300 text-indigo-800 hover:bg-indigo-300' : 'bg-indigo-100 border-indigo-300 text-indigo-700 hover:bg-indigo-200'}`}
+                >
+                  <UserPlus className="h-3 w-3 ml-1" />
+                  {row.assignedTasks && row.assignedTasks.length > 0 ? `${row.assignedTasks.length} משימות` : 'הקצה'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {isExpanded && (
+          <div className="border-t bg-gray-50 p-3">
+            {renderExpandedResidentContent(row, rowId, true)}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderExpandedResidentContent = (row, rowId, useCardSpacing = false) => (
@@ -791,30 +1072,31 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
       {/* Filters and Sorting Controls */}
       <div className="p-4 bg-gray-50 border-b">
         {viewMode === 'full' ? (
-          <div className="flex items-center gap-2 text-sm">
-            <div className="flex-grow grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+          <div className={`grid max-w-full min-w-0 gap-2 text-sm ${isAdmin ? 'grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_minmax(0,1fr)_auto]' : 'grid-cols-1 md:grid-cols-4'} sm:grid-cols-2`}>
               <Input
                 placeholder="חפש תושב..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-white"
+                className={`bg-white min-w-0 ${isAdmin ? 'col-span-2 sm:col-span-1' : ''}`}
               />
-              <Select value={statusFilter} onValueChange={setStatusFilter} dir="rtl">
-                <SelectTrigger className="bg-white text-right">
-                  <SelectValue placeholder="סנן לפי סטטוס" />
-                </SelectTrigger>
-                <SelectContent className="text-right">
-                  <SelectItem value="הכל">כל הסטטוסים</SelectItem>
-                  <SelectItem value="זקוקים לסיוע">זקוקים לסיוע</SelectItem>
-                  <SelectItem value="לא בטוח">לא בטוח</SelectItem>
-                  <SelectItem value="פצוע">פצוע</SelectItem>
-                  <SelectItem value="כולם בסדר">כולם בסדר</SelectItem>
-                  <SelectItem value="ללא סטטוס">ללא סטטוס</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="min-w-0">
+                {renderStatusFilterControl("w-full")}
+              </div>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="bg-white text-blue-600 border-blue-300 hover:bg-blue-50"
+                  onClick={handleManualSync}
+                  disabled={isSyncing}
+                  title="סנכרן תושבים מהגיליון ללא הפעלת ירוק בעיניים"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                </Button>
+              )}
               <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="bg-white justify-end text-gray-900">
+                  <Button variant="outline" className="bg-white justify-end">
                     <span>סנן לפי</span>
                   </Button>
                 </PopoverTrigger>
@@ -832,7 +1114,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                         value={currentAdvancedFilter.field}
                         dir="rtl"
                       >
-                        <SelectTrigger className="text-right bg-white">
+                        <SelectTrigger className="text-right">
                           <SelectValue placeholder="בחר שדה" />
                         </SelectTrigger>
                         <SelectContent className="text-right">
@@ -847,7 +1129,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                           value={currentAdvancedFilter.value}
                           dir="rtl"
                         >
-                          <SelectTrigger className="text-right bg-white">
+                          <SelectTrigger className="text-right">
                             <SelectValue placeholder="בחר ערך" />
                           </SelectTrigger>
                           <SelectContent className="text-right">
@@ -868,7 +1150,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                   </div>
                 </PopoverContent>
               </Popover>
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center justify-end gap-2">
                 <label className="text-sm font-medium">סדר לפי:</label>
                 <Select value={sortBy} onValueChange={setSortBy} dir="rtl">
                   <SelectTrigger className="bg-white w-auto text-right">
@@ -888,46 +1170,23 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                   <ArrowUpDown className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
-            {isAdmin && (
-              <Button
-                variant="outline"
-                size="icon"
-                className="shrink-0 bg-white text-blue-600 border-blue-300 hover:bg-blue-50"
-                onClick={handleManualSync}
-                disabled={isSyncing}
-                title="סנכרן תושבים מהגיליון ללא הפעלת ירוק בעיניים"
-              >
-                <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              </Button>
-            )}
           </div>
         ) : (
-          <div className="flex flex-col gap-2 text-sm">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="flex max-w-full min-w-0 flex-col gap-2 text-sm">
+            <div className="grid max-w-full min-w-0 grid-cols-[minmax(0,1fr)_7rem] items-center gap-2 overflow-hidden">
               <Input
                 placeholder="חפש תושב..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-white flex-1 min-w-[140px]"
+                className="min-w-0 bg-white"
               />
-              <Select value={statusFilter} onValueChange={setStatusFilter} dir="rtl">
-                <SelectTrigger className="bg-white text-right w-36 shrink-0">
-                  <SelectValue placeholder="סנן לפי סטטוס" />
-                </SelectTrigger>
-                <SelectContent className="text-right">
-                  <SelectItem value="הכל">כל הסטטוסים</SelectItem>
-                  <SelectItem value="זקוקים לסיוע">זקוקים לסיוע</SelectItem>
-                  <SelectItem value="לא בטוח">לא בטוח</SelectItem>
-                  <SelectItem value="פצוע">פצוע</SelectItem>
-                  <SelectItem value="כולם בסדר">כולם בסדר</SelectItem>
-                  <SelectItem value="ללא סטטוס">ללא סטטוס</SelectItem>
-                </SelectContent>
-              </Select>
-              <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              {renderStatusFilterControl("w-full")}
+            </div>
+            <div className="flex max-w-full min-w-0 items-center justify-between gap-2 overflow-hidden">
+               <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="bg-white shrink-0 text-gray-900">
-                    סנן לפי
+                  <Button variant="outline" className="h-9 min-w-16 shrink-0 border-black bg-white px-4 text-sm text-black hover:bg-gray-50">
+                    <span>סנן</span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-64 bg-white" align="end">
@@ -944,7 +1203,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                         value={currentAdvancedFilter.field}
                         dir="rtl"
                       >
-                        <SelectTrigger className="text-right bg-white">
+                        <SelectTrigger className="text-right">
                           <SelectValue placeholder="בחר שדה" />
                         </SelectTrigger>
                         <SelectContent className="text-right">
@@ -959,7 +1218,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                           value={currentAdvancedFilter.value}
                           dir="rtl"
                         >
-                          <SelectTrigger className="text-right bg-white">
+                          <SelectTrigger className="text-right">
                             <SelectValue placeholder="בחר ערך" />
                           </SelectTrigger>
                           <SelectContent className="text-right">
@@ -1029,286 +1288,14 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
       {viewMode === 'compact' ? (
         <div className="overflow-y-auto max-h-[70vh] max-w-full p-2 sm:p-3 bg-gray-50">
           <div className="space-y-3">
-            {filteredAndSortedResidents.map((row, idx) => {
-              const status = getFieldValue(row, statusKey) || '';
-              const colorClass = getStatusColor(status);
-              const rowId = row.id || `row-${idx}`;
-              const isExpanded = expandedRows[rowId];
-              const phoneValue = getFieldValue(row, 'טלפון');
-              const phoneHref = getPhoneHref(phoneValue);
-              const whatsappHref = getWhatsAppHref(phoneValue);
-              const taskSummary = getResidentTaskSummary(row.id);
-
-              return (
-                <div key={rowId} className="rounded-lg border bg-white shadow-md overflow-hidden">
-                  <div className="p-3">
-                    <div className="flex items-start gap-3">
-                      <div className="relative flex flex-col items-center gap-1.5 pt-0.5">
-                        <span className={`inline-block w-2.5 h-9 rounded-full shadow-sm ${colorClass}`} title={`סטטוס: ${status || 'ללא'}`}></span>
-                        {(taskSummary?.hasUnreadReplies || row.hasNewComment || row.hasNewReply) && (
-                          <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-600 border-2 border-white animate-pulse z-10" title="יש תגובה או הערה חדשה!" />
-                        )}
-                        {taskSummary && (
-                          <div className="flex flex-col gap-1">
-                            {taskSummary.pending > 0 && <div className="w-2 h-2 rounded-full bg-red-500 shadow-sm" title={`${taskSummary.pending} משימות מחכות`} />}
-                            {taskSummary.inProgress > 0 && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-sm" title={`${taskSummary.inProgress} משימות בטיפול`} />}
-                            {taskSummary.completed > 0 && <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm" title={`${taskSummary.completed} משימות טופלו`} />}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="font-semibold text-gray-900 truncate">
-                              {`${getFieldValue(row, 'שם פרטי')} ${getFieldValue(row, 'שם משפחה')}`.trim() || 'ללא שם'}
-                            </div>
-                            <div className="text-sm text-gray-600 truncate">
-                              <span className="font-semibold">סטטוס:</span> {status || 'ללא סטטוס'}
-                            </div>
-                            {getFieldValue(row, 'שכונה') && (
-                              <div className="text-xs text-gray-500 truncate mt-0.5">
-                                <span className="font-semibold">שכונה:</span> {getFieldValue(row, 'שכונה')}
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => toggleRowExpansion(rowId)}
-                            className="hover:bg-gray-100 rounded p-1 flex-shrink-0"
-                            aria-label={isExpanded ? 'סגור פרטים' : 'פתח פרטים'}
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="h-4 w-4 text-gray-500" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4 text-gray-500" />
-                            )}
-                          </button>
-                        </div>
-
-                        {taskSummary && (taskSummary.pending > 0 || taskSummary.inProgress > 0) && (
-                          <div className="flex gap-1 mt-1.5 flex-wrap">
-                            {taskSummary.pending > 0 && (
-                              <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
-                                {taskSummary.pending} מחכות
-                              </span>
-                            )}
-                            {taskSummary.inProgress > 0 && (
-                              <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
-                                {taskSummary.inProgress} בטיפול
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        <div className="mt-3 flex items-center justify-center gap-2.5 flex-wrap">
-                          {currentUser && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingStatus(rowId);
-                                setNewStatus(status || 'NO_STATUS');
-                                if (!isExpanded) toggleRowExpansion(rowId);
-                              }}
-                              className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200"
-                              title="ערוך סטטוס"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </button>
-                          )}
-
-                          {phoneHref ? (
-                            <a href={phoneHref} className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-sky-300 bg-sky-100 text-sky-700 hover:bg-sky-200" title={`התקשר ל-${phoneValue}`}>
-                              <Phone className="h-4 w-4" />
-                            </a>
-                          ) : (
-                            <span className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-sky-200 bg-sky-50 text-sky-300">
-                              <Phone className="h-4 w-4" />
-                            </span>
-                          )}
-
-                          {whatsappHref ? (
-                            <a
-                              href={whatsappHref}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-green-600 bg-green-600 text-white hover:bg-green-700"
-                              title={`WhatsApp ל-${phoneValue}`}
-                            >
-                              <MessageCircle className="h-4 w-4" />
-                            </a>
-                          ) : (
-                            <span className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-green-200 bg-green-100 text-green-300">
-                              <MessageCircle className="h-4 w-4" />
-                            </span>
-                          )}
-
-                          <Button
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowAssignDialog(row);
-                            }}
-                            className={`text-xs h-9 px-3 border ${row.assignedTasks && row.assignedTasks.length > 0 ? 'bg-indigo-200 border-indigo-300 text-indigo-800 hover:bg-indigo-300' : 'bg-indigo-100 border-indigo-300 text-indigo-700 hover:bg-indigo-200'}`}
-                          >
-                            <UserPlus className="h-3 w-3 ml-1" />
-                            {row.assignedTasks && row.assignedTasks.length > 0 ? `${row.assignedTasks.length} משימות` : 'הקצה'}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="border-t bg-gray-50 p-3">
-                      {renderExpandedResidentContent(row, rowId, true)}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {filteredAndSortedResidents.map(renderMobileResidentCard)}
           </div>
         </div>
       ) : (
       <>
       <div className="sm:hidden overflow-y-auto max-h-[70vh] max-w-full p-2 sm:p-3 bg-gray-50">
         <div className="space-y-3">
-          {filteredAndSortedResidents.map((row, idx) => {
-            const status = getFieldValue(row, statusKey) || '';
-            const colorClass = getStatusColor(status);
-            const rowId = row.id || `row-${idx}`;
-            const isExpanded = expandedRows[rowId];
-            const phoneValue = getFieldValue(row, 'טלפון');
-            const phoneHref = getPhoneHref(phoneValue);
-            const whatsappHref = getWhatsAppHref(phoneValue);
-            const taskSummary = getResidentTaskSummary(row.id);
-
-            return (
-              <div key={rowId} className="rounded-lg border bg-white shadow-md overflow-hidden">
-                <div className="p-3">
-                  <div className="flex items-start gap-3">
-                    <div className="relative flex flex-col items-center gap-1.5 pt-0.5">
-                      <span className={`inline-block w-2.5 h-9 rounded-full shadow-sm ${colorClass}`} title={`סטטוס: ${status || 'ללא'}`}></span>
-                      {(taskSummary?.hasUnreadReplies || row.hasNewComment || row.hasNewReply) && (
-                        <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-600 border-2 border-white animate-pulse z-10" title="יש תגובה או הערה חדשה!" />
-                      )}
-                      {taskSummary && (
-                        <div className="flex flex-col gap-1">
-                          {taskSummary.pending > 0 && <div className="w-2 h-2 rounded-full bg-red-500 shadow-sm" title={`${taskSummary.pending} משימות מחכות`} />}
-                          {taskSummary.inProgress > 0 && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-sm" title={`${taskSummary.inProgress} משימות בטיפול`} />}
-                          {taskSummary.completed > 0 && <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm" title={`${taskSummary.completed} משימות טופלו`} />}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-semibold text-gray-900 truncate">
-                            {`${getFieldValue(row, 'שם פרטי')} ${getFieldValue(row, 'שם משפחה')}`.trim() || 'ללא שם'}
-                          </div>
-                          <div className="text-sm text-gray-600 truncate">
-                            <span className="font-semibold">סטטוס:</span> {status || 'ללא סטטוס'}
-                          </div>
-                          {getFieldValue(row, 'שכונה') && (
-                            <div className="text-xs text-gray-500 truncate mt-0.5">
-                              <span className="font-semibold">שכונה:</span> {getFieldValue(row, 'שכונה')}
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => toggleRowExpansion(rowId)}
-                          className="hover:bg-gray-100 rounded p-1 flex-shrink-0"
-                          aria-label={isExpanded ? 'סגור פרטים' : 'פתח פרטים'}
-                        >
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4 text-gray-500" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-gray-500" />
-                          )}
-                        </button>
-                      </div>
-
-                      {taskSummary && (taskSummary.pending > 0 || taskSummary.inProgress > 0) && (
-                        <div className="flex gap-1 mt-1.5 flex-wrap">
-                          {taskSummary.pending > 0 && (
-                            <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
-                              {taskSummary.pending} מחכות
-                            </span>
-                          )}
-                          {taskSummary.inProgress > 0 && (
-                            <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
-                              {taskSummary.inProgress} בטיפול
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="mt-3 flex items-center justify-center gap-2.5 flex-wrap">
-                        {currentUser && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingStatus(rowId);
-                              setNewStatus(status || 'NO_STATUS');
-                              if (!isExpanded) toggleRowExpansion(rowId);
-                            }}
-                            className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200"
-                            title="ערוך סטטוס"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </button>
-                        )}
-
-                        {phoneHref ? (
-                          <a href={phoneHref} className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-sky-300 bg-sky-100 text-sky-700 hover:bg-sky-200" title={`התקשר ל-${phoneValue}`}>
-                            <Phone className="h-4 w-4" />
-                          </a>
-                        ) : (
-                          <span className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-sky-200 bg-sky-50 text-sky-300">
-                            <Phone className="h-4 w-4" />
-                          </span>
-                        )}
-
-                        {whatsappHref ? (
-                          <a
-                            href={whatsappHref}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-green-600 bg-green-600 text-white hover:bg-green-700"
-                            title={`WhatsApp ל-${phoneValue}`}
-                          >
-                            <MessageCircle className="h-4 w-4" />
-                          </a>
-                        ) : (
-                          <span className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-green-200 bg-green-100 text-green-300">
-                            <MessageCircle className="h-4 w-4" />
-                          </span>
-                        )}
-
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowAssignDialog(row);
-                          }}
-                          className={`text-xs h-9 px-3 border ${row.assignedTasks && row.assignedTasks.length > 0 ? 'bg-indigo-200 border-indigo-300 text-indigo-800 hover:bg-indigo-300' : 'bg-indigo-100 border-indigo-300 text-indigo-700 hover:bg-indigo-200'}`}
-                        >
-                          <UserPlus className="h-3 w-3 ml-1" />
-                          {row.assignedTasks && row.assignedTasks.length > 0 ? `${row.assignedTasks.length} משימות` : 'הקצה'}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {isExpanded && (
-                  <div className="border-t bg-gray-50 p-3">
-                    {renderExpandedResidentContent(row, rowId, true)}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {filteredAndSortedResidents.map(renderMobileResidentCard)}
         </div>
       </div>
       <div className="hidden sm:block overflow-x-auto overflow-y-auto max-h-[70vh] max-w-full">

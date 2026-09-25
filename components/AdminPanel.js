@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   onSnapshot,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,9 @@ import {
   GripVertical,
   ChevronRight,
   Users,
+  Database,
+  CheckCircle,
+  AlertTriangle,
 } from "lucide-react";
 
 const SECTIONS = {
@@ -37,6 +41,24 @@ const SECTIONS = {
   ADD_USER: "add_user",
   DEPARTMENTS: "departments",
   ONLINE_USERS: "online_users",
+  LIVE_DRILL_SOURCES: "live_drill_sources",
+};
+
+const DEFAULT_SOURCE_FORM = {
+  live: {
+    label: "חי",
+    sheetUrl: "",
+    sheetId: "",
+    sheetName: "גיליון1",
+    lastVerified: null,
+  },
+  drill: {
+    label: "תרגיל",
+    sheetUrl: "",
+    sheetId: "",
+    sheetName: "גיליון1",
+    lastVerified: null,
+  },
 };
 
 // A user is "active now" if seen within 10 min, "active today" within 24 h.
@@ -70,6 +92,36 @@ function formatLastSeen(lastSeen) {
   return date.toLocaleDateString("he-IL");
 }
 
+function extractSheetId(input) {
+  if (!input) return "";
+  const trimmed = input.trim();
+  const match = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (match) return match[1];
+  return trimmed.replace(/^https?:\/\/docs\.google\.com\/spreadsheets\/d\//, "")
+    .split(/[/?#]/)[0]
+    .trim();
+}
+
+function formatVerifiedAt(value) {
+  if (!value) return "";
+  const date = value.toDate ? value.toDate() : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("he-IL");
+}
+
+function mergeSourceSettings(data = {}) {
+  return {
+    live: {
+      ...DEFAULT_SOURCE_FORM.live,
+      ...(data.live || {}),
+    },
+    drill: {
+      ...DEFAULT_SOURCE_FORM.drill,
+      ...(data.drill || {}),
+    },
+  };
+}
+
 export default function AdminPanel({
   open,
   onClose,
@@ -96,6 +148,11 @@ export default function AdminPanel({
   // Online users state
   const [allUsers, setAllUsers] = useState([]);
 
+  // Live/Drill Google Sheet sources state
+  const [sourceForm, setSourceForm] = useState(DEFAULT_SOURCE_FORM);
+  const [isSavingSource, setIsSavingSource] = useState({});
+  const [isVerifyingSource, setIsVerifyingSource] = useState({});
+
   // Real-time listener for users — only active while the panel is open
   useEffect(() => {
     if (!open) return;
@@ -107,9 +164,106 @@ export default function AdminPanel({
     return () => unsub();
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const unsub = onSnapshot(doc(db, "systemSettings", "emergencySources"), (snap) => {
+      setSourceForm(mergeSourceSettings(snap.exists() ? snap.data() : {}));
+    });
+    return () => unsub();
+  }, [open]);
+
   const handleClose = () => {
     setSection(SECTIONS.MAIN);
     onClose();
+  };
+
+  const updateSourceField = (mode, field, value) => {
+    setSourceForm((prev) => ({
+      ...prev,
+      [mode]: {
+        ...prev[mode],
+        [field]: value,
+      },
+    }));
+  };
+
+  const verifySource = async (mode) => {
+    const current = sourceForm[mode];
+    const sheetUrl = current.sheetUrl.trim();
+    const sheetName = current.sheetName.trim() || "גיליון1";
+    if (!sheetUrl) {
+      toast({ title: "חסר קישור", description: "יש להזין קישור או מזהה Google Sheet", variant: "destructive" });
+      return;
+    }
+
+    setIsVerifyingSource((prev) => ({ ...prev, [mode]: true }));
+    try {
+      const verifyFn = httpsCallable(getFunctions(), "verifyEmergencySheetSource");
+      const result = await verifyFn({ mode, sheetUrl, sheetName });
+      const verification = result.data;
+      setSourceForm((prev) => ({
+        ...prev,
+        [mode]: {
+          ...prev[mode],
+          sheetUrl,
+          sheetId: verification.sheetId,
+          sheetName: verification.sheetName,
+          lastVerified: verification,
+        },
+      }));
+      toast({
+        title: "הגיליון אומת",
+        description: `נמצאו ${verification.residentCount} תושבים במצב ${current.label}`,
+      });
+    } catch (error) {
+      toast({
+        title: "בדיקת הגיליון נכשלה",
+        description: error.message || "לא ניתן לקרוא את הגיליון",
+        variant: "destructive",
+      });
+    } finally {
+      setIsVerifyingSource((prev) => ({ ...prev, [mode]: false }));
+    }
+  };
+
+  const saveSource = async (mode) => {
+    const current = sourceForm[mode];
+    const sheetUrl = current.sheetUrl.trim();
+    const sheetName = current.sheetName.trim() || "גיליון1";
+    const sheetId = current.sheetId || extractSheetId(sheetUrl);
+    if (!sheetId) {
+      toast({ title: "חסר קישור", description: "יש להזין קישור או מזהה Google Sheet", variant: "destructive" });
+      return;
+    }
+
+    setIsSavingSource((prev) => ({ ...prev, [mode]: true }));
+    try {
+      await setDoc(
+        doc(db, "systemSettings", "emergencySources"),
+        {
+          [mode]: {
+            label: current.label,
+            sheetUrl,
+            sheetId,
+            sheetName,
+            lastVerified: current.lastVerified || null,
+            updatedAt: serverTimestamp(),
+            updatedBy: currentUser?.uid || "",
+            updatedByEmail: currentUser?.email || "",
+          },
+        },
+        { merge: true }
+      );
+      toast({ title: "מקור נשמר", description: `מקור התושבים עבור ${current.label} נשמר בהצלחה` });
+    } catch (error) {
+      toast({
+        title: "שמירה נכשלה",
+        description: error.message || "לא ניתן לשמור את מקור התושבים",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingSource((prev) => ({ ...prev, [mode]: false }));
+    }
   };
 
   // ── Add User ──────────────────────────────────────────────────────────────
@@ -307,6 +461,17 @@ export default function AdminPanel({
                   </div>
                 </div>
               </button>
+
+              <button
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 hover:bg-cyan-50 hover:border-cyan-300 transition-colors text-right"
+                onClick={() => setSection(SECTIONS.LIVE_DRILL_SOURCES)}
+              >
+                <Database className="h-5 w-5 text-cyan-600 shrink-0" />
+                <div>
+                  <div className="font-medium text-gray-800 text-sm">מקורות חי / תרגיל</div>
+                  <div className="text-xs text-gray-500">ניהול קישורי Google Sheets</div>
+                </div>
+              </button>
             </div>
           )}
 
@@ -438,6 +603,106 @@ export default function AdminPanel({
                 </Button>
               </div>
               <p className="text-xs text-gray-400">לחץ Enter או על הכפתור להוספה. רחף מעל מחלקה למחיקה.</p>
+            </div>
+          )}
+
+          {/* ── Live / Drill Sources ── */}
+          {section === SECTIONS.LIVE_DRILL_SOURCES && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">מקורות תושבים חי / תרגיל</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  אין צורך ב-API key. יש לשתף את הגיליון עם חשבון השירות של Firebase אם הבדיקה נכשלת בהרשאות.
+                </p>
+              </div>
+
+              {Object.entries(sourceForm).map(([mode, source]) => {
+                const verified = source.lastVerified;
+                const warnings = verified?.warnings || [];
+                const isVerifying = Boolean(isVerifyingSource[mode]);
+                const isSaving = Boolean(isSavingSource[mode]);
+
+                return (
+                  <div key={mode} className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-gray-800">{source.label}</div>
+                        <div className="text-xs text-gray-500">{mode === "live" ? "מקור אמת" : "מקור תרגיל"}</div>
+                      </div>
+                      {verified?.ok ? (
+                        <span className="flex items-center gap-1 text-xs text-green-700">
+                          <CheckCircle className="h-3.5 w-3.5" />
+                          אומת
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-gray-500">
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          לא אומת
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label htmlFor={`sheet-url-${mode}`} className="text-xs font-medium">קישור Google Sheet או מזהה</Label>
+                      <Input
+                        id={`sheet-url-${mode}`}
+                        dir="ltr"
+                        value={source.sheetUrl}
+                        onChange={(e) => updateSourceField(mode, "sheetUrl", e.target.value)}
+                        placeholder="https://docs.google.com/spreadsheets/d/..."
+                        className="mt-1 text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor={`sheet-name-${mode}`} className="text-xs font-medium">שם הטאב</Label>
+                      <Input
+                        id={`sheet-name-${mode}`}
+                        value={source.sheetName}
+                        onChange={(e) => updateSourceField(mode, "sheetName", e.target.value)}
+                        placeholder="גיליון1"
+                        className="mt-1 text-xs"
+                      />
+                    </div>
+
+                    {source.sheetId && (
+                      <div className="rounded border bg-white p-2 text-[11px] text-gray-600 break-all" dir="ltr">
+                        {source.sheetId}
+                      </div>
+                    )}
+
+                    {verified && (
+                      <div className="rounded border bg-white p-2 text-xs text-gray-700 space-y-1">
+                        <div>{`תושבים שנמצאו: ${verified.residentCount ?? 0}`}</div>
+                        <div>{`נבדק לאחרונה: ${formatVerifiedAt(verified.verifiedAt) || "לא ידוע"}`}</div>
+                        {warnings.length > 0 && (
+                          <div className="text-yellow-700">{`אזהרות: ${warnings.join(", ")}`}</div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => verifySource(mode)}
+                        disabled={isVerifying || isSaving}
+                        className="flex-1 text-xs"
+                      >
+                        {isVerifying ? "בודק..." : "בדוק חיבור"}
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => saveSource(mode)}
+                        disabled={isSaving || isVerifying}
+                        className="flex-1 text-xs"
+                      >
+                        {isSaving ? "שומר..." : "שמור"}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 

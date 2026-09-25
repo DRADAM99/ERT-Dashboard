@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Settings } from 'lucide-react';
 import { useNotifications } from '@/app/context/NotificationContext';
+import { getSafeNotificationHref } from '@/lib/notifications';
 import NotificationSettings from './NotificationSettings';
 
-function NotificationItem({ notification, onRead, onDelete }) {
+function NotificationItem({ notification, onActivate, onDelete }) {
   const getBackgroundColor = (type) => {
     switch (type) {
       case 'task': return 'bg-blue-50';
@@ -16,14 +18,16 @@ function NotificationItem({ notification, onRead, onDelete }) {
       default: return 'bg-gray-50';
     }
   };
+
+  const href = getSafeNotificationHref(notification.link);
   
   return (
     <div 
       className={`p-3 rounded-lg border ${getBackgroundColor(notification.type)} ${!notification.read ? 'border-blue-300' : 'border-gray-200'}`}
     >
       <div 
-        className="cursor-pointer"
-        onClick={() => !notification.read && onRead(notification.id)}
+        className={href || !notification.read ? 'cursor-pointer' : undefined}
+        onClick={() => onActivate(notification)}
       >
         <p className="font-medium">{notification.message}</p>
         <p className="text-xs text-gray-500 mt-1">
@@ -52,9 +56,21 @@ const TABS = [
 ];
 
 export default function NotificationCenter({ isOpen, onClose }) {
+  const router = useRouter();
   const { notifications, markAsRead, settings, deleteNotification, deleteAllNotifications } = useNotifications();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
+
+  const handleActivate = (notification) => {
+    const href = getSafeNotificationHref(notification.link);
+    if (href) {
+      router.push(href);
+      onClose();
+    }
+    if (!notification.read) {
+      markAsRead(notification.id);
+    }
+  };
 
   const filteredAndSortedNotifications = useMemo(() => {
     return [...notifications]
@@ -107,7 +123,7 @@ export default function NotificationCenter({ isOpen, onClose }) {
           <div className="max-h-[60vh] overflow-y-auto space-y-2 p-4">
             {filteredAndSortedNotifications.length > 0 ? (
               filteredAndSortedNotifications.map(n => (
-                <NotificationItem key={n.id} notification={n} onRead={markAsRead} onDelete={deleteNotification} />
+                <NotificationItem key={n.id} notification={n} onActivate={handleActivate} onDelete={deleteNotification} />
               ))
             ) : (
               <p className="text-center text-gray-500 py-8">אין התראות בקטגוריה זו</p>
