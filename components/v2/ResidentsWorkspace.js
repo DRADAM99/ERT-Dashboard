@@ -105,14 +105,14 @@ function TaskIndicators({ summary, unread }) {
   );
 }
 
-export default function ResidentsWorkspace({ view, onViewChange, openResidentId }) {
+export default function ResidentsWorkspace({ view, onViewChange, openResidentId, urlQuery = "" }) {
   const { currentUser } = useAuth();
   const { residents, currentUserData, tasks } = useData();
   const { toast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
   const isAdmin = currentUserData?.role === "admin";
-  const [queryText, setQueryText] = useState("");
+  const [queryText, setQueryText] = useState(() => (typeof urlQuery === "string" ? urlQuery : ""));
   const [selected, setSelected] = useState(null);
   const [sortBy, setSortBy] = useState("syncedAt");
   const [sortDirection, setSortDirection] = useState("desc");
@@ -125,13 +125,17 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId 
   const [isSyncing, setIsSyncing] = useState(false);
   const openedRef = useRef(null);
   const skipSave = useRef(true);
+  const searchDirtyRef = useRef(Boolean(urlQuery));
+  const lastUrlQueryRef = useRef(typeof urlQuery === "string" ? urlQuery : "");
 
-  const applyPrefs = (prefs) => {
+  const applyPrefs = (prefs, { applySearch = true } = {}) => {
     setSelectedStatuses(prefs.selectedStatusFilters);
     setAdvancedFilters(prefs.advancedFilters);
     setSortBy(prefs.sortBy);
     setSortDirection(prefs.sortDirection);
-    setQueryText(prefs.searchTerm);
+    if (applySearch && !searchDirtyRef.current) {
+      setQueryText(prefs.searchTerm);
+    }
   };
 
   const replaceQuery = (updates) => {
@@ -144,6 +148,28 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId 
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
+
+  const setSearchQuery = (value) => {
+    searchDirtyRef.current = true;
+    setQueryText(value);
+  };
+
+  useEffect(() => {
+    const next = typeof urlQuery === "string" ? urlQuery : "";
+    if (lastUrlQueryRef.current === next) return;
+    lastUrlQueryRef.current = next;
+    setQueryText(next);
+    if (next) searchDirtyRef.current = true;
+  }, [urlQuery]);
+
+  useEffect(() => {
+    if (!prefsLoaded) return;
+    if (lastUrlQueryRef.current === queryText) return;
+    lastUrlQueryRef.current = queryText;
+    replaceQuery({ q: queryText || null });
+    // pathname/router are used inside replaceQuery; sync only when the typed query changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryText, prefsLoaded]);
 
   useEffect(() => {
     if (!openResidentId) {
@@ -167,8 +193,9 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId 
       return undefined;
     }
 
+    const hasUrlQuery = Boolean(typeof urlQuery === "string" && urlQuery);
     const local = readLocalPrefs(uid);
-    if (local) applyPrefs(local);
+    if (local) applyPrefs(local, { applySearch: !hasUrlQuery && !searchDirtyRef.current });
 
     let cancelled = false;
     (async () => {
@@ -198,7 +225,7 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId 
         const next = classic || (hasUserFilters ? fromUser : local) || sanitizePrefs({});
         if (classic && !classic.searchTerm && fromUser.searchTerm) next.searchTerm = fromUser.searchTerm;
         if (classic && classic.sortBy !== "name" && fromUser.sortBy === "name") next.sortBy = "name";
-        applyPrefs(next);
+        applyPrefs(next, { applySearch: !hasUrlQuery && !searchDirtyRef.current });
         writeLocalPrefs(uid, next);
       } finally {
         if (!cancelled) setPrefsLoaded(true);
@@ -208,6 +235,8 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId 
     return () => {
       cancelled = true;
     };
+    // Only reload prefs when the signed-in user changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.uid]);
 
   const persistPrefs = useMemo(
@@ -402,7 +431,7 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId 
           className="v2-search v2-q"
           placeholder="חיפוש תושב, טלפון, שכונה…"
           value={queryText}
-          onChange={(e) => setQueryText(e.target.value)}
+          onChange={(e) => setSearchQuery(e.target.value)}
         />
         <div className="v2-filter-status min-w-0">
           <Popover open={statusOpen} onOpenChange={setStatusOpen}>

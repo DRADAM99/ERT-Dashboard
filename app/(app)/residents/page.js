@@ -47,6 +47,7 @@ function ResidentsPageInner() {
       view={view || "table"}
       onViewChange={persistView}
       openResidentId={searchParams.get("open")}
+      urlQuery={searchParams.get("q") || ""}
     />
   );
 }

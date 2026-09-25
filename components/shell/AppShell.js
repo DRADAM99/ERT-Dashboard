@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
@@ -34,6 +34,58 @@ import "@fontsource/rubik/400.css";
 import "@fontsource/rubik/500.css";
 import "@fontsource/rubik/700.css";
 import "@/app/v2.css";
+
+function HeaderResidentSearch() {
+  const router = useRouter();
+  const pathname = usePathname() || "";
+  const searchParams = useSearchParams();
+  const onResidents = pathname === "/residents" || pathname.startsWith("/residents/");
+  const urlQuery = onResidents ? searchParams.get("q") || "" : "";
+  const [draft, setDraft] = useState(urlQuery);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    setDraft(urlQuery);
+  }, [urlQuery]);
+
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+
+  const commitToUrl = (value) => {
+    const params = new URLSearchParams(onResidents ? searchParams.toString() : "");
+    const trimmed = value.trim();
+    if (trimmed) params.set("q", value);
+    else params.delete("q");
+    const qs = params.toString();
+    router.replace(qs ? `/residents?${qs}` : "/residents", { scroll: false });
+  };
+
+  const onChange = (event) => {
+    const next = event.target.value;
+    setDraft(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => commitToUrl(next), 150);
+  };
+
+  return (
+    <input
+      className="hidden max-w-sm flex-1 rounded-lg border border-[var(--v2-line)] bg-[var(--v2-bg)] px-3 py-1.5 text-sm text-[var(--v2-ink)] placeholder:text-[var(--v2-muted)] md:block"
+      placeholder="חיפוש תושב…"
+      aria-label="חיפוש תושב"
+      type="search"
+      value={draft}
+      onChange={onChange}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          if (debounceRef.current) clearTimeout(debounceRef.current);
+          commitToUrl(draft);
+        }
+      }}
+    />
+  );
+}
 
 const NAV = [
   { href: "/status", label: "תמונת מצב", icon: "◎" },
@@ -264,12 +316,18 @@ export default function AppShell({ children }) {
           <div className="v2-clock v2-clock-sm hidden md:block" title="זמן מתחילת האירוע" aria-label="זמן מתחילת האירוע">
             {elapsedClock}
           </div>
-          <input
-            className="hidden max-w-sm flex-1 rounded-lg border border-[var(--v2-line)] bg-[var(--v2-bg)] px-3 py-1.5 text-sm text-[var(--v2-muted)] md:block"
-            placeholder="חיפוש תושב…"
-            readOnly
-            onFocus={() => router.push("/residents")}
-          />
+          <Suspense
+            fallback={
+              <input
+                className="hidden max-w-sm flex-1 rounded-lg border border-[var(--v2-line)] bg-[var(--v2-bg)] px-3 py-1.5 text-sm text-[var(--v2-muted)] md:block"
+                placeholder="חיפוש תושב…"
+                aria-label="חיפוש תושב"
+                disabled
+              />
+            }
+          >
+            <HeaderResidentSearch />
+          </Suspense>
           <div className="ms-auto flex shrink-0 items-center gap-2 sm:gap-3">
             <div className="hidden items-center gap-2 lg:flex">
               <NotesAndLinks section="links" />
