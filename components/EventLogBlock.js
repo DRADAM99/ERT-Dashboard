@@ -457,15 +457,13 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
               </form>
             )}
           </div>
-          <div className="flex w-full mt-2 mb-1">
-            <Button size="xs" onClick={() => setShowAddEventModal(true)} className="w-full sm:w-auto">
-              + עדכון
-            </Button>
-          </div>
         </div>
-        <div className="flex gap-1 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
-          <Button size="xs" variant="outline" disabled>
-            <Upload className="inline-block mr-1" size={14} /> ייבוא אירוע
+        <div className="flex gap-1 flex-wrap w-full sm:w-auto justify-start sm:justify-end items-center">
+          <Button size="xs" onClick={() => setShowAddEventModal(true)} className="w-full sm:w-auto">
+            +דיווח
+          </Button>
+          <Button size="xs" variant="outline" disabled title="ייבוא אירוע — בקרוב">
+            <Upload className="inline-block me-1" size={14} /> ייבוא אירוע
           </Button>
           <Button size="xs" variant="outline" onClick={handleToggleView}>
             {isFullView ? "תצוגה מוקטנת" : "תצוגה מלאה"}

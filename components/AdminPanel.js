@@ -406,12 +406,12 @@ export default function AdminPanel({
                   >
                     <span className="text-sm text-gray-800">{dept}</span>
                     <button
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-100 transition-all"
+                      className="p-1 rounded text-red-500 hover:bg-red-100 hover:text-red-600 transition-all"
                       onClick={() => handleRemoveDepartment(dept)}
                       disabled={isSavingDepts}
                       aria-label={`מחק ${dept}`}
                     >
-                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 ))}

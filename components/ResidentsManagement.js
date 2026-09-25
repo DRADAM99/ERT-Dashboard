@@ -814,11 +814,11 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
               </Select>
               <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="bg-white justify-end">
+                  <Button variant="outline" className="bg-white justify-end text-gray-900">
                     <span>סנן לפי</span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64" align="end">
+                <PopoverContent className="w-64 bg-white" align="end">
                   <div className="grid gap-4">
                     <div className="space-y-2">
                       <h4 className="font-medium leading-none">הוסף פילטר</h4>
@@ -832,7 +832,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                         value={currentAdvancedFilter.field}
                         dir="rtl"
                       >
-                        <SelectTrigger className="text-right">
+                        <SelectTrigger className="text-right bg-white">
                           <SelectValue placeholder="בחר שדה" />
                         </SelectTrigger>
                         <SelectContent className="text-right">
@@ -847,7 +847,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                           value={currentAdvancedFilter.value}
                           dir="rtl"
                         >
-                          <SelectTrigger className="text-right">
+                          <SelectTrigger className="text-right bg-white">
                             <SelectValue placeholder="בחר ערך" />
                           </SelectTrigger>
                           <SelectContent className="text-right">
@@ -857,7 +857,13 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                           </SelectContent>
                         </Select>
                       )}
-                      <Button onClick={handleAddAdvancedFilter} disabled={!currentAdvancedFilter.field || !currentAdvancedFilter.value}>הוסף</Button>
+                      <Button
+                        className="w-full bg-[#3B82F6] text-white hover:bg-[#2563EB] disabled:opacity-100 disabled:bg-blue-200 disabled:text-blue-800"
+                        onClick={handleAddAdvancedFilter}
+                        disabled={!currentAdvancedFilter.field || !currentAdvancedFilter.value}
+                      >
+                        הוסף
+                      </Button>
                     </div>
                   </div>
                 </PopoverContent>
@@ -898,15 +904,15 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
           </div>
         ) : (
           <div className="flex flex-col gap-2 text-sm">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Input
                 placeholder="חפש תושב..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-white flex-1"
+                className="bg-white flex-1 min-w-[140px]"
               />
               <Select value={statusFilter} onValueChange={setStatusFilter} dir="rtl">
-                <SelectTrigger className="bg-white text-right w-36">
+                <SelectTrigger className="bg-white text-right w-36 shrink-0">
                   <SelectValue placeholder="סנן לפי סטטוס" />
                 </SelectTrigger>
                 <SelectContent className="text-right">
@@ -920,11 +926,11 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
               </Select>
               <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="icon" className="bg-white shrink-0">
-                    <span className="text-xs">סנן</span>
+                  <Button variant="outline" size="sm" className="bg-white shrink-0 text-gray-900">
+                    סנן לפי
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64" align="end">
+                <PopoverContent className="w-64 bg-white" align="end">
                   <div className="grid gap-4">
                     <div className="space-y-2">
                       <h4 className="font-medium leading-none">הוסף פילטר</h4>
@@ -938,7 +944,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                         value={currentAdvancedFilter.field}
                         dir="rtl"
                       >
-                        <SelectTrigger className="text-right">
+                        <SelectTrigger className="text-right bg-white">
                           <SelectValue placeholder="בחר שדה" />
                         </SelectTrigger>
                         <SelectContent className="text-right">
@@ -953,7 +959,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                           value={currentAdvancedFilter.value}
                           dir="rtl"
                         >
-                          <SelectTrigger className="text-right">
+                          <SelectTrigger className="text-right bg-white">
                             <SelectValue placeholder="בחר ערך" />
                           </SelectTrigger>
                           <SelectContent className="text-right">
@@ -963,7 +969,13 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                           </SelectContent>
                         </Select>
                       )}
-                      <Button onClick={handleAddAdvancedFilter} disabled={!currentAdvancedFilter.field || !currentAdvancedFilter.value}>הוסף</Button>
+                      <Button
+                        className="w-full bg-[#3B82F6] text-white hover:bg-[#2563EB] disabled:opacity-100 disabled:bg-blue-200 disabled:text-blue-800"
+                        onClick={handleAddAdvancedFilter}
+                        disabled={!currentAdvancedFilter.field || !currentAdvancedFilter.value}
+                      >
+                        הוסף
+                      </Button>
                     </div>
                   </div>
                 </PopoverContent>
