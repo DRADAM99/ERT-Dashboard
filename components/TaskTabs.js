@@ -216,7 +216,7 @@ export function TaskTabs({ taskId, currentUser }) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="h-7 w-7 p-0 text-red-500 hover:bg-red-50 hover:text-red-600"
                     onClick={async () => {
                       if (confirm('האם למחוק תגית זו?')) {
                         try {
@@ -292,7 +292,7 @@ export function TaskTabs({ taskId, currentUser }) {
             <span className="truncate">{tab.name}</span>
             <button
               onClick={() => handleRemoveTabFromTask(tab.taskTabId)}
-              className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 text-gray-500 hover:text-gray-700"
+              className="ms-1 text-gray-600 hover:text-gray-900"
               aria-label="Remove tab"
             >
               ×
@@ -305,7 +305,7 @@ export function TaskTabs({ taskId, currentUser }) {
       {userTabs.length > 0 && (
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-gray-100">+</Button>
+            <Button variant="outline" size="sm" className="h-7 w-7 p-0 border-gray-300 text-gray-700 hover:bg-gray-100" aria-label="הוסף תגית">+</Button>
           </PopoverTrigger>
           <PopoverContent 
             className="bg-white border border-gray-200 rounded-lg shadow-md p-2 min-w-[150px]"
@@ -337,7 +337,7 @@ export function TaskTabs({ taskId, currentUser }) {
       
       {/* New tab button when no existing tabs */}
       {userTabs.length === 0 && (
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-gray-100" onClick={() => setIsAdding(true)}>+</Button>
+        <Button variant="outline" size="sm" className="h-7 w-7 p-0 border-gray-300 text-gray-700 hover:bg-gray-100" onClick={() => setIsAdding(true)} aria-label="תגית חדשה">+</Button>
       )}
     </div>
   );

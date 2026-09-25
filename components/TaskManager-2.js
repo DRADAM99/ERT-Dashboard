@@ -1625,9 +1625,8 @@ export default function TaskManager2({
               ) : null}
             </div>
             <Button 
-              variant="outline"
               size="sm"
-              className="bg-blue-200 hover:bg-blue-300 text-gray-700 border-gray-200 text-xs px-4 py-1 font-bold" 
+              className="text-xs px-4 py-1 font-bold shrink-0" 
               onClick={() => {
                 setNewTaskTitle("");
                 setNewTaskSubtitle("");

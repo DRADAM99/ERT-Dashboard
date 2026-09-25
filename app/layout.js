@@ -2,6 +2,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthContextProvider } from './context/AuthContext';
+import { DataProvider } from './context/DataContext';
 import { NotificationProvider } from './context/NotificationContext';
 
 const geistSans = Geist({
@@ -30,7 +31,7 @@ export const metadata = {
     ]
   },
   manifest: '/manifest.json',
-  themeColor: '#007AFF',
+  themeColor: '#1b3a78',
   viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',
   appleWebApp: {
     capable: true,
@@ -44,10 +45,12 @@ export default function RootLayout({ children }) {
     <html lang="en" dir="rtl">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AuthContextProvider>
-          <NotificationProvider>
-            {children}
-            <Toaster />
-          </NotificationProvider>
+          <DataProvider>
+            <NotificationProvider>
+              {children}
+              <Toaster />
+            </NotificationProvider>
+          </DataProvider>
         </AuthContextProvider>
       </body>
     </html>
