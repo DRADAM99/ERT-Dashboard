@@ -2,23 +2,27 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { arrayUnion, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { ArrowUpDown, RefreshCw, X } from "lucide-react";
+import { ArrowUpDown, Phone, RefreshCw, UserPlus, X } from "lucide-react";
+import { FaWhatsapp } from "react-icons/fa";
 import { db } from "@/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import { useData } from "@/app/context/DataContext";
 import { useToast } from "@/components/ui/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { createTask } from "@/lib/createTask";
 import {
   BOARD_STATUSES,
+  DEFAULT_TASK_CATEGORIES,
   getFieldValue,
   phoneHref,
   residentName,
   residentStatus,
   residentTaskSummary,
   RESIDENT_STATUSES,
+  whatsAppHref,
 } from "@/lib/residents";
 import { relativeTime, residentStatusDotClass, toDate } from "@/components/v2/format";
 import ResidentRecord from "@/components/v2/ResidentRecord";
@@ -105,13 +109,82 @@ function TaskIndicators({ summary, unread }) {
   );
 }
 
+function ResidentQuickActions({
+  row,
+  summary,
+  onAssign,
+  showAssign = true,
+  showLabels = false,
+}) {
+  const phoneValue = fieldText(row, "טלפון");
+  const tel = phoneHref(phoneValue);
+  const wa = whatsAppHref(phoneValue);
+  const assignLabel =
+    summary?.total > 0 ? `${summary.total} משימות` : showLabels ? "הקצה משימה" : "הקצה";
+
+  return (
+    <div className="v2-res-actions" onClick={(event) => event.stopPropagation()}>
+      {showAssign && (
+        <button
+          type="button"
+          className={`v2-btn v2-btn-sm v2-btn-assign ${summary?.total > 0 ? "has-tasks" : ""}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onAssign?.(row);
+          }}
+          title="הקצה משימה"
+          aria-label="הקצה משימה"
+        >
+          <UserPlus className="h-3.5 w-3.5" />
+          <span>{assignLabel}</span>
+        </button>
+      )}
+      {wa ? (
+        <a
+          className="v2-btn v2-btn-icon v2-btn-wa"
+          href={wa}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          title={`WhatsApp ל-${phoneValue}`}
+          aria-label="WhatsApp"
+        >
+          <FaWhatsapp className="h-4 w-4" />
+        </a>
+      ) : (
+        <span className="v2-btn v2-btn-icon v2-btn-wa is-disabled" aria-disabled="true" title="אין טלפון">
+          <FaWhatsapp className="h-4 w-4" />
+        </span>
+      )}
+      {tel ? (
+        <a
+          className="v2-btn v2-btn-icon v2-btn-call"
+          href={tel}
+          onClick={(event) => event.stopPropagation()}
+          title={`חייג ל-${phoneValue}`}
+          aria-label="חייג"
+        >
+          <Phone className="h-4 w-4" strokeWidth={1.75} />
+        </a>
+      ) : (
+        <span className="v2-btn v2-btn-icon v2-btn-call is-disabled" aria-disabled="true" title="אין טלפון">
+          <Phone className="h-4 w-4" strokeWidth={1.75} />
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function ResidentsWorkspace({ view, onViewChange, openResidentId, urlQuery = "" }) {
   const { currentUser } = useAuth();
-  const { residents, currentUserData, tasks } = useData();
+  const { residents, currentUserData, tasks, taskCategories } = useData();
   const { toast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
   const isAdmin = currentUserData?.role === "admin";
+  const alias = currentUserData?.alias || currentUser?.email || "";
+  const department = currentUserData?.department || "";
+  const categories = taskCategories?.length ? taskCategories : DEFAULT_TASK_CATEGORIES;
   const [queryText, setQueryText] = useState(() => (typeof urlQuery === "string" ? urlQuery : ""));
   const [selected, setSelected] = useState(null);
   const [sortBy, setSortBy] = useState("syncedAt");
@@ -123,10 +196,20 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
   const [filterOpen, setFilterOpen] = useState(false);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [assignResident, setAssignResident] = useState(null);
+  const [assignForm, setAssignForm] = useState({ title: "", category: DEFAULT_TASK_CATEGORIES[0], priority: "רגיל" });
+  const [savingAssign, setSavingAssign] = useState(false);
   const openedRef = useRef(null);
   const skipSave = useRef(true);
   const searchDirtyRef = useRef(Boolean(urlQuery));
   const lastUrlQueryRef = useRef(typeof urlQuery === "string" ? urlQuery : "");
+
+  useEffect(() => {
+    const first = categories[0];
+    if (first && !categories.includes(assignForm.category)) {
+      setAssignForm((prev) => ({ ...prev, category: first }));
+    }
+  }, [categories, assignForm.category]);
 
   const applyPrefs = (prefs, { applySearch = true } = {}) => {
     setSelectedStatuses(prefs.selectedStatusFilters);
@@ -371,42 +454,101 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
     replaceQuery({ open: null });
   };
 
+  const openAssign = (row) => {
+    setAssignResident(row);
+    setAssignForm({
+      title: "",
+      category: categories[0] || DEFAULT_TASK_CATEGORIES[0],
+      priority: "רגיל",
+    });
+  };
+
+  const closeAssign = () => {
+    if (savingAssign) return;
+    setAssignResident(null);
+  };
+
+  const submitAssign = async (event) => {
+    event?.preventDefault?.();
+    if (!assignResident || !currentUser) return;
+    if (!assignForm.title.trim()) {
+      toast({ title: "נא למלא כותרת משימה" });
+      return;
+    }
+    if (savingAssign) return;
+    setSavingAssign(true);
+    try {
+      const title = assignForm.title.trim();
+      const name = residentName(assignResident);
+      const phone = fieldText(assignResident, "טלפון");
+      const neighborhood = fieldText(assignResident, "שכונה");
+      const status = residentStatus(assignResident);
+      const taskId = await createTask({
+        currentUser,
+        alias,
+        department,
+        fallbackCategories: categories,
+        taskData: {
+          title,
+          subtitle: `תושב: ${name} - ${neighborhood}`,
+          priority: assignForm.priority,
+          category: assignForm.category,
+          department: assignForm.category,
+          status: "מחכה",
+          dueDate: new Date(),
+          residentId: assignResident.id,
+          residentName: name,
+          residentPhone: phone,
+          residentNeighborhood: neighborhood,
+          residentStatus: status === "ללא סטטוס" ? "" : status,
+        },
+      });
+      if (taskId) {
+        await updateDoc(doc(db, "residents", assignResident.id), {
+          assignedTasks: arrayUnion({
+            taskId,
+            title,
+            category: assignForm.category,
+            assignedAt: new Date(),
+            assignedBy: alias,
+          }),
+          updatedAt: new Date(),
+        });
+      }
+      toast({ title: "משימה הוקצתה" });
+      setAssignResident(null);
+    } catch (error) {
+      toast({ title: "שגיאה בהקצאת משימה", description: error.message, variant: "destructive" });
+    } finally {
+      setSavingAssign(false);
+    }
+  };
+
   const renderResidentCard = (row) => {
-    const tel = phoneHref(fieldText(row, "טלפון"));
     const neighborhood = fieldText(row, "שכונה");
     const familyRole = fieldText(row, "הורה/ילד");
     const housing = fieldText(row, "סטטוס מגורים");
+    const metaLine = [familyRole, housing].filter(Boolean).join(" · ");
     const summary = residentTaskSummary(tasks, row.id, currentUser?.uid);
     const unread = Boolean(summary?.hasUnreadReplies || row.hasNewComment || row.hasNewReply);
     return (
-      <button key={row.id} type="button" className="v2-card w-full p-3 text-right" onClick={() => openRow(row)}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <div className="font-semibold">{residentName(row)}</div>
-              <TaskIndicators summary={summary} unread={unread} />
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[var(--v2-muted)]">
-              <span className="v2-pill">
-                <i className={`v2-dot ${residentStatusDotClass(residentStatus(row))}`} />
-                {residentStatus(row)}
-              </span>
-              <span>{neighborhood || "ללא שכונה"}</span>
-            </div>
-            {(familyRole || housing) && (
-              <div className="v2-res-card-meta">
-                {[familyRole, housing].filter(Boolean).join(" · ")}
-              </div>
-            )}
-            <div className="v2-res-card-meta">{fieldText(row, "טלפון") || "אין טלפון"}</div>
+      <div key={row.id} className="v2-card v2-res-card">
+        <button type="button" className="v2-res-card-main" onClick={() => openRow(row)}>
+          <div className="v2-res-card-title">
+            <span className="v2-res-card-name">{residentName(row)}</span>
+            <TaskIndicators summary={summary} unread={unread} />
           </div>
-          {tel && (
-            <a className="v2-btn v2-btn-icon" href={tel} onClick={(event) => event.stopPropagation()} aria-label="חייג">
-              ☎
-            </a>
-          )}
-        </div>
-      </button>
+          <div className="v2-res-card-line">
+            <span className="v2-pill v2-pill-compact">
+              <i className={`v2-dot ${residentStatusDotClass(residentStatus(row))}`} />
+              {residentStatus(row)}
+            </span>
+            <span className="v2-res-card-hood">{neighborhood || "ללא שכונה"}</span>
+          </div>
+          {metaLine && <div className="v2-res-card-meta">{metaLine}</div>}
+        </button>
+        <ResidentQuickActions row={row} summary={summary} onAssign={openAssign} />
+      </div>
     );
   };
 
@@ -569,6 +711,7 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
                   <th>טלפון</th>
                   <th>שכונה</th>
                   <th>עודכן</th>
+                  <th>פעולות</th>
                 </tr>
               </thead>
               <tbody>
@@ -601,6 +744,9 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
                       </td>
                       <td>{fieldText(row, "שכונה")}</td>
                       <td>{relativeTime(row.syncedAt || row.updatedAt)}</td>
+                      <td onClick={(event) => event.stopPropagation()}>
+                        <ResidentQuickActions row={row} summary={summary} onAssign={openAssign} />
+                      </td>
                     </tr>
                   );
                 })}
@@ -680,6 +826,66 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
         <RecordOverlay open variant="split" onClose={closeRow}>
           <ResidentRecord key={liveSelected.id} resident={liveSelected} variant="sheet" onClose={closeRow} />
         </RecordOverlay>
+      )}
+
+      {assignResident && (
+        <div className="v2-modal" onClick={closeAssign}>
+          <form
+            className="v2-card max-h-[90vh] max-w-lg overflow-auto p-4"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={submitAssign}
+            dir="rtl"
+          >
+            <h2 className="v2-h1">הקצאת משימה</h2>
+            <p className="v2-sub">תושב: {residentName(assignResident)}</p>
+            <div className="v2-fields">
+              <label className="span-2">
+                <span className="v2-label">כותרת המשימה</span>
+                <input
+                  className="v2-search"
+                  style={{ width: "100%", minWidth: 0 }}
+                  value={assignForm.title}
+                  onChange={(e) => setAssignForm((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="הזן כותרת משימה…"
+                  required
+                  autoFocus
+                />
+              </label>
+              <label>
+                <span className="v2-label">קטגוריה</span>
+                <select
+                  className="v2-select"
+                  value={assignForm.category}
+                  onChange={(e) => setAssignForm((prev) => ({ ...prev, category: e.target.value }))}
+                >
+                  {categories.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="v2-label">עדיפות</span>
+                <select
+                  className="v2-select"
+                  value={assignForm.priority}
+                  onChange={(e) => setAssignForm((prev) => ({ ...prev, priority: e.target.value }))}
+                >
+                  <option value="דחוף">דחוף</option>
+                  <option value="רגיל">רגיל</option>
+                  <option value="נמוך">נמוך</option>
+                </select>
+              </label>
+            </div>
+            <div className="v2-row mt-3">
+              <button className="v2-btn v2-btn-primary" type="submit" disabled={savingAssign || !assignForm.title.trim()}>
+                צור משימה
+              </button>
+              <button className="v2-btn" type="button" onClick={closeAssign} disabled={savingAssign}>
+                ביטול
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

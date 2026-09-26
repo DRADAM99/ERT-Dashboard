@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { arrayUnion, collection, doc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { Phone } from "lucide-react";
+import { FaWhatsapp } from "react-icons/fa";
 import { db } from "@/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import { useData } from "@/app/context/DataContext";
@@ -19,6 +21,7 @@ import {
   phoneHref,
   residentName,
   residentStatus,
+  whatsAppHref,
 } from "@/lib/residents";
 import { formatDateTime, residentStatusDotClass } from "@/components/v2/format";
 
@@ -93,6 +96,7 @@ export default function ResidentRecord({ resident, onClose, variant = "pane" }) 
   const name = residentName(resident);
   const phone = getFieldValue(resident, "טלפון");
   const tel = phoneHref(phone);
+  const wa = whatsAppHref(phone);
   const neighborhood = getFieldValue(resident, "שכונה");
 
   const saveStatus = async () => {
@@ -277,11 +281,26 @@ export default function ResidentRecord({ resident, onClose, variant = "pane" }) 
             </span>
           </div>
         </div>
-        {tel && (
-          <a className="v2-btn v2-btn-sm" href={tel}>
-            ☎ חייג
-          </a>
-        )}
+        <div className="v2-res-actions">
+          {wa && (
+            <a
+              className="v2-btn v2-btn-icon v2-btn-wa"
+              href={wa}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`WhatsApp ל-${phone}`}
+              aria-label="WhatsApp"
+            >
+              <FaWhatsapp className="h-4 w-4" />
+            </a>
+          )}
+          {tel && (
+            <a className="v2-btn v2-btn-sm v2-btn-call" href={tel} title={`חייג ל-${phone}`} aria-label="חייג">
+              <Phone className="h-4 w-4" strokeWidth={1.75} />
+              חייג
+            </a>
+          )}
+        </div>
       </div>
 
       <div className="v2-fields">
