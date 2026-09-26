@@ -16,6 +16,14 @@ import { formatDateTime, formatDuration, relativeTime, toDate } from "@/componen
 const TASK_PRIORITIES = ["דחוף", "רגיל", "נמוך"];
 const TASK_STATUSES = ["מחכה", "בטיפול", "טופל"];
 const RESIDENT_TASK_STATUSES = ["כולם בסדר", "זקוקים לסיוע", "לא בטוח"];
+const KNOWN_CATEGORY_PASTELS = new Set(["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "חמ״ל", "אחר"]);
+
+function categoryPastelIndex(name) {
+  const label = String(name || "");
+  let hash = 0;
+  for (let i = 0; i < label.length; i += 1) hash = (hash * 31 + label.charCodeAt(i)) | 0;
+  return Math.abs(hash) % 6;
+}
 
 const emptyForm = {
   title: "",
@@ -249,29 +257,65 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
     });
   }, [tasks, showDone, priorityFilter, selectedCategories, taskFilter, department, currentUser, queryText]);
 
-  const visibleColumns = useMemo(() => {
-    if (!selectedCategories.length) return columns;
-    const next = columns.filter((col) => selectedCategories.includes(col));
-    return next.length ? next : columns;
+  const selectedVisibleColumns = useMemo(() => {
+    const selected = (selectedCategories || []).filter((col) => columns.includes(col));
+    return selected.length ? selected : columns;
   }, [columns, selectedCategories]);
 
   const grouped = useMemo(() => {
     const map = {};
-    visibleColumns.forEach((col) => {
+    selectedVisibleColumns.forEach((col) => {
       map[col] = [];
     });
     filtered.forEach((task) => {
-      const fallback = columns.includes("אחר") ? "אחר" : visibleColumns[0];
-      const col = visibleColumns.includes(task.category)
+      const fallback = selectedVisibleColumns.includes("אחר")
+        ? "אחר"
+        : selectedVisibleColumns[0];
+      const col = selectedVisibleColumns.includes(task.category)
         ? task.category
-        : visibleColumns.includes(fallback)
-          ? fallback
-          : visibleColumns[0];
+        : fallback;
+      if (!col) return;
       if (!map[col]) map[col] = [];
       map[col].push(task);
     });
     return map;
-  }, [filtered, visibleColumns, columns]);
+  }, [filtered, selectedVisibleColumns]);
+
+  // Only render columns the user asked for. When filtering to one category (or
+  // "my department" leaves other cols empty), do not keep empty boxes to scroll.
+  const visibleColumns = useMemo(() => {
+    const selected = selectedVisibleColumns;
+    const isSubset =
+      selectedCategories.length > 0 &&
+      selectedCategories.length < columns.length &&
+      selected.some((col) => selectedCategories.includes(col));
+
+    if (isSubset) return selected;
+
+    const dept = (department || "").trim();
+    if (taskFilter === "שלי" && dept && columns.includes(dept)) {
+      const nonEmpty = selected.filter((col) => (grouped[col]?.length || 0) > 0);
+      if (nonEmpty.includes(dept)) return nonEmpty;
+      if (nonEmpty.length) return nonEmpty;
+      return [dept];
+    }
+
+    if (taskFilter !== "הכל" || queryText.trim() || priorityFilter !== "all") {
+      const nonEmpty = selected.filter((col) => (grouped[col]?.length || 0) > 0);
+      if (nonEmpty.length) return nonEmpty;
+    }
+
+    return selected;
+  }, [
+    selectedVisibleColumns,
+    selectedCategories,
+    columns,
+    department,
+    taskFilter,
+    queryText,
+    priorityFilter,
+    grouped,
+  ]);
 
   const eventLabel = (task) => {
     const event = (eventLogs || []).find((item) => item.id === task.eventId);
@@ -601,7 +645,7 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
                   className="v2-check"
                   onClick={() => setSelectedCategories((prev) => prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category])}
                 >
-                  <span className="flex-1">{category}</span>
+                  <span>{category}</span>
                   {selectedCategories.includes(category) ? "✓" : ""}
                 </button>
               ))}
@@ -619,6 +663,7 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
             key={col}
             className="v2-col"
             data-category={col}
+            data-pastel={KNOWN_CATEGORY_PASTELS.has(col) ? undefined : String(categoryPastelIndex(col))}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
@@ -648,8 +693,8 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
                   openEdit(task);
                 }}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <strong>{task.title}</strong>
+                <div className="v2-task-head">
+                  <strong className="v2-task-title" title={task.title || ""}>{task.title}</strong>
                   <button
                     className="v2-btn v2-btn-sm"
                     type="button"
@@ -659,8 +704,10 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
                     {task.done ? "↩" : "✓"}
                   </button>
                 </div>
-                {task.subtitle && <div style={{ color: "var(--v2-muted)", fontSize: 12, marginTop: 4 }}>{task.subtitle}</div>}
-                <div className="meta" style={{ color: "var(--v2-muted)", fontSize: 11, marginTop: 4 }}>
+                {task.subtitle && (
+                  <div className="v2-task-sub" title={task.subtitle}>{task.subtitle}</div>
+                )}
+                <div className="meta">
                   {task.priority ? `${task.priority} · ` : ""}
                   {relativeTime(task.dueDate || task.createdAt)}
                   {task.replies?.length ? ` · ${task.replies.length} תגובות` : ""}
