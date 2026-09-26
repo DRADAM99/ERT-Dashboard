@@ -106,6 +106,7 @@ export default function EventLogWorkspace({ openEventId }) {
   const { toast } = useToast();
   const alias = currentUserData?.alias || currentUser?.email || "";
   const department = currentUserData?.department || "";
+  const isAdmin = currentUserData?.role === "admin";
   const categories = taskCategories?.length ? taskCategories : DEFAULT_TASK_CATEGORIES;
   const [selectedId, setSelectedId] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -122,7 +123,31 @@ export default function EventLogWorkspace({ openEventId }) {
   const [residentQuery, setResidentQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [listView, setListView] = useState("cards");
+  const [logTitle, setLogTitle] = useState('יומן אירועים - חמ"ל');
+  const [editingTitle, setEditingTitle] = useState(false);
   const openedRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = window.localStorage.getItem("ert.eventLogTitle");
+      if (saved) setLogTitle(saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const saveLogTitle = (value) => {
+    const next = (value || "").trim() || 'יומן אירועים - חמ"ל';
+    setLogTitle(next);
+    setEditingTitle(false);
+    try {
+      window.localStorage.setItem("ert.eventLogTitle", next);
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(() => {
     setForm((prev) => ({ ...prev, recipient: alias, reporter: alias }));
@@ -477,12 +502,46 @@ export default function EventLogWorkspace({ openEventId }) {
       <div className="v2-toolbar">
         <div className="v2-row">
           <div>
-            <h1 className="v2-h1">יומן אירועים</h1>
+            {editingTitle ? (
+              <input
+                className="v2-search v2-h1"
+                style={{ width: "min(100%, 28rem)", fontWeight: 700 }}
+                value={logTitle}
+                autoFocus
+                onChange={(e) => setLogTitle(e.target.value)}
+                onBlur={() => saveLogTitle(logTitle)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    saveLogTitle(logTitle);
+                  }
+                  if (e.key === "Escape") setEditingTitle(false);
+                }}
+              />
+            ) : (
+              <h1 className="v2-h1">
+                {logTitle}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="v2-btn v2-btn-sm ms-2 align-middle"
+                    title="ערוך כותרת"
+                    onClick={() => setEditingTitle(true)}
+                  >
+                    עריכה
+                  </button>
+                )}
+              </h1>
+            )}
             <p className="v2-sub">{filtered.length} רשומות</p>
           </div>
           <button className="v2-btn v2-btn-primary" type="button" onClick={() => setAdding(true)}>+דיווח</button>
         </div>
         <div className="v2-row">
+          <div className="v2-seg">
+            <button type="button" className={listView === "cards" ? "on" : ""} onClick={() => setListView("cards")}>כרטיסים</button>
+            <button type="button" className={listView === "table" ? "on" : ""} onClick={() => setListView("table")}>תצוגה מלאה</button>
+          </div>
           <label className="v2-btn v2-btn-sm">
             {importing ? "מייבא…" : "ייבוא CSV"}
             <input
@@ -510,6 +569,56 @@ export default function EventLogWorkspace({ openEventId }) {
         </select>
         <input className="v2-search v2-q" placeholder="חיפוש ביומן…" value={queryText} onChange={(e) => setQueryText(e.target.value)} />
       </div>
+      {listView === "table" ? (
+        <div className="v2-card min-h-0 flex-1 overflow-auto">
+          {filtered.length === 0 && (
+            <p className="v2-sub p-4">{(eventLogs || []).length ? "אין תוצאות לחיפוש." : "אין רשומות ביומן."}</p>
+          )}
+          {filtered.length > 0 && (
+            <table className="v2-data v2-events-table">
+              <thead>
+                <tr>
+                  <th>שעה</th>
+                  <th>מדווח</th>
+                  <th>נמען</th>
+                  <th>תיאור</th>
+                  <th>מחלקה</th>
+                  <th>סטטוס</th>
+                  <th>עדכון אחרון</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((item) => (
+                  <tr
+                    key={item.id}
+                    className={selectedId === item.id ? "sel" : ""}
+                    onClick={() => setSelectedId(item.id)}
+                  >
+                    <td>{formatTime(item.createdAt) || "--:--"}</td>
+                    <td>{item.reporter || "—"}</td>
+                    <td>{item.recipient || "—"}</td>
+                    <td className="v2-name">{item.description || "ללא תיאור"}</td>
+                    <td>{item.department || "—"}</td>
+                    <td onClick={(event) => event.stopPropagation()}>
+                      <select
+                        className="v2-select v2-select-sm"
+                        value={item.status || "מחכה"}
+                        onChange={(e) => changeStatus(item.id, e.target.value)}
+                        aria-label="סטטוס אירוע"
+                      >
+                        {EVENT_STATUSES.map((status) => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>{item.lastUpdater || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : (
       <div className="v2-card min-h-0 flex-1 overflow-auto">
         {filtered.length === 0 && (
           <p className="v2-sub p-4">{(eventLogs || []).length ? "אין תוצאות לחיפוש." : "אין רשומות ביומן."}</p>
@@ -522,37 +631,45 @@ export default function EventLogWorkspace({ openEventId }) {
           const progress = linked.filter((task) => !task.done && task.status === "בטיפול").length;
           const done = linked.filter((task) => task.done || task.status === "טופל").length;
           return (
-            <button
+            <div
               key={item.id}
-              type="button"
               className={`v2-appt-row ${isNow ? "is-now" : ""} ${item.status === "טופל" ? "is-done" : ""} ${selectedId === item.id ? "is-now" : ""}`}
-              onClick={() => setSelectedId(item.id)}
             >
-              <div className="v2-appt-time">{formatTime(item.createdAt) || "--:--"}</div>
-              <div className="min-w-0 flex-1">
-                <div className="v2-appt-name truncate">{item.description || "ללא תיאור"}</div>
-                <div className="v2-appt-meta">
-                  <span className="v2-pill">
-                    <i className={`v2-dot ${eventStatusDotClass(item.status)}`} />
-                    {item.status || "מחכה"}
-                  </span>
-                  <span>{item.reporter}</span>
-                  {item.department && <span className={`v2-branch ${departmentChipClass(item.department)}`}>{item.department}</span>}
-                  {item.lastUpdater && <span>עדכון: {item.lastUpdater}</span>}
-                  {item.residentName && <span>{item.residentName}</span>}
-                  {linked.length > 0 && (
-                    <span className="v2-task-dots" title={`${linked.length} משימות מקושרות`}>
-                      {pending > 0 && <i className="v2-task-dot pending" />}
-                      {progress > 0 && <i className="v2-task-dot progress" />}
-                      {done > 0 && <i className="v2-task-dot done" />}
-                    </span>
-                  )}
+              <button type="button" className="v2-appt-open" onClick={() => setSelectedId(item.id)}>
+                <div className="v2-appt-time">{formatTime(item.createdAt) || "--:--"}</div>
+                <div className="min-w-0 flex-1 text-right">
+                  <div className="v2-appt-name truncate">{item.description || "ללא תיאור"}</div>
+                  <div className="v2-appt-meta">
+                    <span>{item.reporter}</span>
+                    {item.department && <span className={`v2-branch ${departmentChipClass(item.department)}`}>{item.department}</span>}
+                    {item.lastUpdater && <span>עדכון: {item.lastUpdater}</span>}
+                    {item.residentName && <span>{item.residentName}</span>}
+                    {linked.length > 0 && (
+                      <span className="v2-task-dots" title={`${linked.length} משימות מקושרות`}>
+                        {pending > 0 && <i className="v2-task-dot pending" />}
+                        {progress > 0 && <i className="v2-task-dot progress" />}
+                        {done > 0 && <i className="v2-task-dot done" />}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+              <select
+                className="v2-select v2-select-sm shrink-0"
+                value={item.status || "מחכה"}
+                onChange={(e) => changeStatus(item.id, e.target.value)}
+                aria-label="סטטוס אירוע"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {EVENT_STATUSES.map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+            </div>
           );
         })}
       </div>
+      )}
 
       <RecordOverlay open={!!liveSelected} onClose={closeOverlay}>
         {liveSelected && (

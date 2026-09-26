@@ -4,14 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { arrayUnion, collection, deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { Bell, MessageCircle } from "lucide-react";
 import { db } from "@/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import { useData } from "@/app/context/DataContext";
 import { useToast } from "@/components/ui/use-toast";
 import { createTask } from "@/lib/createTask";
 import { createUserNotification, notifyUsersInDepartment } from "@/lib/notifications";
-import { DEFAULT_TASK_CATEGORIES } from "@/lib/residents";
+import { DEFAULT_TASK_CATEGORIES, phoneHref } from "@/lib/residents";
 import { formatDateTime, formatDuration, relativeTime, toDate } from "@/components/v2/format";
+import { TaskTabs } from "@/components/TaskTabs";
 
 const TASK_PRIORITIES = ["דחוף", "רגיל", "נמוך"];
 const TASK_STATUSES = ["מחכה", "בטיפול", "טופל"];
@@ -22,6 +24,7 @@ const emptyForm = {
   subtitle: "",
   priority: "רגיל",
   category: "",
+  department: "",
   status: "מחכה",
   date: "",
   time: "",
@@ -95,6 +98,9 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
   const [clearConfirm, setClearConfirm] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [archivedTasks, setArchivedTasks] = useState([]);
+  const [boardView, setBoardView] = useState("kanban");
+  const [inlineReplyId, setInlineReplyId] = useState(null);
+  const [inlineReplyText, setInlineReplyText] = useState("");
   const skipSave = useRef(true);
   const draggingRef = useRef(false);
   const openedFromQuery = useRef(null);
@@ -115,6 +121,7 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
       subtitle: task.subtitle || "",
       priority: task.priority || "רגיל",
       category: task.category || task.department || columns[0] || "",
+      department: task.department || task.assignTo || task.category || department || columns[0] || "",
       status: task.status || (task.done ? "טופל" : "מחכה"),
       date: due.date,
       time: due.time,
@@ -127,7 +134,8 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
     const due = defaultDue();
     setForm({
       ...emptyForm,
-      category: category || department || columns[0] || "",
+      category: category || columns[0] || "",
+      department: department || category || columns[0] || "",
       date: due.date,
       time: due.time,
     });
@@ -328,8 +336,6 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
     try {
       await updateDoc(doc(db, "tasks", taskId), {
         category,
-        department: category,
-        assignTo: category,
         updatedAt: serverTimestamp(),
       });
     } catch (error) {
@@ -378,8 +384,8 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
           subtitle: form.subtitle,
           priority: form.priority,
           category: form.category,
-          department: form.category,
-          assignTo: form.category,
+          department: form.department || form.category,
+          assignTo: form.department || form.category,
           status: form.status,
           link: form.link,
           updatedAt: serverTimestamp(),
@@ -399,7 +405,8 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
             subtitle: form.subtitle,
             priority: form.priority,
             category: form.category,
-            department: form.category,
+            department: form.department || form.category,
+            assignTo: form.department || form.category,
             status: form.status,
             dueDate,
             link: form.link,
@@ -415,10 +422,16 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
 
   const addReply = async () => {
     if (!editingId || !replyText.trim() || !currentUser) return;
+    await postReply(editingId, replyText);
+    setReplyText("");
+  };
+
+  const postReply = async (taskId, textValue) => {
+    if (!taskId || !textValue.trim() || !currentUser) return;
     const now = new Date();
-    const task = (tasks || []).find((item) => item.id === editingId);
-    const text = replyText.trim();
-    await updateDoc(doc(db, "tasks", editingId), {
+    const task = (tasks || []).find((item) => item.id === taskId);
+    const text = textValue.trim();
+    await updateDoc(doc(db, "tasks", taskId), {
       replies: arrayUnion({
         text,
         timestamp: now,
@@ -437,7 +450,7 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
           timestamp: now,
           userId: currentUser.uid,
           userAlias: alias,
-          fromTaskId: editingId,
+          fromTaskId: taskId,
         }),
         hasNewComment: true,
         updatedAt: serverTimestamp(),
@@ -451,8 +464,30 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
         link: `/tasks?open=${task.id}`,
       });
     }
-    setReplyText("");
     toast({ title: "תגובה נשלחה" });
+  };
+
+  const changeCardStatus = async (task, newStatus, event) => {
+    event?.stopPropagation?.();
+    if (!task || !newStatus || task.status === newStatus) return;
+    try {
+      await updateDoc(doc(db, "tasks", task.id), {
+        status: newStatus,
+        done: newStatus === "טופל",
+        updatedAt: serverTimestamp(),
+      });
+      await syncLinkedStatus(task, newStatus);
+    } catch (error) {
+      toast({ title: "שגיאה בעדכון סטטוס", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const submitInlineReply = async (task, event) => {
+    event?.stopPropagation?.();
+    if (!inlineReplyText.trim()) return;
+    await postReply(task.id, inlineReplyText);
+    setInlineReplyText("");
+    setInlineReplyId(null);
   };
 
   const nudge = async (task) => {
@@ -523,42 +558,157 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
   const editingTask = editingId ? (tasks || []).find((item) => item.id === editingId) : null;
   const highlightId = openTaskId || editingId;
 
-  const TaskLinks = ({ task }) => (
-    <div className="v2-task-links">
-      {task.residentId && (
-        <Link
-          className="v2-task-link"
-          href={`/residents?open=${task.residentId}`}
-          onClick={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          תושב: {task.residentName || "פתח כרטיס"}
-        </Link>
-      )}
-      {task.eventId && (
-        <Link
-          className="v2-task-link"
-          href={`/events?open=${task.eventId}`}
-          onClick={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          {eventLabel(task)}
-        </Link>
-      )}
-      {task.link && (
-        <a
-          className="v2-task-link"
-          href={externalLink(task.link)}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          קישור חיצוני
-        </a>
-      )}
-    </div>
-  );
+  const TaskLinks = ({ task }) => {
+    const tel = phoneHref(task.residentPhone);
+    return (
+      <div className="v2-task-links">
+        {task.residentId && (
+          <div className="v2-task-resident" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
+            <Link className="v2-task-link" href={`/residents?open=${task.residentId}`}>
+              תושב: {task.residentName || "פתח כרטיס"}
+            </Link>
+            {(task.residentPhone || task.residentNeighborhood) && (
+              <div className="v2-task-resident-meta">
+                {task.residentPhone && (
+                  tel ? <a href={tel} className="v2-phone">{task.residentPhone}</a> : <span>{task.residentPhone}</span>
+                )}
+                {task.residentNeighborhood && <span>שכונה: {task.residentNeighborhood}</span>}
+              </div>
+            )}
+          </div>
+        )}
+        {task.eventId && (
+          <Link
+            className="v2-task-link"
+            href={`/events?open=${task.eventId}`}
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            {eventLabel(task)}
+          </Link>
+        )}
+        {task.link && (
+          <a
+            className="v2-task-link"
+            href={externalLink(task.link)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            קישור חיצוני
+          </a>
+        )}
+      </div>
+    );
+  };
+
+  const renderTaskCard = (task, { compact = false } = {}) => {
+    const unread = Array.isArray(task.replies) && task.replies.some((reply) => reply && reply.isRead === false && reply.userId !== currentUser?.uid);
+    const dueAbs = formatDateTime(task.dueDate);
+    return (
+      <div
+        key={task.id}
+        className={`v2-task-item ${highlightId === task.id ? "ring-2 ring-[var(--v2-cyan)]" : ""} ${task.done ? "done" : ""} ${isOverdue12h(task) ? "overdue-12" : isOverdue(task) ? "overdue" : ""} ${compact ? "is-compact" : ""}`}
+        draggable={!compact}
+        onDragStart={compact ? undefined : (e) => {
+          draggingRef.current = true;
+          e.dataTransfer.setData("taskId", task.id);
+          e.dataTransfer.setData("text/plain", task.id);
+          e.dataTransfer.effectAllowed = "move";
+        }}
+        onDragEnd={compact ? undefined : () => {
+          window.setTimeout(() => { draggingRef.current = false; }, 150);
+        }}
+        onClick={() => {
+          if (draggingRef.current) return;
+          openEdit(task);
+        }}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <strong className="min-w-0 flex-1">
+            {unread && <i className="v2-task-unread inline-block align-middle ms-1" title="תגובה חדשה" />}
+            {task.title}
+            {unread ? <span className="v2-task-new"> (חדש)</span> : null}
+          </strong>
+          <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+            {!task.done && (
+              <button
+                className="v2-btn v2-btn-icon"
+                type="button"
+                title="שלח תזכורת"
+                aria-label="שלח תזכורת"
+                onClick={() => nudge(task)}
+              >
+                <Bell className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <button
+              className="v2-btn v2-btn-sm"
+              type="button"
+              onClick={(e) => toggleDone(task, e)}
+            >
+              {task.done ? "↩" : "✓"}
+            </button>
+          </div>
+        </div>
+        {task.subtitle && <div style={{ color: "var(--v2-muted)", fontSize: 12, marginTop: 4 }}>{task.subtitle}</div>}
+        <div className="v2-task-card-controls" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+          <select
+            className="v2-select v2-select-sm"
+            value={task.status || (task.done ? "טופל" : "מחכה")}
+            onChange={(e) => changeCardStatus(task, e.target.value, e)}
+            aria-label="סטטוס משימה"
+          >
+            {statusOptions(task).map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+          <button
+            className="v2-btn v2-btn-sm"
+            type="button"
+            title="הוסף תגובה"
+            onClick={() => {
+              setInlineReplyId((prev) => (prev === task.id ? null : task.id));
+              setInlineReplyText("");
+            }}
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            <span>תגובה</span>
+          </button>
+        </div>
+        {inlineReplyId === task.id && (
+          <div className="v2-inline-reply" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+            <textarea
+              className="v2-textarea"
+              rows={2}
+              value={inlineReplyText}
+              onChange={(e) => setInlineReplyText(e.target.value)}
+              placeholder="כתוב תגובה…"
+            />
+            <div className="v2-row mt-1">
+              <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={(e) => submitInlineReply(task, e)}>שלח</button>
+              <button className="v2-btn v2-btn-sm" type="button" onClick={() => setInlineReplyId(null)}>ביטול</button>
+            </div>
+          </div>
+        )}
+        <div className="meta" style={{ color: "var(--v2-muted)", fontSize: 11, marginTop: 4 }}>
+          {[
+            task.priority,
+            dueAbs || relativeTime(task.dueDate || task.createdAt),
+            task.department || task.assignTo || null,
+            task.creatorAlias || null,
+            task.replies?.length ? `${task.replies.length} תגובות` : null,
+            task.nudges?.length ? "תזכורת" : null,
+          ].filter(Boolean).join(" · ")}
+        </div>
+        {currentUser && (
+          <div className="mt-1" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+            <TaskTabs taskId={task.id} currentUser={currentUser} />
+          </div>
+        )}
+        <TaskLinks task={task} />
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -567,9 +717,19 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
           <h1 className="v2-h1">משימות</h1>
           <p className="v2-sub">{filtered.length} משימות מוצגות</p>
         </div>
-        <button className="v2-btn v2-btn-primary" type="button" onClick={() => openNew(columns[0])}>
-          + משימה
-        </button>
+        <div className="v2-row">
+          <div className="v2-seg">
+            <button type="button" className={boardView === "kanban" ? "on" : ""} onClick={() => setBoardView("kanban")} title="עבור לתצוגת קנבן">
+              תצוגה מלאה
+            </button>
+            <button type="button" className={boardView === "list" ? "on" : ""} onClick={() => setBoardView("list")} title="עבור לתצוגה מקוצרת">
+              תצוגה מוקטנת
+            </button>
+          </div>
+          <button className="v2-btn v2-btn-primary" type="button" onClick={() => openNew(columns[0])}>
+            + משימה
+          </button>
+        </div>
       </div>
 
       <div className="v2-filters">
@@ -613,65 +773,33 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
         <button className="v2-btn v2-btn-sm" type="button" onClick={() => setShowHistory(true)}>היסטוריה</button>
       </div>
 
-      <div className="v2-board">
-        {visibleColumns.map((col) => (
-          <div
-            key={col}
-            className="v2-col"
-            data-category={col}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              drop(col, e.dataTransfer.getData("taskId") || e.dataTransfer.getData("text/plain"));
-            }}
-          >
-            <h4>
-              <span>{col} <span>{grouped[col]?.length || 0}</span></span>
-              <button className="v2-btn v2-btn-sm" type="button" title={`הוסף ל${col}`} onClick={() => openNew(col)}>+</button>
-            </h4>
-            {(grouped[col] || []).map((task) => (
-              <div
-                key={task.id}
-                className={`v2-task-item ${highlightId === task.id ? "ring-2 ring-[var(--v2-cyan)]" : ""} ${task.done ? "done" : ""} ${isOverdue12h(task) ? "overdue-12" : isOverdue(task) ? "overdue" : ""}`}
-                draggable
-                onDragStart={(e) => {
-                  draggingRef.current = true;
-                  e.dataTransfer.setData("taskId", task.id);
-                  e.dataTransfer.setData("text/plain", task.id);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                onDragEnd={() => {
-                  window.setTimeout(() => { draggingRef.current = false; }, 150);
-                }}
-                onClick={() => {
-                  if (draggingRef.current) return;
-                  openEdit(task);
-                }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <strong>{task.title}</strong>
-                  <button
-                    className="v2-btn v2-btn-sm"
-                    type="button"
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => toggleDone(task, e)}
-                  >
-                    {task.done ? "↩" : "✓"}
-                  </button>
-                </div>
-                {task.subtitle && <div style={{ color: "var(--v2-muted)", fontSize: 12, marginTop: 4 }}>{task.subtitle}</div>}
-                <div className="meta" style={{ color: "var(--v2-muted)", fontSize: 11, marginTop: 4 }}>
-                  {task.priority ? `${task.priority} · ` : ""}
-                  {relativeTime(task.dueDate || task.createdAt)}
-                  {task.replies?.length ? ` · ${task.replies.length} תגובות` : ""}
-                  {task.nudges?.length ? " · תזכורת" : ""}
-                </div>
-                <TaskLinks task={task} />
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
+      {boardView === "list" ? (
+        <div className="v2-card v2-task-list">
+          {filtered.length === 0 && <p className="v2-sub p-4">אין משימות להצגה.</p>}
+          {filtered.map((task) => renderTaskCard(task, { compact: true }))}
+        </div>
+      ) : (
+        <div className="v2-board">
+          {visibleColumns.map((col) => (
+            <div
+              key={col}
+              className="v2-col"
+              data-category={col}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                drop(col, e.dataTransfer.getData("taskId") || e.dataTransfer.getData("text/plain"));
+              }}
+            >
+              <h4>
+                <span>{col} <span>{grouped[col]?.length || 0}</span></span>
+                <button className="v2-btn v2-btn-sm" type="button" title={`הוסף ל${col}`} onClick={() => openNew(col)}>+</button>
+              </h4>
+              {(grouped[col] || []).map((task) => renderTaskCard(task))}
+            </div>
+          ))}
+        </div>
+      )}
 
       {adding && (
         <div className="v2-modal" onClick={closeForm}>
@@ -694,7 +822,13 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
                   </select>
                 </label>
                 <label>
-                  <span className="v2-label">קטגוריה / מחלקה</span>
+                  <span className="v2-label">מחלקה</span>
+                  <select className="v2-search" style={{ width: "100%" }} value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })}>
+                    {columns.map((item) => <option key={item}>{item}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span className="v2-label">קטגוריה</span>
                   <select className="v2-search" style={{ width: "100%" }} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                     {columns.map((item) => <option key={item}>{item}</option>)}
                   </select>
@@ -725,6 +859,11 @@ export default function TasksWorkspace({ openTaskId, startNew }) {
                 </label>
               )}
               {editingTask && <TaskLinks task={editingTask} />}
+              {editingTask && currentUser && (
+                <div className="mb-3">
+                  <TaskTabs taskId={editingTask.id} currentUser={currentUser} />
+                </div>
+              )}
               <div className="v2-row">
                 <button className="v2-btn v2-btn-primary" type="submit">שמירה</button>
                 <button className="v2-btn" type="button" onClick={closeForm}>ביטול</button>

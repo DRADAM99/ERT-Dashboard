@@ -78,6 +78,7 @@ export default function StatusWorkspace() {
   const [zoom, setZoom] = useState(1);
   const [filters, setFilters] = useState(FILTER_DEFAULTS);
   const [selectedResident, setSelectedResident] = useState(null);
+  const [selectedTimeline, setSelectedTimeline] = useState(null);
   const isDrill = emergencyMode !== EMERGENCY_MODES.LIVE;
 
   const startTime = useMemo(() => (eventLogs[0] ? toDate(eventLogs[0].createdAt) : null), [eventLogs]);
@@ -400,15 +401,13 @@ export default function StatusWorkspace() {
                       </div>
                     </>
                   );
-                  if (item.href) {
-                    return (
-                      <Link key={item.id} href={item.href} className={className}>
-                        {body}
-                      </Link>
-                    );
-                  }
                   return (
-                    <button key={item.id} type="button" className={className}>
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={className}
+                      onClick={() => setSelectedTimeline(item)}
+                    >
                       {body}
                     </button>
                   );
@@ -435,15 +434,13 @@ export default function StatusWorkspace() {
                         </span>
                       </>
                     );
-                    if (item.href) {
-                      return (
-                        <Link key={item.id} href={item.href} className={`v2-timeline-h-item ${side}`}>
-                          {inner}
-                        </Link>
-                      );
-                    }
                     return (
-                      <button key={item.id} type="button" className={`v2-timeline-h-item ${side}`}>
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`v2-timeline-h-item ${side}`}
+                        onClick={() => setSelectedTimeline(item)}
+                      >
                         {inner}
                       </button>
                     );
@@ -470,6 +467,27 @@ export default function StatusWorkspace() {
               </Link>
             </div>
           </>
+        )}
+      </RecordOverlay>
+
+      <RecordOverlay open={!!selectedTimeline} onClose={() => setSelectedTimeline(null)}>
+        {selectedTimeline && (
+          <div className="p-4" dir="rtl">
+            <div className="v2-row mb-3">
+              <button className="v2-btn v2-btn-sm" type="button" onClick={() => setSelectedTimeline(null)}>סגירה</button>
+            </div>
+            <h2 className="v2-h1">פרטי אירוע</h2>
+            <p className="v2-sub mb-2">{formatDateTime(selectedTimeline.timestamp)}</p>
+            <p className="mb-3">{selectedTimeline.content}</p>
+            {timelineMeta(selectedTimeline) && (
+              <p className="mb-3 text-sm text-[var(--v2-muted)]">{timelineMeta(selectedTimeline)}</p>
+            )}
+            {selectedTimeline.href && (
+              <Link href={selectedTimeline.href} className="v2-btn v2-btn-primary v2-btn-sm inline-flex">
+                פתח במסך היעד
+              </Link>
+            )}
+          </div>
         )}
       </RecordOverlay>
     </div>
