@@ -70,7 +70,7 @@ function HeaderResidentSearch() {
 
   return (
     <input
-      className="hidden max-w-sm flex-1 rounded-lg border border-[var(--v2-line)] bg-[var(--v2-bg)] px-3 py-1.5 text-sm text-[var(--v2-ink)] placeholder:text-[var(--v2-muted)] md:block"
+      className="hidden max-w-sm flex-1 rounded-lg border border-[var(--v2-line)] bg-[var(--v2-bg)] px-3 py-1.5 text-base text-[var(--v2-ink)] placeholder:text-[var(--v2-muted)] md:block md:text-sm"
       placeholder="חיפוש תושב…"
       aria-label="חיפוש תושב"
       type="search"
@@ -319,7 +319,7 @@ export default function AppShell({ children }) {
           <Suspense
             fallback={
               <input
-                className="hidden max-w-sm flex-1 rounded-lg border border-[var(--v2-line)] bg-[var(--v2-bg)] px-3 py-1.5 text-sm text-[var(--v2-muted)] md:block"
+                className="hidden max-w-sm flex-1 rounded-lg border border-[var(--v2-line)] bg-[var(--v2-bg)] px-3 py-1.5 text-base text-[var(--v2-muted)] md:block md:text-sm"
                 placeholder="חיפוש תושב…"
                 aria-label="חיפוש תושב"
                 disabled
