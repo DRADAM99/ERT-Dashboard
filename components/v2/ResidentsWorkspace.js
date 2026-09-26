@@ -528,30 +528,24 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
     const neighborhood = fieldText(row, "שכונה");
     const familyRole = fieldText(row, "הורה/ילד");
     const housing = fieldText(row, "סטטוס מגורים");
+    const metaLine = [familyRole, housing].filter(Boolean).join(" · ");
     const summary = residentTaskSummary(tasks, row.id, currentUser?.uid);
     const unread = Boolean(summary?.hasUnreadReplies || row.hasNewComment || row.hasNewReply);
     return (
-      <div key={row.id} className="v2-card v2-res-card w-full p-3 text-right">
-        <button type="button" className="v2-res-card-main w-full text-right" onClick={() => openRow(row)}>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <div className="font-semibold">{residentName(row)}</div>
-              <TaskIndicators summary={summary} unread={unread} />
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[var(--v2-muted)]">
-              <span className="v2-pill">
-                <i className={`v2-dot ${residentStatusDotClass(residentStatus(row))}`} />
-                {residentStatus(row)}
-              </span>
-              <span>{neighborhood || "ללא שכונה"}</span>
-            </div>
-            {(familyRole || housing) && (
-              <div className="v2-res-card-meta">
-                {[familyRole, housing].filter(Boolean).join(" · ")}
-              </div>
-            )}
-            <div className="v2-res-card-meta">{fieldText(row, "טלפון") || "אין טלפון"}</div>
+      <div key={row.id} className="v2-card v2-res-card">
+        <button type="button" className="v2-res-card-main" onClick={() => openRow(row)}>
+          <div className="v2-res-card-title">
+            <span className="v2-res-card-name">{residentName(row)}</span>
+            <TaskIndicators summary={summary} unread={unread} />
           </div>
+          <div className="v2-res-card-line">
+            <span className="v2-pill v2-pill-compact">
+              <i className={`v2-dot ${residentStatusDotClass(residentStatus(row))}`} />
+              {residentStatus(row)}
+            </span>
+            <span className="v2-res-card-hood">{neighborhood || "ללא שכונה"}</span>
+          </div>
+          {metaLine && <div className="v2-res-card-meta">{metaLine}</div>}
         </button>
         <ResidentQuickActions row={row} summary={summary} onAssign={openAssign} />
       </div>
