@@ -492,6 +492,9 @@ button.v2-tl, a.v2-tl {
   gap: 8px;
   min-width: 0;
 }
+.v2-task-item .v2-task-head .v2-btn {
+  flex-shrink: 0;
+}
 .v2-task-item .v2-task-title {
   display: block;
   flex: 1 1 auto;
