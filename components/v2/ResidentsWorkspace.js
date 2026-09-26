@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { arrayUnion, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { arrayUnion, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { ArrowUpDown, Phone, RefreshCw, UserPlus, X } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, Edit2, Phone, RefreshCw, UserPlus, X } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
 import { db } from "@/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -13,9 +13,12 @@ import { useToast } from "@/components/ui/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { createTask } from "@/lib/createTask";
+import { notifyUsersInDepartment } from "@/lib/notifications";
 import {
   BOARD_STATUSES,
   DEFAULT_TASK_CATEGORIES,
+  EDITABLE_STATUSES,
+  RESIDENTS_DEPT,
   getFieldValue,
   phoneHref,
   residentName,
@@ -105,6 +108,21 @@ function TaskIndicators({ summary, unread }) {
       {summary?.pending > 0 && <i className="v2-task-dot pending" title={`${summary.pending} מחכות`} />}
       {summary?.inProgress > 0 && <i className="v2-task-dot progress" title={`${summary.inProgress} בטיפול`} />}
       {summary?.completed > 0 && <i className="v2-task-dot done" title={`${summary.completed} טופלו`} />}
+    </span>
+  );
+}
+
+function TaskCountChips({ summary }) {
+  if (!summary) return null;
+  const chips = [];
+  if (summary.pending > 0) chips.push({ key: "pending", label: `${summary.pending} מחכות`, className: "pending" });
+  if (summary.inProgress > 0) chips.push({ key: "progress", label: `${summary.inProgress} בטיפול`, className: "progress" });
+  if (!chips.length) return null;
+  return (
+    <span className="v2-task-chips">
+      {chips.map((chip) => (
+        <span key={chip.key} className={`v2-task-chip ${chip.className}`}>{chip.label}</span>
+      ))}
     </span>
   );
 }
@@ -199,6 +217,10 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
   const [assignResident, setAssignResident] = useState(null);
   const [assignForm, setAssignForm] = useState({ title: "", category: DEFAULT_TASK_CATEGORIES[0], priority: "רגיל" });
   const [savingAssign, setSavingAssign] = useState(false);
+  const [editingStatusId, setEditingStatusId] = useState(null);
+  const [draftStatus, setDraftStatus] = useState("NO_STATUS");
+  const [savingInlineStatus, setSavingInlineStatus] = useState(false);
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
   const openedRef = useRef(null);
   const skipSave = useRef(true);
   const searchDirtyRef = useRef(Boolean(urlQuery));
@@ -468,6 +490,173 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
     setAssignResident(null);
   };
 
+  const startInlineStatus = (row, event) => {
+    event?.stopPropagation?.();
+    const current = residentStatus(row);
+    setEditingStatusId(row.id);
+    setDraftStatus(current === "ללא סטטוס" ? "NO_STATUS" : current);
+  };
+
+  const cancelInlineStatus = (event) => {
+    event?.stopPropagation?.();
+    setEditingStatusId(null);
+    setDraftStatus("NO_STATUS");
+  };
+
+  const saveInlineStatus = async (row, event) => {
+    event?.stopPropagation?.();
+    if (!currentUser || !row?.id || savingInlineStatus) return;
+    const newStatus = draftStatus === "NO_STATUS" ? "" : draftStatus;
+    const oldStatus = getFieldValue(row, "סטטוס") || "";
+    if (newStatus === oldStatus) {
+      setEditingStatusId(null);
+      return;
+    }
+    setSavingInlineStatus(true);
+    try {
+      const now = new Date();
+      await updateDoc(doc(db, "residents", row.id), {
+        סטטוס: newStatus,
+        updatedAt: now,
+        lastStatusChange: {
+          from: oldStatus,
+          to: newStatus,
+          timestamp: now,
+          userId: currentUser.uid,
+          userAlias: alias,
+        },
+        statusHistory: arrayUnion({
+          from: oldStatus,
+          to: newStatus,
+          timestamp: now,
+          userId: currentUser.uid,
+          userAlias: alias,
+        }),
+      });
+      const tasksSnap = await getDocs(query(collection(db, "tasks"), where("residentId", "==", row.id)));
+      await Promise.all(
+        tasksSnap.docs.map((taskDoc) =>
+          updateDoc(doc(db, "tasks", taskDoc.id), { residentStatus: newStatus, updatedAt: now })
+        )
+      );
+      if (newStatus === "זקוקים לסיוע" || newStatus === "לא בטוח") {
+        const payload = {
+          message: `סטטוס תושב התעדכן: ${residentName(row)} — ${newStatus}`,
+          type: "resident",
+          subType: "statusChange",
+          link: `/residents?open=${row.id}`,
+        };
+        await notifyUsersInDepartment(RESIDENTS_DEPT, payload);
+        if (department && department !== RESIDENTS_DEPT) {
+          await notifyUsersInDepartment(department, payload);
+        }
+      }
+      toast({ title: "הסטטוס עודכן" });
+      setEditingStatusId(null);
+    } catch (error) {
+      toast({ title: "שגיאה בעדכון סטטוס", description: error.message, variant: "destructive" });
+    } finally {
+      setSavingInlineStatus(false);
+    }
+  };
+
+  const toggleExpanded = (rowId, event) => {
+    event?.stopPropagation?.();
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
+  };
+
+  const renderInlineStatus = (row) => {
+    const status = residentStatus(row);
+    if (editingStatusId === row.id) {
+      return (
+        <div className="v2-inline-status" onClick={(event) => event.stopPropagation()}>
+          <select
+            className="v2-select v2-select-sm"
+            value={draftStatus}
+            onChange={(e) => setDraftStatus(e.target.value)}
+            aria-label="עדכון סטטוס"
+          >
+            <option value="NO_STATUS">ללא סטטוס</option>
+            {EDITABLE_STATUSES.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+          <button
+            className="v2-btn v2-btn-primary v2-btn-sm"
+            type="button"
+            disabled={savingInlineStatus}
+            onClick={(event) => saveInlineStatus(row, event)}
+          >
+            שמור
+          </button>
+          <button className="v2-btn v2-btn-sm" type="button" disabled={savingInlineStatus} onClick={cancelInlineStatus}>
+            ביטול
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="v2-inline-status-display">
+        <span className="v2-pill v2-pill-compact">
+          <i className={`v2-dot ${residentStatusDotClass(status)}`} />
+          {status}
+        </span>
+        <button
+          type="button"
+          className="v2-btn v2-btn-icon"
+          title="ערוך סטטוס"
+          aria-label="ערוך סטטוס"
+          onClick={(event) => startInlineStatus(row, event)}
+        >
+          <Edit2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  };
+
+  const renderExpandedDetail = (row, summary) => {
+    if (!expandedIds.has(row.id)) return null;
+    const history = Array.isArray(row.statusHistory) ? row.statusHistory.slice(-3).reverse() : [];
+    const assigned = Array.isArray(row.assignedTasks) ? row.assignedTasks.slice(0, 4) : [];
+    return (
+      <div className="v2-res-expand" onClick={(event) => event.stopPropagation()}>
+        <div className="v2-res-expand-grid">
+          <div><span className="v2-muted-label">הורה/ילד</span> {fieldText(row, "הורה/ילד") || "—"}</div>
+          <div><span className="v2-muted-label">סטטוס מגורים</span> {fieldText(row, "סטטוס מגורים") || "—"}</div>
+          <div><span className="v2-muted-label">מספר בית</span> {fieldText(row, "מספר בית") || "—"}</div>
+          <div><span className="v2-muted-label">משימות</span> {summary?.total || 0}</div>
+        </div>
+        {assigned.length > 0 && (
+          <div className="v2-res-expand-list">
+            <strong>משימות מוקצות</strong>
+            {assigned.map((task, index) => (
+              <div key={task.taskId || index}>{task.title || "ללא כותרת"}{task.category ? ` · ${task.category}` : ""}</div>
+            ))}
+          </div>
+        )}
+        {history.length > 0 && (
+          <div className="v2-res-expand-list">
+            <strong>היסטוריית סטטוס</strong>
+            {history.map((item, index) => (
+              <div key={index}>
+                {(item.from || "ללא") + " → " + (item.to || "ללא")}
+                {item.userAlias ? ` · ${item.userAlias}` : ""}
+              </div>
+            ))}
+          </div>
+        )}
+        <button className="v2-btn v2-btn-sm mt-2" type="button" onClick={() => openRow(row)}>
+          פתח כרטיס מלא
+        </button>
+      </div>
+    );
+  };
+
   const submitAssign = async (event) => {
     event?.preventDefault?.();
     if (!assignResident || !currentUser) return;
@@ -531,23 +720,38 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
     const metaLine = [familyRole, housing].filter(Boolean).join(" · ");
     const summary = residentTaskSummary(tasks, row.id, currentUser?.uid);
     const unread = Boolean(summary?.hasUnreadReplies || row.hasNewComment || row.hasNewReply);
+    const expanded = expandedIds.has(row.id);
     return (
-      <div key={row.id} className="v2-card v2-res-card">
-        <button type="button" className="v2-res-card-main" onClick={() => openRow(row)}>
-          <div className="v2-res-card-title">
-            <span className="v2-res-card-name">{residentName(row)}</span>
-            <TaskIndicators summary={summary} unread={unread} />
+      <div key={row.id} className={`v2-card v2-res-card ${expanded ? "is-expanded" : ""}`}>
+        <div className="v2-res-card-top">
+          <div className="v2-res-card-main">
+            <button type="button" className="v2-res-card-open" onClick={() => openRow(row)}>
+              <div className="v2-res-card-title">
+                <span className="v2-res-card-name">{residentName(row)}</span>
+                <TaskIndicators summary={summary} unread={unread} />
+                <TaskCountChips summary={summary} />
+              </div>
+              <div className="v2-res-card-line">
+                <span className="v2-res-card-hood">{neighborhood || "ללא שכונה"}</span>
+              </div>
+              {metaLine && <div className="v2-res-card-meta">{metaLine}</div>}
+            </button>
+            <div className="v2-res-card-status">{renderInlineStatus(row)}</div>
           </div>
-          <div className="v2-res-card-line">
-            <span className="v2-pill v2-pill-compact">
-              <i className={`v2-dot ${residentStatusDotClass(residentStatus(row))}`} />
-              {residentStatus(row)}
-            </span>
-            <span className="v2-res-card-hood">{neighborhood || "ללא שכונה"}</span>
+          <div className="v2-res-card-side">
+            <button
+              type="button"
+              className="v2-btn v2-btn-icon"
+              title={expanded ? "צמצם" : "הרחב"}
+              aria-label={expanded ? "צמצם" : "הרחב"}
+              onClick={(event) => toggleExpanded(row.id, event)}
+            >
+              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            <ResidentQuickActions row={row} summary={summary} onAssign={openAssign} />
           </div>
-          {metaLine && <div className="v2-res-card-meta">{metaLine}</div>}
-        </button>
-        <ResidentQuickActions row={row} summary={summary} onAssign={openAssign} />
+        </div>
+        {renderExpandedDetail(row, summary)}
       </div>
     );
   };
@@ -706,7 +910,9 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
             <table className="v2-data">
               <thead>
                 <tr>
-                  <th>שם</th>
+                  <th className="w-8" aria-label="הרחב" />
+                  <th>שם משפחה</th>
+                  <th>שם פרטי</th>
                   <th>סטטוס</th>
                   <th>טלפון</th>
                   <th>שכונה</th>
@@ -719,35 +925,51 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
                   const tel = phoneHref(fieldText(row, "טלפון"));
                   const summary = residentTaskSummary(tasks, row.id, currentUser?.uid);
                   const unread = Boolean(summary?.hasUnreadReplies || row.hasNewComment || row.hasNewReply);
+                  const expanded = expandedIds.has(row.id);
                   return (
-                    <tr key={row.id} className={selected?.id === row.id ? "sel" : ""} onClick={() => openRow(row)}>
-                      <td className="v2-name">
-                        <div className="flex items-center gap-2">
-                          <span>{residentName(row)}</span>
-                          <TaskIndicators summary={summary} unread={unread} />
-                        </div>
-                      </td>
-                      <td>
-                        <span className="v2-pill">
-                          <i className={`v2-dot ${residentStatusDotClass(residentStatus(row))}`} />
-                          {residentStatus(row)}
-                        </span>
-                      </td>
-                      <td>
-                        {tel ? (
-                          <a href={tel} className="v2-phone" onClick={(event) => event.stopPropagation()}>
-                            {fieldText(row, "טלפון")}
-                          </a>
-                        ) : (
-                          fieldText(row, "טלפון") || "—"
-                        )}
-                      </td>
-                      <td>{fieldText(row, "שכונה")}</td>
-                      <td>{relativeTime(row.syncedAt || row.updatedAt)}</td>
-                      <td onClick={(event) => event.stopPropagation()}>
-                        <ResidentQuickActions row={row} summary={summary} onAssign={openAssign} />
-                      </td>
-                    </tr>
+                    <Fragment key={row.id}>
+                      <tr className={selected?.id === row.id ? "sel" : ""} onClick={() => openRow(row)}>
+                        <td onClick={(event) => event.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="v2-btn v2-btn-icon"
+                            title={expanded ? "צמצם" : "הרחב"}
+                            aria-label={expanded ? "צמצם" : "הרחב"}
+                            onClick={(event) => toggleExpanded(row.id, event)}
+                          >
+                            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </button>
+                        </td>
+                        <td className="v2-name">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{fieldText(row, "שם משפחה") || "—"}</span>
+                            <TaskIndicators summary={summary} unread={unread} />
+                            <TaskCountChips summary={summary} />
+                          </div>
+                        </td>
+                        <td>{fieldText(row, "שם פרטי") || "—"}</td>
+                        <td onClick={(event) => event.stopPropagation()}>{renderInlineStatus(row)}</td>
+                        <td>
+                          {tel ? (
+                            <a href={tel} className="v2-phone" onClick={(event) => event.stopPropagation()}>
+                              {fieldText(row, "טלפון")}
+                            </a>
+                          ) : (
+                            fieldText(row, "טלפון") || "—"
+                          )}
+                        </td>
+                        <td>{fieldText(row, "שכונה")}</td>
+                        <td>{relativeTime(row.syncedAt || row.updatedAt)}</td>
+                        <td onClick={(event) => event.stopPropagation()}>
+                          <ResidentQuickActions row={row} summary={summary} onAssign={openAssign} />
+                        </td>
+                      </tr>
+                      {expanded && (
+                        <tr className="v2-res-expand-row">
+                          <td colSpan={8}>{renderExpandedDetail(row, summary)}</td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
