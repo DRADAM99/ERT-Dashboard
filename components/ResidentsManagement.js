@@ -12,6 +12,7 @@ import { db } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { notifyUsersInDepartment } from "@/lib/notifications";
 import { toast } from "@/components/ui/use-toast";
+import { phoneHref as buildPhoneHref, whatsAppHref as buildWhatsAppHref } from "@/lib/residents";
 
 // Task categories for resident assignments - using the same categories as the main page
 const RESIDENT_TASK_CATEGORIES = ["לוגיסטיקה", "אוכלוסיה", "רפואה", "חוסן", 'חמ"ל', "אחר"];
@@ -167,24 +168,8 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
     return fieldMap[fieldName] || row[fieldName] || '';
   };
 
-  const normalizePhoneNumber = (phoneValue) => {
-    if (!phoneValue) return '';
-    const onlyDigits = String(phoneValue).replace(/\D/g, '');
-    if (!onlyDigits) return '';
-    if (onlyDigits.startsWith('972')) return onlyDigits;
-    if (onlyDigits.startsWith('0')) return `972${onlyDigits.slice(1)}`;
-    return onlyDigits;
-  };
-
-  const getPhoneHref = (phoneValue) => {
-    const normalized = normalizePhoneNumber(phoneValue);
-    return normalized ? `tel:+${normalized}` : null;
-  };
-
-  const getWhatsAppHref = (phoneValue) => {
-    const normalized = normalizePhoneNumber(phoneValue);
-    return normalized ? `https://wa.me/${normalized}` : null;
-  };
+  const getPhoneHref = (phoneValue) => buildPhoneHref(phoneValue);
+  const getWhatsAppHref = (phoneValue) => buildWhatsAppHref(phoneValue);
 
   const ADVANCED_FILTER_FIELDS = ['שכונה', 'הורה/ילד', 'סטטוס מגורים'];
 
@@ -1407,7 +1392,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                           </Button>
                         </div>
                       ) : field === 'טלפון' && viewMode === 'compact' ? (
-                        <a href={`tel:${getFieldValue(row, 'טלפון')}`} className="flex justify-center items-center h-full">
+                        <a href={getPhoneHref(getFieldValue(row, 'טלפון')) || undefined} className="flex justify-center items-center h-full">
                           <Phone className="h-4 w-4 text-gray-600" />
                         </a>
                       ) : (

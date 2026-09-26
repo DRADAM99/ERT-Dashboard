@@ -32,12 +32,21 @@ export const metadata = {
   },
   manifest: '/manifest.json',
   themeColor: '#1b3a78',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'ERT Dashboard'
   }
+};
+
+/** Next.js 15+: viewport must be a separate export (metadata.viewport is ignored). */
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Keep existing PWA preference; search inputs also use ≥16px to avoid iOS zoom.
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#1b3a78",
 };
 
 export default function RootLayout({ children }) {
