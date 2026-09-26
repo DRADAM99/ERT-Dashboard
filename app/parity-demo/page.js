@@ -72,7 +72,7 @@ export default function ParityDemoPage() {
                   ) : (
                     <div className="v2-inline-status-display">
                       <span className="v2-pill v2-pill-compact">
-                        <i className="v2-dot red" />
+                        <i className="v2-dot v2-st-help" />
                         {status}
                       </span>
                       <button type="button" className="v2-btn v2-btn-icon" aria-label="ערוך סטטוס" onClick={() => setEditingStatus(true)}>
@@ -124,7 +124,7 @@ export default function ParityDemoPage() {
                   <td>לוי</td>
                   <td>יוסי</td>
                   <td>
-                    <span className="v2-pill v2-pill-compact"><i className="v2-dot green" />כולם בסדר</span>
+                    <span className="v2-pill v2-pill-compact"><i className="v2-dot v2-st-ok" />כולם בסדר</span>
                     <Edit2 className="ms-1 inline h-3.5 w-3.5 align-middle" />
                   </td>
                   <td>הקצה · ☎ · WA</td>
