@@ -476,6 +476,57 @@ button.v2-tl, a.v2-tl {
 }
 .v2-chip-filter:hover { background: #c5e6ec; }
 .v2-res-cards { display: none; }
+.v2-res-card { display: grid; gap: 10px; }
+.v2-res-card-main {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.v2-res-card-main:hover .font-semibold { color: var(--v2-accent); }
+.v2-res-card-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--v2-muted);
+}
+.v2-res-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.v2-btn-wa {
+  background: #16a34a;
+  border-color: #15803d;
+  color: #fff;
+}
+.v2-btn-wa:hover { background: #15803d; color: #fff; }
+.v2-btn-call {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #0369a1;
+}
+.v2-btn-call:hover { background: #bae6fd; color: #0369a1; }
+.v2-btn-assign {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
+  font-weight: 600;
+}
+.v2-btn-assign:hover { background: #e0e7ff; color: #312e81; }
+.v2-btn-assign.has-tasks {
+  background: #ddd6fe;
+  border-color: #c4b5fd;
+  color: #4c1d95;
+}
+.v2-btn-wa.is-disabled,
+.v2-btn-call.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
 .v2-phone { color: var(--v2-accent); text-decoration: underline; text-underline-offset: 2px; }
 .v2-task-dots { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .v2-task-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
