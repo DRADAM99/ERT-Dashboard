@@ -1,12 +1,60 @@
 import { NextResponse } from "next/server";
 
 /**
- * Reuses the Google Maps browser key from the live emergency-locator map script.
- * If Geocoding fails with REQUEST_DENIED, enable Geocoding API and allowlist the
- * ERT host (or relax key restrictions for server-side use) in Google Cloud Console.
+ * OpenStreetMap Nominatim geocoding for Israeli יישוב names (Hebrew).
+ * Prefer countrycodes=il; if empty (e.g. settlements OSM tags outside IL),
+ * retry with a bounded viewbox over Israel and adjacent areas.
+ * Nominatim usage policy requires a valid identifying User-Agent.
+ * @see https://operations.osmfoundation.org/policies/nominatim/
  */
-const GOOGLE_MAPS_API_KEY =
-  process.env.GOOGLE_MAPS_API_KEY || "AIzaSyCPukA3O3gdGwIkw2Rsd2tLiTsPWl3a6TU";
+const NOMINATIM_USER_AGENT =
+  process.env.NOMINATIM_USER_AGENT ||
+  "ERT-Dashboard/1.0 (emergency response ops map; contact: ert-dashboard)";
+
+/** Rough Israel + Judea/Samaria / Golan coverage (left,bottom,right,top). */
+const ISRAEL_AREA_VIEWBOX = "34.15,29.45,35.95,33.45";
+
+async function nominatimSearch(query, extraParams = {}) {
+  const url = new URL("https://nominatim.openstreetmap.org/search");
+  url.searchParams.set("q", query);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("addressdetails", "1");
+  url.searchParams.set("accept-language", "he");
+  for (const [key, value] of Object.entries(extraParams)) {
+    url.searchParams.set(key, value);
+  }
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      "User-Agent": NOMINATIM_USER_AGENT,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const err = new Error(`Nominatim HTTP ${response.status}`);
+    err.status = response.status;
+    throw err;
+  }
+
+  const results = await response.json();
+  return Array.isArray(results) ? results : [];
+}
+
+function pickBest(results) {
+  const best = results[0];
+  if (!best) return null;
+  const lat = Number(best.lat);
+  const lng = Number(best.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return {
+    lat,
+    lng,
+    formattedAddress: best.display_name || "",
+    placeId: best.place_id != null ? String(best.place_id) : null,
+  };
+}
 
 async function geocodeYishuv(q) {
   const query = String(q || "").trim();
@@ -14,59 +62,35 @@ async function geocodeYishuv(q) {
     return NextResponse.json({ error: "חסר שם יישוב" }, { status: 400 });
   }
 
-  const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
-  url.searchParams.set("address", query);
-  url.searchParams.set("region", "il");
-  url.searchParams.set("components", "country:IL");
-  url.searchParams.set("language", "he");
-  url.searchParams.set("key", GOOGLE_MAPS_API_KEY);
+  try {
+    let results = await nominatimSearch(query, { countrycodes: "il" });
+    if (!results.length) {
+      // OSM often tags West Bank settlements outside country=IL
+      results = await nominatimSearch(query, {
+        viewbox: ISRAEL_AREA_VIEWBOX,
+        bounded: "1",
+      });
+    }
 
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    return NextResponse.json(
-      { error: "שגיאה בפנייה לשירות המיקומים" },
-      { status: 502 }
-    );
-  }
-
-  const data = await response.json();
-
-  if (data.status !== "OK") {
-    if (data.status === "ZERO_RESULTS") {
+    const match = pickBest(results);
+    if (!match) {
       return NextResponse.json(
         { error: "לא נמצא יישוב בישראל עבור השם שהוזן" },
         { status: 404 }
       );
     }
-    const hint =
-      data.status === "REQUEST_DENIED"
-        ? " — יש לאפשר Geocoding API ולהתאים הגבלות מפתח ב-Google Cloud"
-        : "";
+
+    return NextResponse.json({
+      ...match,
+      formattedAddress: match.formattedAddress || query,
+    });
+  } catch (err) {
+    console.error("Nominatim geocode failed", err);
     return NextResponse.json(
-      {
-        error: `חיפוש המיקום נכשל (${data.status})${hint}`,
-        status: data.status,
-        message: data.error_message || null,
-      },
+      { error: "שגיאה בפנייה לשירות המיקומים" },
       { status: 502 }
     );
   }
-
-  const best = data.results?.[0];
-  const location = best?.geometry?.location;
-  if (!location || !Number.isFinite(location.lat) || !Number.isFinite(location.lng)) {
-    return NextResponse.json(
-      { error: "תוצאת המיקום אינה תקינה" },
-      { status: 502 }
-    );
-  }
-
-  return NextResponse.json({
-    lat: location.lat,
-    lng: location.lng,
-    formattedAddress: best.formatted_address || query,
-    placeId: best.place_id || null,
-  });
 }
 
 export async function GET(req) {
