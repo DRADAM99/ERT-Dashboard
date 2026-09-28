@@ -7,16 +7,16 @@ import { NEED_HELP_STATUSES, getFieldValue, residentName, residentStatus } from 
 import { residentStatusDotClass } from "@/components/v2/format";
 import ResidentRecord from "@/components/v2/ResidentRecord";
 import RecordOverlay from "@/components/v2/RecordOverlay";
-
-const EMERGENCY_LOCATOR_ORIGIN = "https://emergency-locator-585a5.web.app";
+import { buildEmergencyMapSrc } from "@/lib/mapConfig";
 
 export default function MapWorkspace({ openResidentId }) {
-  const { residents } = useData();
+  const { residents, mapConfig } = useData();
   const [selected, setSelected] = useState(null);
+  const mapSrc = useMemo(() => buildEmergencyMapSrc(mapConfig), [mapConfig]);
 
   useEffect(() => {
     const handleMessage = (event) => {
-      if (event.origin !== EMERGENCY_LOCATOR_ORIGIN) return;
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type === "COPY_LOCATION" && event.data?.url) {
         navigator.clipboard.writeText(event.data.url).catch(() => {});
       }
@@ -69,7 +69,7 @@ export default function MapWorkspace({ openResidentId }) {
         </div>
         <div className="v2-card min-h-[42vh] overflow-hidden lg:min-h-0">
           <iframe
-            src={`${EMERGENCY_LOCATOR_ORIGIN}/map.html`}
+            src={mapSrc}
             className="h-full w-full min-h-[42vh] border-0 lg:min-h-full"
             title="Emergency Locator Map"
             allow="geolocation clipboard-write"

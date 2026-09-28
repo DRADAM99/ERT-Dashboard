@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>מפת מיקומי חירום</title>
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    #header { width: 100vw; background: #fff; text-align: center; padding: 8px 0 0 0; }
+    .logo { max-width: 100px; width: 30vw; height: auto; display: block; margin: 0 auto; }
+    #map { height: calc(100vh - 60px); width: 100vw; }
+    @media (max-width: 500px) {
+      .logo { max-width: 60vw; }
+      #map { height: calc(100vh - 50px); }
+    }
+    .infowindow-content {
+      padding: 5px;
+    }
+    .infowindow-content h3 {
+      margin: 0 0 5px;
+      font-size: 1.1em;
+    }
+    .infowindow-content button {
+      font-size: 0.9em;
+      padding: 3px 8px;
+    }
+    .basemap-control {
+      margin: 10px;
+      display: flex;
+      flex-direction: row;
+      gap: 0;
+      background: #fff;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,.3);
+      overflow: hidden;
+      direction: ltr;
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+    }
+    .basemap-control button {
+      border: none;
+      background: #fff;
+      color: #1a1a1a;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      border-right: 1px solid #e5e7eb;
+    }
+    .basemap-control button:last-child {
+      border-right: none;
+    }
+    .basemap-control button:hover {
+      background: #f3f4f6;
+    }
+    .basemap-control button.active {
+      background: #1d4ed8;
+      color: #fff;
+    }
+    @media (max-width: 500px) {
+      .basemap-control button {
+        padding: 7px 8px;
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  
+  <div id="map" style="width: 100%; height: calc(100vh - 50px); direction: ltr;"></div>
+  <script src="script-map.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCPukA3O3gdGwIkw2Rsd2tLiTsPWl3a6TU&callback=initMap" async defer></script>
+</body>
+</html> 
