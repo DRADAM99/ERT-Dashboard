@@ -30,14 +30,14 @@ async function geocodeYishuv(q) {
   }
 
   const data = await response.json();
-  if (data.status === "ZERO_RESULTS" || !data.results?.length) {
-    return NextResponse.json(
-      { error: "לא נמצא יישוב בישראל עבור השם שהוזן" },
-      { status: 404 }
-    );
-  }
 
   if (data.status !== "OK") {
+    if (data.status === "ZERO_RESULTS") {
+      return NextResponse.json(
+        { error: "לא נמצא יישוב בישראל עבור השם שהוזן" },
+        { status: 404 }
+      );
+    }
     const hint =
       data.status === "REQUEST_DENIED"
         ? " — יש לאפשר Geocoding API ולהתאים הגבלות מפתח ב-Google Cloud"
@@ -52,8 +52,8 @@ async function geocodeYishuv(q) {
     );
   }
 
-  const best = data.results[0];
-  const location = best.geometry?.location;
+  const best = data.results?.[0];
+  const location = best?.geometry?.location;
   if (!location || !Number.isFinite(location.lat) || !Number.isFinite(location.lng)) {
     return NextResponse.json(
       { error: "תוצאת המיקום אינה תקינה" },
