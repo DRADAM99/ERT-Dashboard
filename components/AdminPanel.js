@@ -34,7 +34,9 @@ import {
   Database,
   CheckCircle,
   AlertTriangle,
+  MapPin,
 } from "lucide-react";
+import { DEFAULT_MAP_CENTER, DEFAULT_YISHUV_ZOOM, MAP_CONFIG_DOC, normalizeMapConfig } from "@/lib/mapConfig";
 
 const SECTIONS = {
   MAIN: "main",
@@ -42,6 +44,7 @@ const SECTIONS = {
   DEPARTMENTS: "departments",
   ONLINE_USERS: "online_users",
   LIVE_DRILL_SOURCES: "live_drill_sources",
+  MAP_CONFIG: "map_config",
 };
 
 const DEFAULT_SOURCE_FORM = {
@@ -153,6 +156,14 @@ export default function AdminPanel({
   const [isSavingSource, setIsSavingSource] = useState({});
   const [isVerifyingSource, setIsVerifyingSource] = useState({});
 
+  // Map יישוב / center config
+  const [mapForm, setMapForm] = useState(() => ({
+    ...normalizeMapConfig(DEFAULT_MAP_CENTER),
+    zoom: DEFAULT_YISHUV_ZOOM,
+  }));
+  const [isGeocodingMap, setIsGeocodingMap] = useState(false);
+  const [isSavingMap, setIsSavingMap] = useState(false);
+
   // Real-time listener for users — only active while the panel is open
   useEffect(() => {
     if (!open) return;
@@ -168,6 +179,20 @@ export default function AdminPanel({
     if (!open) return;
     const unsub = onSnapshot(doc(db, "systemSettings", "emergencySources"), (snap) => {
       setSourceForm(mergeSourceSettings(snap.exists() ? snap.data() : {}));
+    });
+    return () => unsub();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const unsub = onSnapshot(doc(db, MAP_CONFIG_DOC.collection, MAP_CONFIG_DOC.id), (snap) => {
+      const normalized = normalizeMapConfig(snap.exists() ? snap.data() : DEFAULT_MAP_CENTER);
+      setMapForm({
+        ...normalized,
+        zoom: snap.exists() && Number.isFinite(Number(snap.data()?.zoom))
+          ? Number(snap.data().zoom)
+          : DEFAULT_YISHUV_ZOOM,
+      });
     });
     return () => unsub();
   }, [open]);
@@ -359,6 +384,93 @@ export default function AdminPanel({
     }
   };
 
+  const updateMapField = (field, value) => {
+    setMapForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const geocodeYishuv = async () => {
+    const yishuvName = String(mapForm.yishuvName || "").trim();
+    if (!yishuvName) {
+      toast({ title: "חסר יישוב", description: "יש להזין שם יישוב", variant: "destructive" });
+      return null;
+    }
+
+    setIsGeocodingMap(true);
+    try {
+      const response = await fetch(`/api/geocode-yishuv?q=${encodeURIComponent(yishuvName)}`);
+      const data = await response.json();
+      if (!response.ok) {
+        toast({
+          title: "אימות מיקום נכשל",
+          description: data.error || "לא נמצא מיקום",
+          variant: "destructive",
+        });
+        return null;
+      }
+      setMapForm((prev) => ({
+        ...prev,
+        yishuvName,
+        lat: data.lat,
+        lng: data.lng,
+        geocodedAddress: data.formattedAddress || "",
+        zoom: prev.zoom || DEFAULT_YISHUV_ZOOM,
+      }));
+      toast({
+        title: "מיקום אומת",
+        description: data.formattedAddress || `${data.lat}, ${data.lng}`,
+      });
+      return data;
+    } catch {
+      toast({ title: "שגיאה", description: "אימות המיקום נכשל", variant: "destructive" });
+      return null;
+    } finally {
+      setIsGeocodingMap(false);
+    }
+  };
+
+  const saveMapConfig = async () => {
+    const yishuvName = String(mapForm.yishuvName || "").trim();
+    if (!yishuvName) {
+      toast({ title: "חסר יישוב", description: "יש להזין שם יישוב", variant: "destructive" });
+      return;
+    }
+
+    let lat = Number(mapForm.lat);
+    let lng = Number(mapForm.lng);
+    let geocodedAddress = mapForm.geocodedAddress || "";
+    const zoom = Number(mapForm.zoom);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      const geocoded = await geocodeYishuv();
+      if (!geocoded) return;
+      lat = geocoded.lat;
+      lng = geocoded.lng;
+      geocodedAddress = geocoded.formattedAddress || "";
+    }
+
+    setIsSavingMap(true);
+    try {
+      await setDoc(
+        doc(db, MAP_CONFIG_DOC.collection, MAP_CONFIG_DOC.id),
+        {
+          yishuvName,
+          lat,
+          lng,
+          zoom: Number.isFinite(zoom) && zoom > 0 ? zoom : DEFAULT_YISHUV_ZOOM,
+          geocodedAddress,
+          updatedAt: serverTimestamp(),
+          updatedBy: currentUser?.uid || "",
+        },
+        { merge: true }
+      );
+      toast({ title: "נשמר", description: `מרכז המפה עודכן ל־${yishuvName}` });
+    } catch {
+      toast({ title: "שגיאה", description: "שמירת הגדרות המפה נכשלה", variant: "destructive" });
+    } finally {
+      setIsSavingMap(false);
+    }
+  };
+
   // ── Online users derived data ─────────────────────────────────────────────
   const usersWithPresence = allUsers
     .map((u) => ({ ...u, presence: getPresence(u.lastSeen) }))
@@ -470,6 +582,17 @@ export default function AdminPanel({
                 <div>
                   <div className="font-medium text-gray-800 text-sm">מקורות חי / תרגיל</div>
                   <div className="text-xs text-gray-500">ניהול קישורי Google Sheets</div>
+                </div>
+              </button>
+
+              <button
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 hover:bg-teal-50 hover:border-teal-300 transition-colors text-right"
+                onClick={() => setSection(SECTIONS.MAP_CONFIG)}
+              >
+                <MapPin className="h-5 w-5 text-teal-600 shrink-0" />
+                <div>
+                  <div className="font-medium text-gray-800 text-sm">יישוב</div>
+                  <div className="text-xs text-gray-500">מרכז ברירת מחדל למפת החירום</div>
                 </div>
               </button>
             </div>
@@ -703,6 +826,95 @@ export default function AdminPanel({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* ── Map יישוב config ── */}
+          {section === SECTIONS.MAP_CONFIG && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">יישוב — מרכז המפה</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  הזינו שם יישוב בלבד. המערכת תאמת מיקום בישראל. ניתן לערוך lat/lng/zoom ידנית אם צריך.
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="map-yishuv-name" className="text-xs font-medium">יישוב</Label>
+                <Input
+                  id="map-yishuv-name"
+                  value={mapForm.yishuvName}
+                  onChange={(e) => updateMapField("yishuvName", e.target.value)}
+                  placeholder="לדוגמה: ניר עם"
+                  className="mt-1 text-sm"
+                />
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={geocodeYishuv}
+                disabled={isGeocodingMap || isSavingMap || !String(mapForm.yishuvName || "").trim()}
+                className="w-full text-sm"
+              >
+                {isGeocodingMap ? "מאמת..." : "אמת מיקום"}
+              </Button>
+
+              {mapForm.geocodedAddress && (
+                <div className="rounded border bg-gray-50 p-2 text-xs text-gray-700">
+                  {mapForm.geocodedAddress}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label htmlFor="map-lat" className="text-xs font-medium">קו רוחב (lat)</Label>
+                  <Input
+                    id="map-lat"
+                    dir="ltr"
+                    type="number"
+                    step="any"
+                    value={mapForm.lat}
+                    onChange={(e) => updateMapField("lat", e.target.value === "" ? "" : Number(e.target.value))}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="map-lng" className="text-xs font-medium">קו אורך (lng)</Label>
+                  <Input
+                    id="map-lng"
+                    dir="ltr"
+                    type="number"
+                    step="any"
+                    value={mapForm.lng}
+                    onChange={(e) => updateMapField("lng", e.target.value === "" ? "" : Number(e.target.value))}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="map-zoom" className="text-xs font-medium">זום</Label>
+                <Input
+                  id="map-zoom"
+                  dir="ltr"
+                  type="number"
+                  min={1}
+                  max={21}
+                  value={mapForm.zoom}
+                  onChange={(e) => updateMapField("zoom", e.target.value === "" ? "" : Number(e.target.value))}
+                  className="mt-1 text-xs"
+                />
+              </div>
+
+              <Button
+                type="button"
+                onClick={saveMapConfig}
+                disabled={isSavingMap || isGeocodingMap}
+                className="w-full text-sm"
+              >
+                {isSavingMap ? "שומר..." : "שמור"}
+              </Button>
             </div>
           )}
 
