@@ -103,6 +103,50 @@ function showLocations(snapshot) {
   });
 }
 
+const BASEMAP_OPTIONS = [
+  { id: 'roadmap', label: 'מפה' },
+  { id: 'satellite', label: 'לווין' },
+  { id: 'hybrid', label: 'היברידי' },
+  { id: 'terrain', label: 'טופוגרפיה' },
+];
+
+function createBasemapControl(map, initialTypeId) {
+  const controlDiv = document.createElement('div');
+  controlDiv.className = 'basemap-control';
+  controlDiv.setAttribute('role', 'group');
+  controlDiv.setAttribute('aria-label', 'סוג מפה');
+
+  const buttons = BASEMAP_OPTIONS.map((option) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = option.label;
+    button.dataset.mapType = option.id;
+    button.setAttribute('aria-pressed', option.id === initialTypeId ? 'true' : 'false');
+    if (option.id === initialTypeId) button.classList.add('active');
+    button.addEventListener('click', () => {
+      map.setMapTypeId(option.id);
+      buttons.forEach((btn) => {
+        const active = btn.dataset.mapType === option.id;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    });
+    controlDiv.appendChild(button);
+    return button;
+  });
+
+  map.addListener('maptypeid_changed', () => {
+    const current = String(map.getMapTypeId() || '').toLowerCase();
+    buttons.forEach((btn) => {
+      const active = btn.dataset.mapType === current;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  });
+
+  return controlDiv;
+}
+
 function createDropPinControl(map) {
   const controlDiv = document.createElement('div');
   controlDiv.style.margin = '10px';
@@ -177,19 +221,13 @@ function initMap() {
     center: { lat, lng },
     zoom,
     mapTypeId,
-    mapTypeControl: true,
-    mapTypeControlOptions: {
-      style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
-      position: google.maps.ControlPosition.TOP_LEFT,
-      mapTypeIds: [
-        google.maps.MapTypeId.ROADMAP,
-        google.maps.MapTypeId.SATELLITE,
-        google.maps.MapTypeId.HYBRID,
-        google.maps.MapTypeId.TERRAIN,
-      ],
-    },
+    // Custom Hebrew basemap bar below — default Google control hides Hybrid/Terrain.
+    mapTypeControl: false,
   });
-  
+
+  const basemapControlDiv = createBasemapControl(map, mapTypeId);
+  map.controls[google.maps.ControlPosition.TOP_LEFT].push(basemapControlDiv);
+
   const dropPinControlDiv = createDropPinControl(map);
   map.controls[google.maps.ControlPosition.TOP_CENTER].push(dropPinControlDiv);
 
