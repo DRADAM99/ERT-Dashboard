@@ -35,6 +35,8 @@ import "@fontsource/rubik/500.css";
 import "@fontsource/rubik/700.css";
 import "@/app/v2.css";
 
+const APP_VERSION = "Version 8.65";
+
 function HeaderResidentSearch() {
   const router = useRouter();
   const pathname = usePathname() || "";
@@ -173,9 +175,11 @@ export default function AppShell({ children }) {
   const [emergencyEventId] = useState(() => makeEmergencyEventId());
   const [savingEmergency, setSavingEmergency] = useState(false);
   const [elapsedClock, setElapsedClock] = useState("00:00:00");
+  const [wallClock, setWallClock] = useState("");
   const role = currentUserData?.role || "";
   const isAdmin = role === "admin";
   const alias = currentUserData?.alias || currentUser?.email || "";
+  const department = currentUserData?.department || "";
   const isDrill = emergencyMode !== EMERGENCY_MODES.LIVE;
   const emergencyModeLabel = isDrill ? "תרגיל" : "חי";
   const sensors = useSensors(
@@ -205,6 +209,24 @@ export default function AppShell({ children }) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [eventStart]);
+
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setWallClock(
+        now.toLocaleString("he-IL", {
+          weekday: "short",
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      );
+    };
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const persistNavOrder = (items) => {
     setNavItems(items);
@@ -313,8 +335,11 @@ export default function AppShell({ children }) {
             <img src="/logo.png" alt="לוגו ניהול אירוע חירום" className="v2-logo" />
             <span className="hidden sm:inline">ניהול אירוע חירום</span>
           </div>
-          <div className="v2-clock v2-clock-sm hidden md:block" title="זמן מתחילת האירוע" aria-label="זמן מתחילת האירוע">
-            {elapsedClock}
+          <div className="hidden min-w-0 flex-col text-[10px] leading-tight text-[var(--v2-muted)] md:flex">
+            <span className="v2-clock v2-clock-sm" title="זמן מתחילת האירוע" aria-label="זמן מתחילת האירוע">
+              {elapsedClock}
+            </span>
+            <span title="שעון קיר">{wallClock}</span>
           </div>
           <Suspense
             fallback={
@@ -329,7 +354,7 @@ export default function AppShell({ children }) {
             <HeaderResidentSearch />
           </Suspense>
           <div className="ms-auto flex shrink-0 items-center gap-2 sm:gap-3">
-            <div className="hidden items-center gap-2 lg:flex">
+            <div className="hidden items-center gap-2 md:flex">
               <NotesAndLinks section="links" />
               <NotesAndLinks section="notes" />
             </div>
@@ -372,11 +397,18 @@ export default function AppShell({ children }) {
             <Button size="sm" className="hidden bg-[var(--v2-accent)] px-3 text-white hover:bg-[#244a8f] sm:inline-flex" onClick={() => router.push("/tasks?new=1")}>
               + משימה
             </Button>
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex min-w-0 items-center gap-2 text-sm">
               <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--v2-accent-soft)] text-xs font-semibold text-[var(--v2-accent)]">
                 {(alias || "א").slice(0, 1)}
               </span>
-              <span className="hidden max-w-[7.5rem] truncate lg:inline">{alias}</span>
+              <div className="hidden min-w-0 max-w-[9rem] flex-col leading-tight lg:flex">
+                <span className="truncate font-medium">{alias ? `שלום ${alias}` : ""}</span>
+                {(department || APP_VERSION) && (
+                  <span className="truncate text-[10px] text-[var(--v2-muted)]">
+                    {[department, APP_VERSION].filter(Boolean).join(" · ")}
+                  </span>
+                )}
+              </div>
             </div>
             <button type="button" className="rounded-full p-1.5 hover:bg-[var(--v2-bg)] md:hidden" onClick={() => setMoreOpen(true)} aria-label="תפריט">
               <Menu className="h-5 w-5" />
@@ -498,7 +530,11 @@ export default function AppShell({ children }) {
             <p className="text-sm">{isDrill ? "האם אתה בטוח שאתה רוצה להפעיל תרגיל?" : "האם אתה בטוח שאתה רוצה להפעיל נוהל ירוק בעיניים?"}</p>
             {activeSource?.sheetId && (
               <div className="rounded border bg-[var(--v2-bg)] p-2 text-xs text-[var(--v2-muted)]">
-                {`מקור תושבים: ${emergencyModeLabel} / ${activeSource.sheetName || "גיליון1"}`}
+                {`מקור תושבים: ${emergencyModeLabel} / ${activeSource.sheetName || "גיליון1"}${
+                  activeSource.lastVerified?.residentCount !== undefined
+                    ? ` / ${activeSource.lastVerified.residentCount} תושבים אומתו`
+                    : ""
+                }`}
               </div>
             )}
             <DialogFooter className="gap-2">
@@ -515,7 +551,23 @@ export default function AppShell({ children }) {
             <DialogHeader>
               <DialogTitle className="text-red-600">סיום אירוע חירום</DialogTitle>
             </DialogHeader>
-            <p className="text-sm">פעולה זו תייצא את כל הנתונים לקובץ CSV ותנקה את המערכת לאירוע הבא.</p>
+            <div className="space-y-3 text-sm">
+              <p>
+                <strong>מזהה אירוע:</strong> {emergencyEventId}
+              </p>
+              <p>
+                <strong>שם אירוע:</strong> יומן אירועים - חמ&quot;ל ({emergencyEventId})
+              </p>
+              <div className="rounded border border-red-200 bg-red-50 p-3 text-red-900">
+                <p className="mb-2 font-semibold">שים לב: פעולה זו תייצא את כל הנתונים לקובץ CSV ותנקה את המערכת לאירוע הבא:</p>
+                <ul className="list-disc space-y-1 pe-5 text-xs">
+                  <li>יומן אירועים</li>
+                  <li>משימות</li>
+                  <li>סטטוסי תושבים</li>
+                  <li>מחיקת תושבים / משימות / לידים</li>
+                </ul>
+              </div>
+            </div>
             <DialogFooter className="gap-2">
               <button className="v2-btn" type="button" onClick={() => setShowEndEmergency(false)}>ביטול</button>
               <button className="v2-btn bg-red-600 text-white border-red-600" type="button" onClick={onEndEmergency}>סיים אירוע וייצא נתונים</button>
