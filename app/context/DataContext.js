@@ -6,6 +6,7 @@ import { db } from "@/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import { DEFAULT_TASK_CATEGORIES } from "@/lib/residents";
 import { EMERGENCY_MODES, EMERGENCY_SETTINGS_DOC, EMERGENCY_SOURCES_DOC, normalizeEmergencyMode } from "@/lib/emergencyActions";
+import { DEFAULT_MAP_CENTER, MAP_CONFIG_DOC, normalizeMapConfig } from "@/lib/mapConfig";
 import { toDate } from "@/components/v2/format";
 
 const EMPTY_DATA = {
@@ -17,6 +18,7 @@ const EMPTY_DATA = {
   taskCategories: DEFAULT_TASK_CATEGORIES,
   emergencyMode: EMERGENCY_MODES.DRILL,
   emergencySources: {},
+  mapConfig: normalizeMapConfig(DEFAULT_MAP_CENTER),
   isEmergencyConfigLoaded: false,
   loading: true,
 };
@@ -53,6 +55,7 @@ export function DataProvider({ children }) {
   const [taskCategories, setTaskCategories] = useState(DEFAULT_TASK_CATEGORIES);
   const [emergencyMode, setEmergencyMode] = useState(EMERGENCY_MODES.DRILL);
   const [emergencySources, setEmergencySources] = useState({});
+  const [mapConfig, setMapConfig] = useState(() => normalizeMapConfig(DEFAULT_MAP_CENTER));
   const [isEmergencyConfigLoaded, setIsEmergencyConfigLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -189,6 +192,21 @@ export function DataProvider({ children }) {
     return () => unsubscribe();
   }, [currentUser]);
 
+  useEffect(() => {
+    if (!currentUser) {
+      setMapConfig(normalizeMapConfig(DEFAULT_MAP_CENTER));
+      return undefined;
+    }
+    const unsubscribe = onSnapshot(
+      doc(db, MAP_CONFIG_DOC.collection, MAP_CONFIG_DOC.id),
+      (snap) => {
+        setMapConfig(normalizeMapConfig(snap.exists() ? snap.data() : DEFAULT_MAP_CENTER));
+      },
+      () => setMapConfig(normalizeMapConfig(DEFAULT_MAP_CENTER))
+    );
+    return () => unsubscribe();
+  }, [currentUser]);
+
   const value = useMemo(
     () => ({
       tasks,
@@ -200,6 +218,7 @@ export function DataProvider({ children }) {
       setTaskCategories,
       emergencyMode,
       emergencySources,
+      mapConfig,
       isEmergencyConfigLoaded,
       loading,
     }),
@@ -212,6 +231,7 @@ export function DataProvider({ children }) {
       taskCategories,
       emergencyMode,
       emergencySources,
+      mapConfig,
       isEmergencyConfigLoaded,
       loading,
     ]

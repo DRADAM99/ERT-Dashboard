@@ -1,13 +1,16 @@
 'use client';
 
-import { useEffect } from 'react';
-
-const EMERGENCY_LOCATOR_ORIGIN = 'https://emergency-locator-585a5.web.app';
+import { useEffect, useMemo } from 'react';
+import { useData } from '@/app/context/DataContext';
+import { buildEmergencyMapSrc } from '@/lib/mapConfig';
 
 export default function SimpleEmergencyLocator() {
+  const { mapConfig } = useData();
+  const mapSrc = useMemo(() => buildEmergencyMapSrc(mapConfig), [mapConfig]);
+
   useEffect(() => {
     const handleMessage = (event) => {
-      if (event.origin !== EMERGENCY_LOCATOR_ORIGIN) return;
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'COPY_LOCATION' && event.data?.url) {
         navigator.clipboard.writeText(event.data.url);
       }
@@ -26,7 +29,7 @@ export default function SimpleEmergencyLocator() {
         </div>
         <div className="relative" style={{ height: '600px' }}>
           <iframe
-            src="https://emergency-locator-585a5.web.app/map.html"
+            src={mapSrc}
             className="w-full h-full border-0"
             title="Emergency Locator Map"
             allow="geolocation clipboard-write"
@@ -35,4 +38,4 @@ export default function SimpleEmergencyLocator() {
       </div>
     </div>
   );
-} 
+}
