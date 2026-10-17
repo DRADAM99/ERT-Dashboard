@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { Phone, Copy, Check, Plus, ChevronDown, ChevronUp, Search } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { Phone, Copy, Check, Plus, ChevronDown, ChevronUp, Search, ExternalLink, MapPin } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
-import { displayResidentStatus, getFieldValue, phoneHref, residentName, residentStatus, whatsAppHref } from "@/lib/residents";
+import { displayResidentStatus, getFieldValue, NEED_HELP_STATUSES, phoneHref, residentName, residentStatus, whatsAppHref } from "@/lib/residents";
+import { buildEmergencyMapSrc } from "@/lib/mapConfig";
 import { formatDateTime, formatDuration, toDate } from "@/components/v2/format";
 
 export const CANONICAL_STATUSES = [
@@ -706,3 +708,92 @@ export function LiveTimelineWidget({ timeline }) {
     </div>
   );
 }
+
+const MAP_LAYERS = [
+  { id: "roadmap", label: "מפה" },
+  { id: "satellite", label: "לווין" },
+  { id: "hybrid", label: "היברידי" },
+  { id: "terrain", label: "טופוגרפיה" },
+];
+
+export function EmergencyMapWidget({ mapConfig, residents, isInteracting }) {
+  const [mapType, setMapType] = useState("roadmap");
+  const [initialType] = useState("roadmap");
+  const iframeRef = useRef(null);
+
+  const baseSrc = useMemo(() => buildEmergencyMapSrc(mapConfig), [mapConfig]);
+  const mapSrc = useMemo(() => `${baseSrc}&mapType=${initialType}`, [baseSrc, initialType]);
+
+  const needHelpCount = useMemo(
+    () => (residents || []).filter((r) => NEED_HELP_STATUSES.includes(residentStatus(r))).length,
+    [residents]
+  );
+
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (typeof window === "undefined" || event.origin !== window.location.origin) return;
+      if (event.data?.type === "COPY_LOCATION" && event.data?.url) {
+        navigator.clipboard?.writeText(event.data.url).catch(() => {});
+      }
+      if (event.data?.type === "MAP_TYPE_CHANGED" && event.data?.mapType) {
+        setMapType(String(event.data.mapType).toLowerCase());
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  const handleSelectLayer = (layerId) => {
+    setMapType(layerId);
+    try {
+      iframeRef.current?.contentWindow?.postMessage({ type: "SET_MAP_TYPE", mapType: layerId }, "*");
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full min-h-[260px] gap-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex items-center gap-1 font-bold text-[#1a2e52] bg-[#f3f9fb] border border-[#d2e4ea] rounded-md px-2 py-1">
+            <MapPin className="w-3.5 h-3.5 text-[#1b3a78]" />
+            {mapConfig?.yishuvName ? `יישוב: ${mapConfig.yishuvName}` : "מפת חירום יישובית"}
+          </span>
+          <span className="v2-pill v2-pill-compact">
+            <i className="v2-dot v2-st-help" /> {needHelpCount} צריכים מענה
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="v2-seg" role="group" aria-label="שכבות מפה">
+            {MAP_LAYERS.map((layer) => (
+              <button
+                key={layer.id}
+                type="button"
+                className={mapType === layer.id ? "on" : ""}
+                onClick={() => handleSelectLayer(layer.id)}
+              >
+                {layer.label}
+              </button>
+            ))}
+          </div>
+          <Link href="/map" className="v2-btn v2-btn-sm" title="פתח מסך מפה מלא">
+            <ExternalLink className="w-3.5 h-3.5" /> מסך מפה מלא
+          </Link>
+        </div>
+      </div>
+
+      <div className="relative flex-1 min-h-[230px] rounded-xl overflow-hidden border border-[#d2e4ea] bg-[#e4eef2]">
+        <iframe
+          ref={iframeRef}
+          src={mapSrc}
+          className={`w-full h-full min-h-[230px] border-0 ${isInteracting ? "pointer-events-none" : ""}`}
+          title="Emergency Locator Map Widget"
+          allow="geolocation clipboard-write"
+        />
+      </div>
+    </div>
+  );
+}
+

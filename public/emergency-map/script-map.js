@@ -142,6 +142,18 @@ function createBasemapControl(map, initialTypeId) {
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'MAP_TYPE_CHANGED', mapType: current }, '*');
+    }
+  });
+
+  window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SET_MAP_TYPE' && event.data.mapType) {
+      const nextType = String(event.data.mapType).toLowerCase();
+      if (BASEMAP_OPTIONS.some((o) => o.id === nextType)) {
+        map.setMapTypeId(nextType);
+      }
+    }
   });
 
   return controlDiv;

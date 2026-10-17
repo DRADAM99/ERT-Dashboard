@@ -163,7 +163,7 @@
 
   <script>
     const TITLE_KEY = "ert.eventLogTitle";
-    const LAYOUT_KEY = "ert.standaloneSitrepLayout.v1";
+    const LAYOUT_KEY = "ert.standaloneSitrepLayout.v2";
 
     const DEFAULT_WIDGETS = [
       { id: "kpi_res", title: "תושבים שצריכים מענה", cols: 4, hidden: false },
@@ -173,9 +173,10 @@
       { id: "announcement", title: "הודעה אחרונה לציבור", cols: 6, hidden: false },
       { id: "dept_heads", title: "כח אדם — ראשי מחלקות ומכלולים", cols: 6, hidden: false },
       { id: "event_summary", title: "סיכום יומן אירועים — מה קרה ואיפה עומדים", cols: 6, hidden: false },
-      { id: "green_eyes", title: "טבלת ירוק בעיניים — פילוח שכונות ותושבים", cols: 8, hidden: false },
+      { id: "emergency_map", title: "מפת חירום ומיקומים — יישוב ושכבות", cols: 6, hidden: false },
+      { id: "green_eyes", title: "טבלת ירוק בעיניים — פילוח שכונות ותושבים", cols: 6, hidden: false },
       { id: "dept_tasks", title: "סיכום משימות לפי מכלול", cols: 4, hidden: false },
-      { id: "timeline", title: "ציר זמן חי", cols: 12, hidden: false }
+      { id: "timeline", title: "ציר זמן חי", cols: 8, hidden: false }
     ];
 
     let widgets = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "null") || JSON.parse(JSON.stringify(DEFAULT_WIDGETS));
@@ -248,6 +249,19 @@
               <li>סבב ביקורי בית פעיל ל-2 תושבים ללא מענה.</li>
             </ul>
           </div>
+        </div>`;
+      if (id === "emergency_map") return `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <span class="badge" style="background:#f3f9fb;border:1px solid var(--v2-line);color:var(--v2-ink);">מפת חירום יישובית · 6 צריכים מענה</span>
+          <div class="preset-group">
+            <button class="preset-btn active" onclick="setStandaloneMapLayer(this,'roadmap')">מפה</button>
+            <button class="preset-btn" onclick="setStandaloneMapLayer(this,'satellite')">לווין</button>
+            <button class="preset-btn" onclick="setStandaloneMapLayer(this,'hybrid')">היברידי</button>
+            <button class="preset-btn" onclick="setStandaloneMapLayer(this,'terrain')">טופוגרפיה</button>
+          </div>
+        </div>
+        <div style="border:1px solid var(--v2-line);border-radius:10px;overflow:hidden;height:260px;">
+          <iframe id="standaloneMapIframe" src="/emergency-map/map.html?lat=32.0853&lng=34.7818&zoom=12&mapType=roadmap" style="width:100%;height:100%;border:0;" title="Emergency Locator Map"></iframe>
         </div>`;
       if (id === "green_eyes") return `
         <table>
@@ -325,6 +339,15 @@
       });
     }
 
+    window.setStandaloneMapLayer = (btn, mapType) => {
+      const group = btn.parentElement.querySelectorAll(".preset-btn");
+      group.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const frame = document.getElementById("standaloneMapIframe");
+      if (frame && frame.contentWindow) {
+        frame.contentWindow.postMessage({ type: "SET_MAP_TYPE", mapType }, "*");
+      }
+    };
     window.resizeWidget = (id, cols) => {
       widgets = widgets.map(w => w.id === id ? { ...w, cols } : w);
       render();

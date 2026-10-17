@@ -2,11 +2,13 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, doc, onSnapshot } from "firebase/firestore";
 import { GripVertical, X, Plus, RotateCcw, Download, Edit2, Check, SlidersHorizontal, ArrowRight } from "lucide-react";
 import { db } from "@/firebase";
+import { useData } from "@/app/context/DataContext";
 import { displayResidentStatus, residentName, residentStatus } from "@/lib/residents";
 import { sanitizeEventFilename } from "@/lib/emergencyActions";
+import { DEFAULT_MAP_CENTER, MAP_CONFIG_DOC, normalizeMapConfig } from "@/lib/mapConfig";
 import { formatDateTime, formatElapsed, toDate } from "@/components/v2/format";
 import {
   DEFAULT_ANNOUNCEMENTS,
@@ -21,6 +23,7 @@ import {
 import {
   DeptHeadsWidget,
   DeptTasksSummaryWidget,
+  EmergencyMapWidget,
   EventSummaryBriefWidget,
   GreenEyesTableWidget,
   isTaskClosed,
@@ -34,11 +37,23 @@ import {
 
 const STORAGE_KEYS = {
   TITLE: "ert.eventLogTitle",
-  LAYOUT: "ert.sitrepWidgetLayout.v1",
+  LAYOUT: "ert.sitrepWidgetLayout.v2",
   DEPT_HEADS: "ert.sitrepDeptHeads.v1",
   ANNOUNCEMENTS: "ert.sitrepAnnouncements.v1",
   COMMANDER_NOTES: "ert.sitrepCommanderNotes.v1",
 };
+
+function mergeWithDefaultWidgets(savedList) {
+  if (!Array.isArray(savedList) || !savedList.length) return DEFAULT_WIDGET_LAYOUT;
+  const byId = new Map(savedList.map((w) => [w.id, w]));
+  const merged = savedList.filter((w) => DEFAULT_WIDGET_LAYOUT.some((d) => d.id === w.id));
+  DEFAULT_WIDGET_LAYOUT.forEach((defWidget, idx) => {
+    if (!byId.has(defWidget.id)) {
+      merged.splice(Math.min(idx, merged.length), 0, defWidget);
+    }
+  });
+  return merged;
+}
 
 const COL_SPAN_CLASSES = {
   3: "col-span-12 md:col-span-6 lg:col-span-3",
@@ -55,12 +70,14 @@ const ROW_SPAN_CLASSES = {
 };
 
 export default function WidgetSitrepDashboard() {
+  const contextData = useData();
   const [title, setTitle] = useState('תמונת מצב — אירוע חירום חמ"ל');
   const [editingTitle, setEditingTitle] = useState(false);
   const [dataSource, setDataSource] = useState("demo");
   const [liveResidents, setLiveResidents] = useState([]);
   const [liveTasks, setLiveTasks] = useState([]);
   const [liveEvents, setLiveEvents] = useState([]);
+  const [liveMapConfig, setLiveMapConfig] = useState(null);
   const [widgets, setWidgets] = useState(DEFAULT_WIDGET_LAYOUT);
   const [deptHeads, setDeptHeads] = useState(DEFAULT_DEPT_HEADS);
   const [announcements, setAnnouncements] = useState(DEFAULT_ANNOUNCEMENTS);
@@ -71,6 +88,7 @@ export default function WidgetSitrepDashboard() {
   const [customizeOpen, setCustomizeOpen] = useState(null);
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
+  const [isResizing, setIsResizing] = useState(false);
   const [clock, setClock] = useState("00:54:12");
   const [exportNotice, setExportNotice] = useState("");
   const gridRef = useRef(null);
@@ -83,7 +101,7 @@ export default function WidgetSitrepDashboard() {
       const savedLayout = window.localStorage.getItem(STORAGE_KEYS.LAYOUT);
       if (savedLayout) {
         const parsed = JSON.parse(savedLayout);
-        if (Array.isArray(parsed) && parsed.length) setWidgets(parsed);
+        if (Array.isArray(parsed) && parsed.length) setWidgets(mergeWithDefaultWidgets(parsed));
       }
       const savedHeads = window.localStorage.getItem(STORAGE_KEYS.DEPT_HEADS);
       if (savedHeads) setDeptHeads(JSON.parse(savedHeads));
@@ -116,11 +134,25 @@ export default function WidgetSitrepDashboard() {
           setLiveEvents(rows);
         }, () => {})
       );
+      unsubs.push(
+        onSnapshot(
+          doc(db, MAP_CONFIG_DOC.collection, MAP_CONFIG_DOC.id),
+          (snap) => {
+            if (snap.exists()) setLiveMapConfig(normalizeMapConfig(snap.data()));
+          },
+          () => {}
+        )
+      );
     } catch {
       /* ignore unauthenticated firestore errors */
     }
     return () => unsubs.forEach((u) => u && u());
   }, []);
+
+  const mapConfig = useMemo(
+    () => normalizeMapConfig(liveMapConfig || contextData?.mapConfig || DEFAULT_MAP_CENTER),
+    [liveMapConfig, contextData?.mapConfig]
+  );
 
   const saveTitle = (next) => {
     const cleaned = (next || "").trim() || 'תמונת מצב — אירוע חירום חמ"ל';
@@ -295,6 +327,7 @@ export default function WidgetSitrepDashboard() {
   const startResizeDrag = (e, widget) => {
     e.preventDefault();
     e.stopPropagation();
+    setIsResizing(true);
     const startX = e.clientX;
     const startY = e.clientY;
     const startCols = widget.colSpan || 6;
@@ -318,6 +351,7 @@ export default function WidgetSitrepDashboard() {
     };
 
     const onUp = () => {
+      setIsResizing(false);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
@@ -397,6 +431,14 @@ export default function WidgetSitrepDashboard() {
             statusCounts={statusCounts}
             commanderNotes={commanderNotes}
             onChangeCommanderNotes={handleUpdateNotes}
+          />
+        );
+      case "emergency_map":
+        return (
+          <EmergencyMapWidget
+            mapConfig={mapConfig}
+            residents={residents}
+            isInteracting={Boolean(draggedId || isResizing)}
           />
         );
       case "green_eyes_table":
@@ -497,7 +539,7 @@ export default function WidgetSitrepDashboard() {
                     <button type="button" className="text-[#5f7384] hover:text-[#1a2e52]" onClick={() => setDrawerOpen(false)}>×</button>
                   </div>
                   {hiddenWidgets.length === 0 ? (
-                    <div className="text-xs text-[#5f7384] py-1">כל 10 הווידג׳טים מוצגים כעת על הלוח.</div>
+                    <div className="text-xs text-[#5f7384] py-1">כל {widgets.length} הווידג׳טים מוצגים כעת על הלוח.</div>
                   ) : (
                     <div className="space-y-1">
                       {hiddenWidgets.map((hw) => (

@@ -9,9 +9,10 @@ export const DEFAULT_WIDGET_LAYOUT = [
   { id: "public_announcement", title: "הודעה אחרונה לציבור", colSpan: 6, rowSpan: "normal", hidden: false },
   { id: "dept_heads", title: "כח אדם — ראשי מחלקות ומכלולים", colSpan: 6, rowSpan: "normal", hidden: false },
   { id: "event_summary", title: "סיכום יומן אירועים — מה קרה ואיפה עומדים", colSpan: 6, rowSpan: "normal", hidden: false },
-  { id: "green_eyes_table", title: "טבלת ירוק בעיניים — פילוח לפי שכונה ותושבים", colSpan: 8, rowSpan: "tall", hidden: false },
-  { id: "dept_tasks", title: "סיכום משימות לפי מכלול", colSpan: 4, rowSpan: "tall", hidden: false },
-  { id: "timeline", title: "ציר זמן חי", colSpan: 12, rowSpan: "normal", hidden: false },
+  { id: "emergency_map", title: "מפת חירום ומיקומים — יישוב ושכבות", colSpan: 6, rowSpan: "tall", hidden: false },
+  { id: "green_eyes_table", title: "טבלת ירוק בעיניים — פילוח לפי שכונה ותושבים", colSpan: 6, rowSpan: "tall", hidden: false },
+  { id: "dept_tasks", title: "סיכום משימות לפי מכלול", colSpan: 4, rowSpan: "normal", hidden: false },
+  { id: "timeline", title: "ציר זמן חי", colSpan: 8, rowSpan: "normal", hidden: false },
 ];
 
 export const WIDTH_PRESETS = [
