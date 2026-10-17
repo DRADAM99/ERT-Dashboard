@@ -382,8 +382,33 @@ export default function WidgetSitrepDashboard() {
     setTimeout(() => setExportNotice(""), 4000);
   };
 
-  const handleExportHTML = () => {
+  const handleExportHTML = async () => {
     const base = sanitizeEventFilename(title, "sitrep_report");
+    try {
+      const res = await fetch("/dashboard-demo.html");
+      if (res.ok) {
+        let htmlText = await res.text();
+        htmlText = htmlText.replace(
+          /<h1 id="docTitle"[^>]*>[\s\S]*?<\/h1>/,
+          `<h1 id="docTitle" class="title-text" title="לחץ לעריכת כותרת ושם הקובץ">${title}</h1>`
+        );
+        htmlText = htmlText.replace(/<title>[\s\S]*?<\/title>/, `<title>${title}</title>`);
+        const blob = new Blob([htmlText], { type: "text/html;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${base}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setExportNotice(`נשמר קובץ HTML עצמאי: ${base}.html`);
+        setTimeout(() => setExportNotice(""), 4000);
+        return;
+      }
+    } catch {
+      /* fallback below */
+    }
     const htmlSnapshot = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"/><title>${title}</title>
     <style>body{font-family:Rubik,Arial,sans-serif;background:#eaf3f6;color:#1a2e52;padding:24px}
     .card{background:#fff;border:1px solid #d2e4ea;border-radius:12px;padding:16px;margin-bottom:16px}
