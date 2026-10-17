@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>תמונת מצב — אירוע חירום חמ"ל (תצוגת ווידג׳טים)</title>
+  <style>
+    :root {
+      --v2-ink: #1a2e52;
+      --v2-muted: #5f7384;
+      --v2-line: #d2e4ea;
+      --v2-bg: #eaf3f6;
+      --v2-panel: #ffffff;
+      --v2-accent: #1b3a78;
+      --v2-cyan: #4eb8c6;
+      --v2-accent-soft: #d8f0f4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 18px;
+      font-family: Rubik, "Segoe UI", Tahoma, sans-serif;
+      color: var(--v2-ink);
+      background:
+        radial-gradient(1100px 420px at 100% -10%, rgba(78, 184, 198, 0.22), transparent 58%),
+        var(--v2-bg);
+    }
+    .container { max-width: 1560px; margin: 0 auto; }
+    .topbar {
+      background: var(--v2-panel);
+      border: 1px solid var(--v2-line);
+      border-radius: 12px;
+      padding: 14px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(27,58,120,0.08);
+    }
+    .title-wrap { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .title-text {
+      font-size: 22px;
+      font-weight: 800;
+      cursor: pointer;
+      margin: 0;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+    .title-text:hover { background: var(--v2-accent-soft); }
+    .btn {
+      border: 1px solid var(--v2-line);
+      background: #fff;
+      color: var(--v2-ink);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:hover { background: var(--v2-bg); }
+    .btn-primary { background: var(--v2-accent); color: #fff; border-color: var(--v2-accent); }
+    .btn-primary:hover { background: #244a8f; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .widget {
+      background: #fff;
+      border: 1px solid var(--v2-line);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 1px 2px rgba(27,58,120,0.06);
+      overflow: hidden;
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .widget.drag-over { outline: 2px dashed var(--v2-cyan); background: #f3f9fb; }
+    .col-3 { grid-column: span 3; }
+    .col-4 { grid-column: span 4; }
+    .col-6 { grid-column: span 6; }
+    .col-8 { grid-column: span 8; }
+    .col-12 { grid-column: span 12; }
+    @media (max-width: 960px) {
+      .col-3, .col-4, .col-6, .col-8 { grid-column: span 12; }
+    }
+    .widget-hd {
+      background: #f8fbfd;
+      border-bottom: 1px solid var(--v2-line);
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: grab;
+      user-select: none;
+    }
+    .widget-hd h2 { margin: 0; font-size: 14px; font-weight: 700; }
+    .widget-bd { padding: 12px 14px; flex: 1; overflow: auto; font-size: 13px; }
+    .preset-group { display: inline-flex; background: var(--v2-bg); border: 1px solid var(--v2-line); border-radius: 6px; padding: 2px; gap: 2px; }
+    .preset-btn { border: 0; background: transparent; font-size: 10px; padding: 2px 6px; border-radius: 4px; cursor: pointer; color: var(--v2-muted); }
+    .preset-btn.active { background: var(--v2-accent); color: #fff; font-weight: 700; }
+    .stack-bar { height: 26px; border-radius: 10px; overflow: hidden; display: flex; border: 1px solid var(--v2-line); margin: 8px 0 12px; }
+    .stack-seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { padding: 7px 8px; border-bottom: 1px solid var(--v2-line); text-align: right; }
+    th { background: #f3f9fb; color: var(--v2-muted); font-weight: 600; }
+    input, select, textarea {
+      border: 1px solid var(--v2-line);
+      background: var(--v2-bg);
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-family: inherit;
+      font-size: 12.5px;
+      color: var(--v2-ink);
+    }
+    .drawer {
+      background: #fff;
+      border: 1px solid var(--v2-line);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 14px;
+      display: none;
+    }
+    .drawer.open { display: block; }
+    .kpi-num { font-size: 28px; font-weight: 800; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <div>
+        <div class="title-wrap">
+          <h1 id="docTitle" class="title-text" title="לחץ לעריכת כותרת ושם הקובץ">תמונת מצב — אירוע חירום חמ"ל</h1>
+          <button class="btn" id="editTitleBtn">✎ ערוך שם</button>
+          <span class="badge" style="background:#d8f0f4;color:#1b3a78;">רשת 12 עמודות (גרור והתאם)</span>
+        </div>
+        <div style="font-size:12px;color:var(--v2-muted);margin-top:4px;">
+          כל בלוק הוא ווידג׳ט עצמאי הניתן לגרירה, שינוי רוחב (1/4 עד מלא), הסרה ושחזור · שמירת קובץ משתמשת בכותרת העליונה
+        </div>
+      </div>
+      <div class="title-wrap">
+        <button class="btn" id="toggleDrawerBtn">+ הוסף ווידג׳ט (<span id="hiddenCount">0</span> מוסתרים)</button>
+        <button class="btn" id="resetLayoutBtn">↺ איפוס פריסה</button>
+        <button class="btn btn-primary" id="saveCsvBtn">⬇ שמור יומן ודו"ח (CSV)</button>
+        <a class="btn" href="/status-widgets-demo">פתח בגרסת האפליקציה המלאה</a>
+      </div>
+    </header>
+
+    <div id="hiddenDrawer" class="drawer">
+      <strong style="font-size:13px;">ווידג׳טים מוסתרים (לחץ להחזרה ללוח):</strong>
+      <div id="hiddenList" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"></div>
+    </div>
+
+    <div id="widgetGrid" class="grid"></div>
+  </div>
+
+  <script>
+    const TITLE_KEY = "ert.eventLogTitle";
+    const LAYOUT_KEY = "ert.standaloneSitrepLayout.v1";
+
+    const DEFAULT_WIDGETS = [
+      { id: "kpi_res", title: "תושבים שצריכים מענה", cols: 4, hidden: false },
+      { id: "kpi_tasks", title: "משימות פתוחות", cols: 4, hidden: false },
+      { id: "kpi_events", title: "אירועים ביומן", cols: 4, hidden: false },
+      { id: "status_bar", title: "מד סטטוס תושבים (% לפי צבעים)", cols: 6, hidden: false },
+      { id: "announcement", title: "הודעה אחרונה לציבור", cols: 6, hidden: false },
+      { id: "dept_heads", title: "כח אדם — ראשי מחלקות ומכלולים", cols: 6, hidden: false },
+      { id: "event_summary", title: "סיכום יומן אירועים — מה קרה ואיפה עומדים", cols: 6, hidden: false },
+      { id: "green_eyes", title: "טבלת ירוק בעיניים — פילוח שכונות ותושבים", cols: 8, hidden: false },
+      { id: "dept_tasks", title: "סיכום משימות לפי מכלול", cols: 4, hidden: false },
+      { id: "timeline", title: "ציר זמן חי", cols: 12, hidden: false }
+    ];
+
+    let widgets = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "null") || JSON.parse(JSON.stringify(DEFAULT_WIDGETS));
+    let currentTitle = localStorage.getItem(TITLE_KEY) || 'תמונת מצב — אירוע חירום חמ"ל';
+    document.getElementById("docTitle").textContent = currentTitle;
+
+    function editTitle() {
+      const next = prompt("ערוך כותרת תמונת מצב / יומן אירועים (ישמש כשם הקובץ בשמירה):", currentTitle);
+      if (next && next.trim()) {
+        currentTitle = next.trim();
+        localStorage.setItem(TITLE_KEY, currentTitle);
+        document.getElementById("docTitle").textContent = currentTitle;
+        document.title = currentTitle;
+      }
+    }
+    document.getElementById("docTitle").onclick = editTitle;
+    document.getElementById("editTitleBtn").onclick = editTitle;
+
+    function widgetBodyHTML(id) {
+      if (id === "kpi_res") return `<div class="kpi-num">6 <span class="badge" style="background:#dcfce7;color:#166534;">90% דיווחו</span></div><div style="color:var(--v2-muted);font-size:12px;">מתוך 20 תושבים (3 זקוקים לסיוע · 1 פצוע · 2 לא בטוח)</div>`;
+      if (id === "kpi_tasks") return `<div class="kpi-num">4 <span class="badge" style="background:#dbeafe;color:#1e40af;">4 הושלמו</span></div><div style="color:var(--v2-muted);font-size:12px;">זמן תגובה ממוצע: 4 דק׳ · זמן סיום ממוצע: 18 דק׳</div>`;
+      if (id === "kpi_events") return `<div class="kpi-num">5 <span class="badge" style="background:#fef3c7;color:#92400e;">חמ"ל</span></div><div style="font-size:12px;margin-top:4px;"><strong>אחרון:</strong> הופצה הודעת הרגעה והנחיות התגוננות לתושבים</div>`;
+      if (id === "status_bar") return `
+        <div class="stack-bar">
+          <div class="stack-seg" style="width:60%;background:#22c55e;">60% הכל בסדר</div>
+          <div class="stack-seg" style="width:15%;background:#ef4444;">15% סיוע</div>
+          <div class="stack-seg" style="width:10%;background:#eab308;">10%</div>
+          <div class="stack-seg" style="width:5%;background:#a855f7;">5%</div>
+          <div class="stack-seg" style="width:10%;background:#9ca3af;">10%</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;">
+          <span class="badge" style="background:#dcfce7;color:#166534;">הכל בסדר: 12 (60%)</span>
+          <span class="badge" style="background:#fee2e2;color:#991b1b;">זקוקים לסיוע: 3 (15%)</span>
+          <span class="badge" style="background:#fef3c7;color:#92400e;">לא בטוח: 2 (10%)</span>
+          <span class="badge" style="background:#f3e8ff;color:#6b21a8;">פצוע: 1 (5%)</span>
+          <span class="badge" style="background:#f1f5f9;color:#475569;">ללא מענה: 2 (10%)</span>
+        </div>`;
+      if (id === "announcement") return `
+        <textarea style="width:100%;min-height:68px;">תושבים יקרים, בעקבות הפסקת החשמל בשכונת ההרחבה, צוותי הצח"י והרפואה פרוסים בשטח. יש להמשיך לשהות בקרבת מרחבים מוגנים ולעדכן סטטוס בטופס ירוק בעיניים.</textarea>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--v2-muted);">
+          <span>פורסם ע"י חמ"ל יישובי</span>
+          <button class="btn" style="padding:3px 8px;font-size:11px;" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.parentElement.previousElementSibling.value)">העתק לוואטסאפ</button>
+        </div>`;
+      if (id === "dept_heads") return `
+        <table>
+          <thead><tr><th>מכלול</th><th>ראש מכלול</th><th>טלפון</th><th>סטטוס</th><th>פעילים</th></tr></thead>
+          <tbody>
+            <tr><td><strong>חמ"ל</strong></td><td><input value="אדם רוזנברג"/></td><td>054-4912201</td><td>בחמ"ל</td><td>5</td></tr>
+            <tr><td><strong>רפואה</strong></td><td><input value='ד"ר יעל שפירא'/></td><td>052-8331940</td><td>בשטח</td><td>4</td></tr>
+            <tr><td><strong>אוכלוסיה</strong></td><td><input value="מיכל אברהמי"/></td><td>050-6774120</td><td>בחמ"ל</td><td>7</td></tr>
+            <tr><td><strong>לוגיסטיקה</strong></td><td><input value="רונן כץ"/></td><td>054-2289103</td><td>בשטח</td><td>6</td></tr>
+            <tr><td><strong>חוסן</strong></td><td><input value="נועה פרידמן"/></td><td>053-7128890</td><td>זמין</td><td>3</td></tr>
+          </tbody>
+        </table>`;
+      if (id === "event_summary") return `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div style="background:#f8fbfd;border:1px solid var(--v2-line);border-radius:8px;padding:8px;">
+            <strong style="color:#1b3a78;">1. מה קרה עד כה:</strong>
+            <ul style="margin:6px 0 0;padding-right:16px;font-size:12px;">
+              <li>התרעת צבע אדום ונפילות באזור הצפוני — פתיחת חמ"ל.</li>
+              <li>נתק חשמל בהרחבה הצפונית; פריסת גנרטורים למחוללי חמצן.</li>
+              <li>פצוע קל מרסיסים בבית 19 מטופל ע"י צוות רפואה.</li>
+            </ul>
+          </div>
+          <div style="background:#f8fbfd;border:1px solid var(--v2-line);border-radius:8px;padding:8px;">
+            <strong style="color:#166534;">2. איפה אנחנו עומדים:</strong>
+            <ul style="margin:6px 0 0;padding-right:16px;font-size:12px;">
+              <li><strong>90% ירוק בעיניים</strong> (18/20 תושבים אותרו).</li>
+              <li><strong>4 משימות פתוחות</strong> (2 דחופות ברפואה ולוגיסטיקה).</li>
+              <li>סבב ביקורי בית פעיל ל-2 תושבים ללא מענה.</li>
+            </ul>
+          </div>
+        </div>`;
+      if (id === "green_eyes") return `
+        <table>
+          <thead><tr><th>שכונה</th><th>סה"כ</th><th>% ירוק בעיניים</th><th>הכל בסדר</th><th>זקוקים לסיוע</th><th>פצוע</th><th>לא בטוח</th><th>ללא מענה</th></tr></thead>
+          <tbody>
+            <tr><td><strong>ההרחבה הצפונית</strong></td><td>6</td><td>100%</td><td>3</td><td>1</td><td>1</td><td>1</td><td>0</td></tr>
+            <tr><td><strong>מרכז היישוב</strong></td><td>5</td><td>80%</td><td>3</td><td>1</td><td>0</td><td>0</td><td>1</td></tr>
+            <tr><td><strong>שכונת הכרמים</strong></td><td>5</td><td>100%</td><td>3</td><td>1</td><td>0</td><td>1</td><td>0</td></tr>
+            <tr><td><strong>גבעת האורנים</strong></td><td>4</td><td>75%</td><td>3</td><td>0</td><td>0</td><td>0</td><td>1</td></tr>
+          </tbody>
+        </table>`;
+      if (id === "dept_tasks") return `
+        <div style="display:grid;gap:8px;font-size:12px;">
+          <div><strong>לוגיסטיקה:</strong> 1 פתוחות / 2 הושלמו</div>
+          <div><strong>רפואה:</strong> 1 פתוחות / 1 הושלמו</div>
+          <div><strong>אוכלוסיה:</strong> 1 פתוחות / 0 הושלמו</div>
+          <div><strong>חוסן:</strong> 1 פתוחות / 0 הושלמו</div>
+          <div><strong>חמ"ל:</strong> 0 פתוחות / 1 הושלמו</div>
+        </div>`;
+      if (id === "timeline") return `
+        <div style="display:flex;gap:12px;overflow-x:auto;padding:6px 0;">
+          <div style="min-width:170px;background:#f3f9fb;border:1px solid var(--v2-line);border-radius:8px;padding:8px;"><strong>פתיחת חמ"ל</strong><div style="font-size:11px;color:var(--v2-muted);">הפעלת נוהל ירוק בעיניים</div></div>
+          <div style="min-width:170px;background:#f3f9fb;border:1px solid var(--v2-line);border-radius:8px;padding:8px;"><strong>נתק חשמל בהרחבה</strong><div style="font-size:11px;color:var(--v2-muted);">לוגיסטיקה · גנרטור חירום</div></div>
+          <div style="min-width:170px;background:#f3f9fb;border:1px solid var(--v2-line);border-radius:8px;padding:8px;"><strong>טיפול בפצוע קל</strong><div style="font-size:11px;color:var(--v2-muted);">רפואה · בית 19</div></div>
+          <div style="min-width:170px;background:#f3f9fb;border:1px solid var(--v2-line);border-radius:8px;padding:8px;"><strong>הודעה לציבור</strong><div style="font-size:11px;color:var(--v2-muted);">הופצה לכלל השכונות</div></div>
+        </div>`;
+      return "";
+    }
+
+    let dragId = null;
+
+    function render() {
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(widgets));
+      const grid = document.getElementById("widgetGrid");
+      grid.innerHTML = "";
+      const hidden = widgets.filter(w => w.hidden);
+      document.getElementById("hiddenCount").textContent = hidden.length;
+
+      const hiddenList = document.getElementById("hiddenList");
+      hiddenList.innerHTML = hidden.length === 0
+        ? `<span style="font-size:12px;color:var(--v2-muted);">כל הווידג׳טים מוצגים על הלוח</span>`
+        : hidden.map(w => `<button class="btn" onclick="restoreWidget('${w.id}')">+ ${w.title}</button>`).join("");
+
+      widgets.filter(w => !w.hidden).forEach(w => {
+        const el = document.createElement("section");
+        el.className = `widget col-${w.cols}`;
+        el.draggable = true;
+        el.ondragstart = () => { dragId = w.id; };
+        el.ondragover = (e) => { e.preventDefault(); el.classList.add("drag-over"); };
+        el.ondragleave = () => el.classList.remove("drag-over");
+        el.ondrop = (e) => {
+          e.preventDefault();
+          el.classList.remove("drag-over");
+          if (!dragId || dragId === w.id) return;
+          const from = widgets.findIndex(i => i.id === dragId);
+          const to = widgets.findIndex(i => i.id === w.id);
+          const [moved] = widgets.splice(from, 1);
+          widgets.splice(to, 0, moved);
+          render();
+        };
+        const presets = [{l:"1/4",c:3},{l:"1/3",c:4},{l:"1/2",c:6},{l:"2/3",c:8},{l:"מלא",c:12}];
+        el.innerHTML = `
+          <div class="widget-hd">
+            <h2>⠿ ${w.title}</h2>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div class="preset-group">
+                ${presets.map(p => `<button class="preset-btn ${w.cols===p.c?'active':''}" onclick="resizeWidget('${w.id}',${p.c})">${p.l}</button>`).join("")}
+              </div>
+              <button class="btn" style="padding:2px 7px;font-size:12px;" onclick="hideWidget('${w.id}')" title="הסר ווידג׳ט">×</button>
+            </div>
+          </div>
+          <div class="widget-bd">${widgetBodyHTML(w.id)}</div>
+        `;
+        grid.appendChild(el);
+      });
+    }
+
+    window.resizeWidget = (id, cols) => {
+      widgets = widgets.map(w => w.id === id ? { ...w, cols } : w);
+      render();
+    };
+    window.hideWidget = (id) => {
+      widgets = widgets.map(w => w.id === id ? { ...w, hidden: true } : w);
+      render();
+    };
+    window.restoreWidget = (id) => {
+      widgets = widgets.map(w => w.id === id ? { ...w, hidden: false } : w);
+      render();
+    };
+
+    document.getElementById("toggleDrawerBtn").onclick = () => {
+      document.getElementById("hiddenDrawer").classList.toggle("open");
+    };
+    document.getElementById("resetLayoutBtn").onclick = () => {
+      widgets = JSON.parse(JSON.stringify(DEFAULT_WIDGETS));
+      render();
+    };
+    document.getElementById("saveCsvBtn").onclick = () => {
+      const safe = currentTitle.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, "_") || "sitrep";
+      const csv = "\uFEFFכותרת,סטטוס\n" + `"${currentTitle}","ירוק בעיניים 90%"\n`;
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${safe}.csv`;
+      a.click();
+    };
+
+    render();
+  </script>
+</body>
+</html>

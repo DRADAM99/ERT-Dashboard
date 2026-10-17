@@ -222,6 +222,9 @@ export default function StatusWorkspace() {
           <p className="v2-sub">סקירת האירוע בזמן אמת</p>
         </div>
         <div className="v2-row">
+          <Link href="/status-widgets-demo" className="v2-btn v2-btn-primary v2-btn-sm">
+            תמונת מצב — תצוגת ווידג׳טים (דמו)
+          </Link>
           <span className={isDrill ? "v2-mode-drill" : "v2-mode-live"}>{isDrill ? "תרגיל" : "חי"}</span>
           <div className="v2-clock" aria-label="זמן מתחילת האירוע">{clock}</div>
         </div>

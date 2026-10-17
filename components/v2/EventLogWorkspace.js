@@ -10,6 +10,7 @@ import { useData } from "@/app/context/DataContext";
 import { useToast } from "@/components/ui/use-toast";
 import { createTask } from "@/lib/createTask";
 import { notifyUsersInDepartment } from "@/lib/notifications";
+import { exportEmergencyDataToCSV, sanitizeEventFilename } from "@/lib/emergencyActions";
 import { DEFAULT_TASK_CATEGORIES, getFieldValue, residentName, residentStatus } from "@/lib/residents";
 import { departmentChipClass, eventStatusDotClass, formatDateTime, formatTime, toDate } from "@/components/v2/format";
 import RecordOverlay from "@/components/v2/RecordOverlay";
@@ -146,6 +147,41 @@ export default function EventLogWorkspace({ openEventId }) {
       window.localStorage.setItem("ert.eventLogTitle", next);
     } catch {
       /* ignore */
+    }
+  };
+
+  const handleExportLogCSV = async () => {
+    try {
+      await exportEmergencyDataToCSV("log", logTitle);
+      toast({
+        title: "היומן נשמר",
+        description: `${sanitizeEventFilename(logTitle, "event_log")}.csv`,
+      });
+    } catch {
+      const headers = ["שעה", "מדווח", "נמען", "תיאור", "מחלקה", "סטטוס", "עדכון אחרון"];
+      const rows = filtered.map((item) => [
+        formatDateTime(item.createdAt),
+        item.reporter || "",
+        item.recipient || "",
+        item.description || "",
+        item.department || "",
+        item.status || "",
+        item.lastUpdater || "",
+      ]);
+      const csvContent = "\uFEFF" + [headers, ...rows]
+        .map((r) => r.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+      const filename = `${sanitizeEventFilename(logTitle, "event_log")}.csv`;
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast({ title: "היומן נשמר", description: filename });
     }
   };
 
@@ -520,17 +556,21 @@ export default function EventLogWorkspace({ openEventId }) {
               />
             ) : (
               <h1 className="v2-h1">
-                {logTitle}
-                {isAdmin && (
-                  <button
-                    type="button"
-                    className="v2-btn v2-btn-sm ms-2 align-middle"
-                    title="ערוך כותרת"
-                    onClick={() => setEditingTitle(true)}
-                  >
-                    עריכה
-                  </button>
-                )}
+                <span
+                  className="cursor-pointer hover:underline"
+                  onClick={() => setEditingTitle(true)}
+                  title="לחץ לעריכת שם היומן והקובץ לשמירה"
+                >
+                  {logTitle}
+                </span>
+                <button
+                  type="button"
+                  className="v2-btn v2-btn-sm ms-2 align-middle"
+                  title="ערוך כותרת"
+                  onClick={() => setEditingTitle(true)}
+                >
+                  עריכה
+                </button>
               </h1>
             )}
             <p className="v2-sub">{filtered.length} רשומות</p>
@@ -542,6 +582,9 @@ export default function EventLogWorkspace({ openEventId }) {
             <button type="button" className={listView === "cards" ? "on" : ""} onClick={() => setListView("cards")}>כרטיסים</button>
             <button type="button" className={listView === "table" ? "on" : ""} onClick={() => setListView("table")}>תצוגה מלאה</button>
           </div>
+          <button type="button" className="v2-btn v2-btn-sm" onClick={handleExportLogCSV} title="שמור יומן בשם הכותרת">
+            שמור יומן
+          </button>
           <label className="v2-btn v2-btn-sm">
             {importing ? "מייבא…" : "ייבוא CSV"}
             <input

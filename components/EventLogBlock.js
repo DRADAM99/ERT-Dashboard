@@ -10,11 +10,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronDown, ChevronLeft, Upload, Link, Edit2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, Upload, Download, Link, Edit2 } from "lucide-react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "@/components/ui/use-toast";
 import { notifyUsersInDepartment } from "@/lib/notifications";
+import { exportEmergencyDataToCSV, sanitizeEventFilename } from "@/lib/emergencyActions";
 
 function statusColor(status) {
   if (status === "מחכה") return "text-red-600 font-bold";
@@ -55,9 +56,70 @@ function formatDateTime(ts) {
 }
 
 function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departments, isAdmin, blockOrder = 1, toggleBlockOrder = () => {}, emergencyEventId }) {
-  // State for event name (admin only)
-  const [eventName, setEventName] = useState(`יומן אירועים - חמ"ל (${emergencyEventId || 'אירוע חדש'})`);
+  // State for event name (persisted to localStorage ert.eventLogTitle)
+  const defaultEventName = `יומן אירועים - חמ"ל (${emergencyEventId || 'אירוע חדש'})`;
+  const [eventName, setEventName] = useState(defaultEventName);
   const [editingEventName, setEditingEventName] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = window.localStorage.getItem("ert.eventLogTitle");
+      if (saved && saved.trim()) {
+        setEventName(saved.trim());
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const persistEventName = (nextValue) => {
+    const cleaned = (nextValue || "").trim() || defaultEventName;
+    setEventName(cleaned);
+    setEditingEventName(false);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem("ert.eventLogTitle", cleaned);
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  const handleSaveEventLogCSV = async () => {
+    try {
+      await exportEmergencyDataToCSV(emergencyEventId, eventName);
+      toast({
+        title: "היומן נשמר",
+        description: `הקובץ ${sanitizeEventFilename(eventName, "event_log")}.csv הורד בהצלחה`,
+      });
+    } catch (err) {
+      // Fallback to exporting local displayEvents if Firestore query fails
+      const headers = ["תאריך", "המדווח", "מקבל הדיווח", "תיאור האירוע", "מחלקה", "סטטוס", "מעדכן אחרון"];
+      const rows = (displayEvents || []).map((ev) => [
+        formatDateTime(ev.createdAt),
+        ev.reporter || "",
+        ev.recipient || "",
+        ev.description || "",
+        ev.department || "",
+        ev.status || "",
+        ev.lastUpdater || "",
+      ]);
+      const csvContent = "\uFEFF" + [headers, ...rows]
+        .map((r) => r.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+      const filename = `${sanitizeEventFilename(eventName, `emergency_event_${emergencyEventId || "log"}`)}.csv`;
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+  };
   // State for import modal
   const [showImportModal, setShowImportModal] = useState(false);
   // State for add event modal
@@ -517,22 +579,46 @@ function EventLogBlock({ isFullView, setIsFullView, currentUser, alias, departme
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col w-full sm:w-auto gap-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <CardTitle className="text-lg whitespace-nowrap truncate max-w-[160px]">{eventName}</CardTitle>
-            {isAdmin && !editingEventName && (
-              <Button size="xs" variant="outline" onClick={() => setEditingEventName(true)}>
-                ערוך שם אירוע
-              </Button>
-            )}
-            {isAdmin && editingEventName && (
-              <form onSubmit={e => { e.preventDefault(); setEditingEventName(false); }} className="flex gap-2">
-                <Input value={eventName} onChange={e => setEventName(e.target.value)} size="sm" />
+            {!editingEventName ? (
+              <>
+                <CardTitle
+                  className="text-lg font-bold cursor-pointer hover:text-blue-700 transition-colors"
+                  onClick={() => setEditingEventName(true)}
+                  title="לחץ לעריכת שם היומן והקובץ לשמירה"
+                >
+                  {eventName}
+                </CardTitle>
+                <Button size="xs" variant="outline" onClick={() => setEditingEventName(true)}>
+                  <Edit2 className="inline-block me-1" size={12} /> ערוך שם אירוע
+                </Button>
+              </>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  persistEventName(eventName);
+                }}
+                className="flex gap-2 items-center flex-wrap"
+              >
+                <Input
+                  value={eventName}
+                  onChange={(e) => setEventName(e.target.value)}
+                  className="h-8 text-sm min-w-[240px]"
+                  autoFocus
+                />
                 <Button size="xs" type="submit">שמור</Button>
+                <Button size="xs" type="button" variant="outline" onClick={() => setEditingEventName(false)}>
+                  ביטול
+                </Button>
               </form>
             )}
           </div>
-          <div className="flex">
+          <div className="flex gap-2 flex-wrap">
             <Button size="xs" onClick={() => setShowAddEventModal(true)} className="w-full sm:w-auto">
               +דיווח
+            </Button>
+            <Button size="xs" variant="outline" onClick={handleSaveEventLogCSV} title="שמור יומן לקובץ CSV בשם האירוע">
+              <Download className="inline-block me-1" size={14} /> שמור יומן
             </Button>
           </div>
         </div>
