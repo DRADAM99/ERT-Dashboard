@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>תמונת מצב — אירוע חירום חמ"ל (דמו ווידג׳טים עצמאי)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <style>
+    :root {
+      --v2-ink: #1a2e52;
+      --v2-muted: #5f7384;
+      --v2-line: #d2e4ea;
+      --v2-bg: #eaf3f6;
+      --v2-panel: #ffffff;
+      --v2-accent: #1b3a78;
+      --v2-cyan: #4eb8c6;
+      --v2-accent-soft: #d8f0f4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: Rubik, "Segoe UI", Tahoma, Arial, sans-serif;
+      color: var(--v2-ink);
+      background:
+        radial-gradient(1100px 420px at 100% -10%, rgba(78, 184, 198, 0.22), transparent 58%),
+        radial-gradient(900px 380px at -10% 110%, rgba(27, 58, 120, 0.1), transparent 55%),
+        var(--v2-bg);
+    }
+    .container { max-width: 1580px; margin: 0 auto; }
+    .topbar {
+      background: var(--v2-panel);
+      border: 1px solid var(--v2-line);
+      border-radius: 12px;
+      padding: 14px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(27,58,120,0.08);
+    }
+    .title-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .title-text {
+      font-size: 22px;
+      font-weight: 800;
+      cursor: pointer;
+      margin: 0;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+    .title-text:hover { background: var(--v2-accent-soft); }
+    .btn {
+      border: 1px solid var(--v2-line);
+      background: #fff;
+      color: var(--v2-ink);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+    }
+    .btn:hover { background: var(--v2-bg); }
+    .btn-primary { background: var(--v2-accent); color: #fff; border-color: var(--v2-accent); }
+    .btn-primary:hover { background: #244a8f; color: #fff; }
+    .btn-wa { background: #16a34a; color: #fff; border-color: #15803d; }
+    .btn-wa:hover { background: #15803d; color: #fff; }
+    .clock {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 14px;
+      font-weight: 700;
+      background: var(--v2-accent-soft);
+      color: var(--v2-accent);
+      padding: 5px 10px;
+      border-radius: 8px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 14px;
+      align-items: stretch;
+    }
+    .widget {
+      background: #fff;
+      border: 1px solid var(--v2-line);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 1px 2px rgba(27,58,120,0.06);
+      overflow: hidden;
+      position: relative;
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .widget.drag-over { outline: 2px dashed var(--v2-cyan); background: #f3f9fb; }
+    .col-3 { grid-column: span 3; }
+    .col-4 { grid-column: span 4; }
+    .col-6 { grid-column: span 6; }
+    .col-8 { grid-column: span 8; }
+    .col-12 { grid-column: span 12; }
+    .row-compact { min-height: 125px; }
+    .row-normal { min-height: 240px; }
+    .row-tall { min-height: 375px; }
+    @media (max-width: 960px) {
+      .col-3, .col-4, .col-6, .col-8 { grid-column: span 12; }
+    }
+    .widget-hd {
+      background: #f8fbfd;
+      border-bottom: 1px solid var(--v2-line);
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: grab;
+      user-select: none;
+    }
+    .widget-hd h2 { margin: 0; font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .widget-bd { padding: 12px 14px; flex: 1; overflow: auto; font-size: 13px; }
+    .preset-group { display: inline-flex; background: var(--v2-bg); border: 1px solid var(--v2-line); border-radius: 6px; padding: 2px; gap: 2px; }
+    .preset-btn { border: 0; background: transparent; font-size: 10.5px; padding: 3px 7px; border-radius: 4px; cursor: pointer; color: var(--v2-muted); }
+    .preset-btn.active { background: var(--v2-accent); color: #fff; font-weight: 700; }
+    .stack-bar { height: 28px; border-radius: 10px; overflow: hidden; display: flex; border: 1px solid var(--v2-line); margin: 8px 0 12px; }
+    .stack-seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { padding: 7px 8px; border-bottom: 1px solid var(--v2-line); text-align: right; vertical-align: middle; }
+    th { background: #f3f9fb; color: var(--v2-muted); font-weight: 600; font-size: 11.5px; }
+    tr.clickable:hover td { background: #f3f9fb; cursor: pointer; }
+    input, select, textarea {
+      border: 1px solid var(--v2-line);
+      background: var(--v2-bg);
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-family: inherit;
+      font-size: 12.5px;
+      color: var(--v2-ink);
+    }
+    .drawer {
+      background: #fff;
+      border: 1px solid var(--v2-line);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 14px;
+      display: none;
+    }
+    .drawer.open { display: block; }
+    .kpi-num { font-size: 28px; font-weight: 800; line-height: 1.1; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+    .progress-bar { height: 8px; border-radius: 99px; background: #e4eef2; overflow: hidden; display: flex; }
+    .progress-bar > span { display: block; height: 100%; }
+    #portableMapCanvas {
+      width: 100%;
+      height: 270px;
+      border-radius: 10px;
+      border: 1px solid var(--v2-line);
+      overflow: hidden;
+      direction: ltr;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <div>
+        <div class="title-wrap">
+          <h1 id="docTitle" class="title-text" title="לחץ לעריכת כותרת ושם הקובץ">תמונת מצב — אירוע חירום חמ"ל</h1>
+          <button class="btn" id="editTitleBtn">✎ ערוך שם</button>
+          <span class="badge" style="background:#d8f0f4;color:#1b3a78;">רשת 12 עמודות (קובץ עצמאי מלא)</span>
+        </div>
+        <div style="font-size:12px;color:var(--v2-muted);margin-top:4px;">
+          כל ווידג׳ט ניתן לגרירה, שינוי רוחב (1/4 עד מלא), גובה (קומפקטי/רגיל/גבוה), הסרה ושחזור · עובד מכל מחשב ללא שרת
+        </div>
+      </div>
+      <div class="title-wrap">
+        <button class="btn" id="toggleDrawerBtn">+ הוסף ווידג׳ט (<span id="hiddenCount">0</span> מוסתרים)</button>
+        <button class="btn" id="resetLayoutBtn">↺ איפוס פריסה</button>
+        <button class="btn btn-primary" id="saveCsvBtn">⬇ שמור דו"ח (CSV)</button>
+        <button class="btn" id="saveHtmlBtn">⬇ שמור קובץ HTML עצמאי</button>
+        <span id="liveClock" class="clock">00:54:18</span>
+      </div>
+    </header>
+
+    <div id="hiddenDrawer" class="drawer">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <strong style="font-size:13px;">ניהול והחזרת ווידג׳טים מוסתרים (לחץ להחזרה ללוח):</strong>
+        <button class="btn" onclick="document.getElementById('hiddenDrawer').classList.remove('open')">סגור ×</button>
+      </div>
+      <div id="hiddenList" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"></div>
+    </div>
+
+    <div id="widgetGrid" class="grid"></div>
+  </div>
+
+  <script>
+    const TITLE_KEY = "ert.eventLogTitle";
+    const LAYOUT_KEY = "ert.standaloneSitrepLayout.v3";
+
+    const DEFAULT_WIDGETS = [
+      { id: "kpi_res", title: "תושבים שצריכים מענה", cols: 4, row: "compact", hidden: false },
+      { id: "kpi_tasks", title: "משימות פתוחות", cols: 4, row: "compact", hidden: false },
+      { id: "kpi_events", title: "אירועים ביומן", cols: 4, row: "compact", hidden: false },
+      { id: "status_bar", title: "מד סטטוס תושבים (% לפי צבעים)", cols: 6, row: "normal", hidden: false },
+      { id: "announcement", title: "הודעה אחרונה לציבור", cols: 6, row: "normal", hidden: false },
+      { id: "dept_heads", title: "כח אדם — ראשי מחלקות ומכלולים", cols: 6, row: "normal", hidden: false },
+      { id: "event_summary", title: "סיכום יומן אירועים — מה קרה ואיפה עומדים", cols: 6, row: "normal", hidden: false },
+      { id: "emergency_map", title: "מפת חירום ומיקומים — יישוב ושכבות", cols: 6, row: "tall", hidden: false },
+      { id: "green_eyes", title: "טבלת ירוק בעיניים — פילוח שכונות ותושבים", cols: 6, row: "tall", hidden: false },
+      { id: "dept_tasks", title: "סיכום משימות לפי מכלול", cols: 4, row: "normal", hidden: false },
+      { id: "timeline", title: "ציר זמן חי", cols: 8, row: "normal", hidden: false }
+    ];
+
+    const RESIDENTS_DATA = [
+      { name: "דנה כהן", hood: "ההרחבה הצפונית", house: "12", status: "זקוקים לסיוע", phone: "050-2345671", notes: "קשישה, זקוקה לגנרטור למחולל חמצן", lat: 32.0912, lng: 34.7845, color: "#ef4444" },
+      { name: "יוסי לוי", hood: "ההרחבה הצפונית", house: "14", status: "הכל בסדר", phone: "052-3456782", notes: "", lat: 32.0904, lng: 34.7860, color: "#22c55e" },
+      { name: "אורי מזרחי", hood: "ההרחבה הצפונית", house: "19", status: "פצוע", phone: "054-4567893", notes: "פציעה קלה מרסיסי זכוכית, צוות רפואה בדרך", lat: 32.0921, lng: 34.7828, color: "#a855f7" },
+      { name: "רונית ברק", hood: "ההרחבה הצפונית", house: "22", status: "הכל בסדר", phone: "053-5678904", notes: "משפחה עם 3 ילדים", lat: 32.0898, lng: 34.7832, color: "#22c55e" },
+      { name: "שמעון חדד", hood: "ההרחבה הצפונית", house: "27", status: "לא בטוח", phone: "050-6789015", notes: "נותק הקשר לאחר הפסקת החשמל", lat: 32.0916, lng: 34.7812, color: "#eab308" },
+      { name: "גלית שלום", hood: "ההרחבה הצפונית", house: "30", status: "הכל בסדר", phone: "052-7890126", notes: "", lat: 32.0909, lng: 34.7851, color: "#22c55e" },
+      { name: "אבי פרץ", hood: "מרכז היישוב", house: "4", status: "הכל בסדר", phone: "054-8901237", notes: "", lat: 32.0853, lng: 34.7818, color: "#22c55e" },
+      { name: "מרים אלוני", hood: "מרכז היישוב", house: "8", status: "זקוקים לסיוע", phone: "050-9012348", notes: "מתניידת בכיסא גלגלים, דלת ממ\"ד תקועה", lat: 32.0846, lng: 34.7805, color: "#ef4444" },
+      { name: "נדב קליין", hood: "מרכז היישוב", house: "11", status: "הכל בסדר", phone: "052-1122334", notes: "", lat: 32.0861, lng: 34.7824, color: "#22c55e" },
+      { name: "שירה גולן", hood: "מרכז היישוב", house: "15", status: "הכל בסדר", phone: "054-2233445", notes: "רופאה מתנדבת", lat: 32.0858, lng: 34.7798, color: "#22c55e" },
+      { name: "חיים ביטון", hood: "מרכז היישוב", house: "18", status: "ללא מענה", phone: "050-3344556", notes: "גר בגפו — נדרש ביקור בית", lat: 32.0840, lng: 34.7830, color: "#9ca3af" },
+      { name: "תמר זיו", hood: "שכונת הכרמים", house: "3", status: "הכל בסדר", phone: "053-4455667", notes: "", lat: 32.0815, lng: 34.7780, color: "#22c55e" },
+      { name: "עומר דגן", hood: "שכונת הכרמים", house: "7", status: "הכל בסדר", phone: "052-5566778", notes: "", lat: 32.0822, lng: 34.7792, color: "#22c55e" },
+      { name: "ליאת סגל", hood: "שכונת הכרמים", house: "9", status: "זקוקים לסיוע", phone: "054-6677889", notes: "ילדים בחרדה, מבקשת שיחה עם צוות חוסן", lat: 32.0809, lng: 34.7769, color: "#ef4444" },
+      { name: "בועז נחמיאס", hood: "שכונת הכרמים", house: "16", status: "הכל בסדר", phone: "050-7788990", notes: "", lat: 32.0819, lng: 34.7760, color: "#22c55e" },
+      { name: "קרן אשכנזי", hood: "שכונת הכרמים", house: "21", status: "לא בטוח", phone: "052-8899001", notes: "דיווח ראשוני חלקי", lat: 32.0802, lng: 34.7785, color: "#eab308" },
+      { name: "אלי מלכה", hood: "גבעת האורנים", house: "2", status: "הכל בסדר", phone: "054-9900112", notes: "", lat: 32.0785, lng: 34.7850, color: "#22c55e" },
+      { name: "נעמי רובין", hood: "גבעת האורנים", house: "5", status: "הכל בסדר", phone: "050-1011121", notes: "", lat: 32.0792, lng: 34.7862, color: "#22c55e" },
+      { name: "יגאל שטרן", hood: "גבעת האורנים", house: "10", status: "ללא מענה", phone: "052-1213141", notes: "טרם ענה להודעת וואטסאפ", lat: 32.0778, lng: 34.7841, color: "#9ca3af" },
+      { name: "ענת טל", hood: "גבעת האורנים", house: "13", status: "הכל בסדר", phone: "053-1415161", notes: "", lat: 32.0789, lng: 34.7870, color: "#22c55e" }
+    ];
+
+    let widgets = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "null") || JSON.parse(JSON.stringify(DEFAULT_WIDGETS));
+    let currentTitle = localStorage.getItem(TITLE_KEY) || 'תמונת מצב — אירוע חירום חמ"ל';
+    let currentMapLayer = "roadmap";
+    let greenEyesView = "neighborhoods";
+    let hoodFilter = "all";
+    let statusFilter = "all";
+    let leafletMap = null;
+    let leafletTileLayer = null;
+
+    document.getElementById("docTitle").textContent = currentTitle;
+
+    function editTitle() {
+      const next = prompt("ערוך כותרת תמונת מצב / יומן אירועים (ישמש כשם הקובץ בשמירה):", currentTitle);
+      if (next && next.trim()) {
+        currentTitle = next.trim();
+        localStorage.setItem(TITLE_KEY, currentTitle);
+        document.getElementById("docTitle").textContent = currentTitle;
+        document.title = currentTitle;
+      }
+    }
+    document.getElementById("docTitle").onclick = editTitle;
+    document.getElementById("editTitleBtn").onclick = editTitle;
+
+    function buildGreenEyesHTML() {
+      const hoods = ["ההרחבה הצפונית", "מרכז היישוב", "שכונת הכרמים", "גבעת האורנים"];
+      const filtered = RESIDENTS_DATA.filter(r => {
+        if (hoodFilter !== "all" && r.hood !== hoodFilter) return false;
+        if (statusFilter !== "all" && r.status !== statusFilter) return false;
+        return true;
+      });
+      const controls = `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <select onchange="window.setHoodFilter(this.value)">
+              <option value="all">כל השכונות (4)</option>
+              ${hoods.map(h => `<option value="${h}" ${hoodFilter===h?'selected':''}>${h}</option>`).join("")}
+            </select>
+            <select onchange="window.setStatusFilter(this.value)">
+              <option value="all">כל הסטטוסים</option>
+              ${["הכל בסדר","זקוקים לסיוע","פצוע","לא בטוח","ללא מענה"].map(s => `<option value="${s}" ${statusFilter===s?'selected':''}>${s}</option>`).join("")}
+            </select>
+          </div>
+          <div class="preset-group">
+            <button class="preset-btn ${greenEyesView==='neighborhoods'?'active':''}" onclick="window.setGreenEyesView('neighborhoods')">ריכוז שכונות</button>
+            <button class="preset-btn ${greenEyesView==='residents'?'active':''}" onclick="window.setGreenEyesView('residents')">טבלת תושבים (${filtered.length})</button>
+          </div>
+        </div>
+      `;
+      if (greenEyesView === "residents") {
+        return controls + `
+          <div style="max-height:260px;overflow:auto;">
+            <table>
+              <thead><tr><th>שם תושב</th><th>שכונה ובית</th><th>סטטוס</th><th>הערות / צורך מיוחד</th><th>טלפון</th></tr></thead>
+              <tbody>
+                ${filtered.map(r => `
+                  <tr>
+                    <td><strong>${r.name}</strong></td>
+                    <td>${r.hood} · בית ${r.house}</td>
+                    <td><span class="badge" style="background:${r.color}22;color:${r.color};border:1px solid ${r.color}55;">${r.status}</span></td>
+                    <td>${r.notes || "—"}</td>
+                    <td>${r.phone}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+      return controls + `
+        <table>
+          <thead><tr><th>שכונה</th><th>סה"כ</th><th>% ירוק בעיניים</th><th>הכל בסדר</th><th>זקוקים לסיוע</th><th>פצוע</th><th>לא בטוח</th><th>ללא מענה</th></tr></thead>
+          <tbody>
+            <tr><td><strong>ההרחבה הצפונית</strong></td><td>6</td><td><strong style="color:#15803d;">100%</strong></td><td><span class="badge" style="background:#dcfce7;color:#166534;">3</span></td><td><span class="badge" style="background:#fee2e2;color:#991b1b;">1</span></td><td><span class="badge" style="background:#f3e8ff;color:#6b21a8;">1</span></td><td><span class="badge" style="background:#fef3c7;color:#92400e;">1</span></td><td>0</td></tr>
+            <tr><td><strong>מרכז היישוב</strong></td><td>5</td><td><strong style="color:#15803d;">80%</strong></td><td><span class="badge" style="background:#dcfce7;color:#166534;">3</span></td><td><span class="badge" style="background:#fee2e2;color:#991b1b;">1</span></td><td>0</td><td>0</td><td>1</td></tr>
+            <tr><td><strong>שכונת הכרמים</strong></td><td>5</td><td><strong style="color:#15803d;">100%</strong></td><td><span class="badge" style="background:#dcfce7;color:#166534;">3</span></td><td><span class="badge" style="background:#fee2e2;color:#991b1b;">1</span></td><td>0</td><td><span class="badge" style="background:#fef3c7;color:#92400e;">1</span></td><td>0</td></tr>
+            <tr><td><strong>גבעת האורנים</strong></td><td>4</td><td><strong style="color:#15803d;">75%</strong></td><td><span class="badge" style="background:#dcfce7;color:#166534;">3</span></td><td>0</td><td>0</td><td>0</td><td>1</td></tr>
+          </tbody>
+        </table>
+      `;
+    }
+
+    function widgetBodyHTML(id) {
+      if (id === "kpi_res") return `<div class="kpi-num">6 <span class="badge" style="background:#dcfce7;color:#166534;">90% דיווחו</span></div><div style="color:var(--v2-muted);font-size:12px;margin-top:4px;">מתוך 20 תושבים (3 זקוקים לסיוע · 1 פצוע · 2 לא בטוח)</div>`;
+      if (id === "kpi_tasks") return `<div class="kpi-num">4 <span class="badge" style="background:#dbeafe;color:#1e40af;">4 הושלמו</span></div><div style="color:var(--v2-muted);font-size:12px;margin-top:4px;">זמן תגובה ממוצע: 4 דק׳ · זמן סיום ממוצע: 16 דק׳</div>`;
+      if (id === "kpi_events") return `<div class="kpi-num">5 <span class="badge" style="background:#fef3c7;color:#92400e;">חמ"ל</span></div><div style="font-size:12px;margin-top:4px;background:#f3f9fb;padding:4px 8px;border-radius:6px;border:1px solid var(--v2-line);"><strong>אחרון:</strong> הופצה הודעת הרגעה והנחיות התגוננות לתושבים</div>`;
+      if (id === "status_bar") return `
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--v2-muted);">
+          <span>פילוח כלל התושבים לפי צבע סטטוס (20 תושבים)</span>
+          <strong style="color:var(--v2-ink);">ירוק בעיניים (דיווחו): 90%</strong>
+        </div>
+        <div class="stack-bar">
+          <div class="stack-seg" style="width:60%;background:#22c55e;">60%</div>
+          <div class="stack-seg" style="width:15%;background:#ef4444;">15%</div>
+          <div class="stack-seg" style="width:10%;background:#eab308;">10%</div>
+          <div class="stack-seg" style="width:5%;background:#a855f7;">5%</div>
+          <div class="stack-seg" style="width:10%;background:#9ca3af;">10%</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;font-size:11.5px;">
+          <div style="background:#dcfce7;color:#166534;padding:6px;border-radius:8px;"><strong>12 (60%)</strong><div>הכל בסדר</div></div>
+          <div style="background:#fee2e2;color:#991b1b;padding:6px;border-radius:8px;"><strong>3 (15%)</strong><div>זקוקים לסיוע</div></div>
+          <div style="background:#fef3c7;color:#92400e;padding:6px;border-radius:8px;"><strong>2 (10%)</strong><div>לא בטוח</div></div>
+          <div style="background:#f3e8ff;color:#6b21a8;padding:6px;border-radius:8px;"><strong>1 (5%)</strong><div>פצוע</div></div>
+          <div style="background:#f1f5f9;color:#475569;padding:6px;border-radius:8px;"><strong>2 (10%)</strong><div>ללא מענה</div></div>
+        </div>`;
+      if (id === "announcement") return `
+        <textarea id="annText" style="width:100%;min-height:74px;">תושבים יקרים, בעקבות הפסקת החשמל בשכונת ההרחבה ונפילת הרסיסים באזור המרכז, צוותי הצח"י והרפואה פרוסים בשטח. יש להמשיך לשהות בקרבת מרחבים מוגנים, לעדכן סטטוס בטופס 'ירוק בעיניים' ולדווח לחמ"ל על כל צורך רפואי או לוגיסטי.</textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:11.5px;color:var(--v2-muted);">
+          <span>פורסם ע"י חמ"ל יישובי</span>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-wa" style="padding:4px 10px;font-size:11.5px;" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('annText').value);this.textContent='הועתק לוואטסאפ ✓'">העתק לוואטסאפ</button>
+          </div>
+        </div>`;
+      if (id === "dept_heads") return `
+        <table>
+          <thead><tr><th>מכלול</th><th>ראש מכלול</th><th>טלפון</th><th>סטטוס</th><th>פעילים</th></tr></thead>
+          <tbody>
+            <tr><td><strong>חמ"ל</strong></td><td><input value="אדם רוזנברג"/></td><td><a href="tel:+972544912201">054-4912201</a></td><td><span class="badge" style="background:#dcfce7;color:#166534;">בחמ"ל</span></td><td>5</td></tr>
+            <tr><td><strong>רפואה</strong></td><td><input value='ד"ר יעל שפירא'/></td><td><a href="tel:+972528331940">052-8331940</a></td><td><span class="badge" style="background:#dbeafe;color:#1e40af;">בשטח</span></td><td>4</td></tr>
+            <tr><td><strong>אוכלוסיה</strong></td><td><input value="מיכל אברהמי"/></td><td><a href="tel:+972506774120">050-6774120</a></td><td><span class="badge" style="background:#dcfce7;color:#166534;">בחמ"ל</span></td><td>7</td></tr>
+            <tr><td><strong>לוגיסטיקה</strong></td><td><input value="רונן כץ"/></td><td><a href="tel:+972542289103">054-2289103</a></td><td><span class="badge" style="background:#dbeafe;color:#1e40af;">בשטח</span></td><td>6</td></tr>
+            <tr><td><strong>חוסן</strong></td><td><input value="נועה פרידמן"/></td><td><a href="tel:+972537128890">053-7128890</a></td><td><span class="badge" style="background:#fef3c7;color:#92400e;">זמין</span></td><td>3</td></tr>
+            <tr><td><strong>אחר</strong></td><td><input value="גיא לוי (כיתת כוננות)"/></td><td><a href="tel:+972509114402">050-9114402</a></td><td><span class="badge" style="background:#dbeafe;color:#1e40af;">בשטח</span></td><td>8</td></tr>
+          </tbody>
+        </table>`;
+      if (id === "event_summary") return `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div style="background:#f8fbfd;border:1px solid var(--v2-line);border-radius:8px;padding:10px;">
+            <strong style="color:#1b3a78;">1. מה קרה עד כה (תקציר האירוע):</strong>
+            <ul style="margin:6px 0 8px;padding-right:16px;font-size:12px;line-height:1.45;">
+              <li>הופעלה התרעת צבע אדום ונשמעו נפילות באזור הצפוני — פתיחת חמ"ל.</li>
+              <li>נתק חשמל בהרחבה הצפונית; צוות לוגיסטיקה פורס גנרטורים.</li>
+              <li>פצוע קל מרסיסי זכוכית בבית 19 מטופל ע"י צוות רפואה.</li>
+            </ul>
+            <textarea style="width:100%;min-height:48px;font-size:11.5px;">דגשי מפקד: עדיפות עליונה לאספקת גנרטור למחולל חמצן (בית 12) וסבב ביקורי בית ל-2 מנותקי קשר.</textarea>
+          </div>
+          <div style="background:#f8fbfd;border:1px solid var(--v2-line);border-radius:8px;padding:10px;">
+            <strong style="color:#166534;">2. איפה אנחנו עומדים כעת (תמונת מצב מבצעית):</strong>
+            <ul style="margin:6px 0 0;padding-right:16px;font-size:12px;line-height:1.5;">
+              <li><strong>אימות תושבים (ירוק בעיניים):</strong> 90% דיווחו (18 מתוך 20). נותרו 2 ללא מענה.</li>
+              <li><strong>נפגעים וזקוקים לסיוע:</strong> 1 פצוע קל, 3 מבקשים סיוע, 2 בסטטוס לא בטוח.</li>
+              <li><strong>עומס משימות וצווארי בקבוק:</strong> 4 משימות פתוחות (2 דחופות ברפואה ולוגיסטיקה), 4 הושלמו.</li>
+            </ul>
+          </div>
+        </div>`;
+      if (id === "emergency_map") return `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span class="badge" style="background:#f3f9fb;border:1px solid var(--v2-line);color:var(--v2-ink);">📍 מפת חירום יישובית</span>
+            <span class="badge" style="background:#fee2e2;color:#991b1b;">6 צריכים מענה</span>
+          </div>
+          <div class="preset-group" role="group" aria-label="שכבות מפה">
+            <button class="preset-btn ${currentMapLayer==='roadmap'?'active':''}" onclick="window.setStandaloneMapLayer('roadmap')">מפה</button>
+            <button class="preset-btn ${currentMapLayer==='satellite'?'active':''}" onclick="window.setStandaloneMapLayer('satellite')">לווין</button>
+            <button class="preset-btn ${currentMapLayer==='hybrid'?'active':''}" onclick="window.setStandaloneMapLayer('hybrid')">היברידי</button>
+            <button class="preset-btn ${currentMapLayer==='terrain'?'active':''}" onclick="window.setStandaloneMapLayer('terrain')">טופוגרפיה</button>
+          </div>
+        </div>
+        <div id="portableMapCanvas"></div>
+      `;
+      if (id === "green_eyes") return buildGreenEyesHTML();
+      if (id === "dept_tasks") return `
+        <div style="display:grid;gap:10px;font-size:12px;">
+          <div><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><strong>לוגיסטיקה</strong><span>1 פתוחות / 2 הושלמו (67%)</span></div><div class="progress-bar"><span style="width:67%;background:#22c55e;"></span><span style="width:33%;background:#fb923c;"></span></div></div>
+          <div><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><strong>רפואה</strong><span>1 פתוחות / 1 הושלמו (50%)</span></div><div class="progress-bar"><span style="width:50%;background:#22c55e;"></span><span style="width:50%;background:#fb923c;"></span></div></div>
+          <div><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><strong>אוכלוסיה</strong><span>1 פתוחות / 0 הושלמו (0%)</span></div><div class="progress-bar"><span style="width:100%;background:#fb923c;"></span></div></div>
+          <div><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><strong>חוסן</strong><span>1 פתוחות / 0 הושלמו (0%)</span></div><div class="progress-bar"><span style="width:100%;background:#fb923c;"></span></div></div>
+          <div><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><strong>חמ"ל</strong><span>0 פתוחות / 1 הושלמו (100%)</span></div><div class="progress-bar"><span style="width:100%;background:#22c55e;"></span></div></div>
+        </div>`;
+      if (id === "timeline") return `
+        <div style="display:flex;gap:12px;overflow-x:auto;padding:6px 0;">
+          <div style="min-width:185px;background:#f3f9fb;border:1px solid var(--v2-line);border-radius:8px;padding:9px;"><strong>14:00 · פתיחת חמ"ל</strong><div style="font-size:11.5px;color:var(--v2-muted);margin-top:4px;">התרעת צבע אדום והפעלת נוהל ירוק בעיניים</div></div>
+          <div style="min-width:185px;background:#f3f9fb;border:1px solid var(--v2-line);border-radius:8px;padding:9px;"><strong>14:10 · נתק חשמל בהרחבה</strong><div style="font-size:11.5px;color:var(--v2-muted);margin-top:4px;">לוגיסטיקה · פריסת גנרטורים למחוללי חמצן</div></div>
+          <div style="min-width:185px;background:#f3f9fb;border:1px solid var(--v2-line);border-radius:8px;padding:9px;"><strong>14:23 · משימת חילוץ דלת ממ"ד</strong><div style="font-size:11.5px;color:var(--v2-muted);margin-top:4px;">מרכז היישוב בית 8 · הושלם</div></div>
+          <div style="min-width:185px;background:#f3f9fb;border:1px solid var(--v2-line);border-radius:8px;padding:9px;"><strong>14:29 · טיפול בפצוע קל</strong><div style="font-size:11.5px;color:var(--v2-muted);margin-top:4px;">רפואה · בית 19 בהרחבה הצפונית</div></div>
+          <div style="min-width:185px;background:#f3f9fb;border:1px solid var(--v2-line);border-radius:8px;padding:9px;"><strong>14:40 · הודעה לציבור</strong><div style="font-size:11.5px;color:var(--v2-muted);margin-top:4px;">הופצה לכלל קבוצות הוואטסאפ ביישוב</div></div>
+        </div>`;
+      return "";
+    }
+
+    function initPortableMap() {
+      const container = document.getElementById("portableMapCanvas");
+      if (!container || typeof L === "undefined") return;
+      if (leafletMap) {
+        leafletMap.remove();
+        leafletMap = null;
+      }
+      leafletMap = L.map(container).setView([32.0853, 34.7818], 14);
+      applyMapLayer(currentMapLayer);
+
+      RESIDENTS_DATA.forEach(r => {
+        const marker = L.circleMarker([r.lat, r.lng], {
+          radius: r.status === "הכל בסדר" ? 6 : 9,
+          fillColor: r.color,
+          color: "#ffffff",
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.92
+        }).addTo(leafletMap);
+        marker.bindPopup(`<div style="direction:rtl;text-align:right;font-family:Rubik,sans-serif;"><strong>${r.name}</strong> (בית ${r.house})<br/>שכונה: ${r.hood}<br/>סטטוס: <strong>${r.status}</strong>${r.notes ? '<br/>' + r.notes : ''}<br/><a href="tel:${r.phone}">${r.phone}</a></div>`);
+      });
+    }
+
+    function applyMapLayer(type) {
+      if (!leafletMap || typeof L === "undefined") return;
+      if (leafletTileLayer) leafletMap.removeLayer(leafletTileLayer);
+      const urls = {
+        roadmap: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        hybrid: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+        terrain: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+      };
+      leafletTileLayer = L.tileLayer(urls[type] || urls.roadmap, { maxZoom: 19 }).addTo(leafletMap);
+    }
+
+    let dragId = null;
+
+    function render() {
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(widgets));
+      const grid = document.getElementById("widgetGrid");
+      grid.innerHTML = "";
+      const hidden = widgets.filter(w => w.hidden);
+      document.getElementById("hiddenCount").textContent = hidden.length;
+
+      const hiddenList = document.getElementById("hiddenList");
+      hiddenList.innerHTML = hidden.length === 0
+        ? `<span style="font-size:12px;color:var(--v2-muted);">כל ${widgets.length} הווידג׳טים מוצגים על הלוח</span>`
+        : hidden.map(w => `<button class="btn" onclick="restoreWidget('${w.id}')">+ ${w.title}</button>`).join("");
+
+      widgets.filter(w => !w.hidden).forEach(w => {
+        const el = document.createElement("section");
+        el.className = `widget col-${w.cols} row-${w.row || 'normal'}`;
+        el.setAttribute("data-widget-id", w.id);
+        el.draggable = true;
+        el.ondragstart = () => { dragId = w.id; };
+        el.ondragover = (e) => { e.preventDefault(); el.classList.add("drag-over"); };
+        el.ondragleave = () => el.classList.remove("drag-over");
+        el.ondrop = (e) => {
+          e.preventDefault();
+          el.classList.remove("drag-over");
+          if (!dragId || dragId === w.id) return;
+          const from = widgets.findIndex(i => i.id === dragId);
+          const to = widgets.findIndex(i => i.id === w.id);
+          const [moved] = widgets.splice(from, 1);
+          widgets.splice(to, 0, moved);
+          render();
+        };
+        const presets = [{l:"1/4",c:3},{l:"1/3",c:4},{l:"1/2",c:6},{l:"2/3",c:8},{l:"מלא",c:12}];
+        const rows = [{l:"קומפקטי",k:"compact"},{l:"רגיל",k:"normal"},{l:"גבוה",k:"tall"}];
+        el.innerHTML = `
+          <div class="widget-hd">
+            <h2>⠿ ${w.title}</h2>
+            <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+              <div class="preset-group" title="רוחב">
+                ${presets.map(p => `<button class="preset-btn ${w.cols===p.c?'active':''}" onclick="resizeWidget('${w.id}',${p.c})">${p.l}</button>`).join("")}
+              </div>
+              <div class="preset-group" title="גובה">
+                ${rows.map(r => `<button class="preset-btn ${(w.row||'normal')===r.k?'active':''}" onclick="resizeWidgetRow('${w.id}','${r.k}')">${r.l}</button>`).join("")}
+              </div>
+              <button class="btn" style="padding:2px 7px;font-size:12px;" onclick="hideWidget('${w.id}')" title="הסר ווידג׳ט">×</button>
+            </div>
+          </div>
+          <div class="widget-bd">${widgetBodyHTML(w.id)}</div>
+        `;
+        grid.appendChild(el);
+      });
+
+      setTimeout(initPortableMap, 50);
+    }
+
+    window.setStandaloneMapLayer = (mapType) => {
+      currentMapLayer = mapType;
+      render();
+    };
+    window.setGreenEyesView = (v) => { greenEyesView = v; render(); };
+    window.setHoodFilter = (v) => { hoodFilter = v; render(); };
+    window.setStatusFilter = (v) => { statusFilter = v; render(); };
+    window.resizeWidget = (id, cols) => {
+      widgets = widgets.map(w => w.id === id ? { ...w, cols } : w);
+      render();
+    };
+    window.resizeWidgetRow = (id, row) => {
+      widgets = widgets.map(w => w.id === id ? { ...w, row } : w);
+      render();
+    };
+    window.hideWidget = (id) => {
+      widgets = widgets.map(w => w.id === id ? { ...w, hidden: true } : w);
+      render();
+    };
+    window.restoreWidget = (id) => {
+      widgets = widgets.map(w => w.id === id ? { ...w, hidden: false } : w);
+      render();
+    };
+
+    document.getElementById("toggleDrawerBtn").onclick = () => {
+      document.getElementById("hiddenDrawer").classList.toggle("open");
+    };
+    document.getElementById("resetLayoutBtn").onclick = () => {
+      widgets = JSON.parse(JSON.stringify(DEFAULT_WIDGETS));
+      render();
+    };
+    document.getElementById("saveCsvBtn").onclick = () => {
+      const safe = currentTitle.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, "_") || "sitrep";
+      const rows = [
+        ["שם תושב", "שכונה", "בית", "סטטוס", "טלפון", "הערות"],
+        ...RESIDENTS_DATA.map(r => [r.name, r.hood, r.house, r.status, r.phone, r.notes])
+      ];
+      const csv = "\uFEFF" + rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${safe}.csv`;
+      a.click();
+    };
+    document.getElementById("saveHtmlBtn").onclick = () => {
+      const safe = currentTitle.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, "_") || "sitrep";
+      const fullHtml = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+      const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${safe}.html`;
+      a.click();
+    };
+
+    render();
+  </script>
+</body>
+</html>
