@@ -71,7 +71,7 @@ function ResidentHelpRow({ row, onOpen }) {
   );
 }
 
-export default function StatusWorkspace() {
+export default function StatusWorkspace({ onSwitchToWidgets } = {}) {
   const { residents, tasks, eventLogs, emergencyMode } = useData();
   const [clock, setClock] = useState("00:00:00");
   const [layout, setLayout] = useState("vertical");
@@ -222,9 +222,19 @@ export default function StatusWorkspace() {
           <p className="v2-sub">סקירת האירוע בזמן אמת</p>
         </div>
         <div className="v2-row">
-          <Link href="/dashboard-demo" className="v2-btn v2-btn-primary v2-btn-sm">
-            תמונת מצב — תצוגת ווידג׳טים (דמו)
-          </Link>
+          {typeof onSwitchToWidgets === "function" ? (
+            <button
+              type="button"
+              className="v2-btn v2-btn-primary v2-btn-sm"
+              onClick={onSwitchToWidgets}
+            >
+              תמונת מצב — ווידג׳טים
+            </button>
+          ) : (
+            <Link href="/status" className="v2-btn v2-btn-primary v2-btn-sm">
+              תמונת מצב — ווידג׳טים
+            </Link>
+          )}
           <span className={isDrill ? "v2-mode-drill" : "v2-mode-live"}>{isDrill ? "תרגיל" : "חי"}</span>
           <div className="v2-clock" aria-label="זמן מתחילת האירוע">{clock}</div>
         </div>

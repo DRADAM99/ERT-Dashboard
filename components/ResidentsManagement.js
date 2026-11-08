@@ -1085,10 +1085,10 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                     <span>סנן לפי</span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64 bg-white" align="end">
+                <PopoverContent className="w-64 max-w-[calc(100vw-24px)] overflow-visible bg-white p-3 shadow-lg" align="end" sideOffset={8} collisionPadding={16}>
                   <div className="grid gap-4">
                     <div className="space-y-2">
-                      <h4 className="font-medium leading-none">הוסף פילטר</h4>
+                      <h4 className="font-medium leading-none text-gray-900">הוסף פילטר</h4>
                       <p className="text-sm text-muted-foreground">
                         סנן תושבים לפי קטגוריות.
                       </p>
@@ -1099,7 +1099,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                         value={currentAdvancedFilter.field}
                         dir="rtl"
                       >
-                        <SelectTrigger className="text-right">
+                        <SelectTrigger className="text-right bg-white">
                           <SelectValue placeholder="בחר שדה" />
                         </SelectTrigger>
                         <SelectContent className="text-right">
@@ -1114,7 +1114,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                           value={currentAdvancedFilter.value}
                           dir="rtl"
                         >
-                          <SelectTrigger className="text-right">
+                          <SelectTrigger className="text-right bg-white">
                             <SelectValue placeholder="בחר ערך" />
                           </SelectTrigger>
                           <SelectContent className="text-right">
@@ -1125,7 +1125,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                         </Select>
                       )}
                       <Button
-                        className="w-full bg-[#3B82F6] text-white hover:bg-[#2563EB] disabled:opacity-100 disabled:bg-blue-200 disabled:text-blue-800"
+                        className="mt-1 min-h-10 w-full bg-[#3B82F6] font-bold text-white shadow-md hover:bg-[#2563EB] disabled:pointer-events-none disabled:opacity-100 disabled:bg-[#93C5FD] disabled:text-[#1E3A8A] disabled:shadow-none"
                         onClick={handleAddAdvancedFilter}
                         disabled={!currentAdvancedFilter.field || !currentAdvancedFilter.value}
                       >
@@ -1174,10 +1174,10 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                     <span>סנן</span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64 bg-white" align="end">
+                <PopoverContent className="w-64 max-w-[calc(100vw-24px)] overflow-visible bg-white p-3 shadow-lg" align="end" sideOffset={8} collisionPadding={16}>
                   <div className="grid gap-4">
                     <div className="space-y-2">
-                      <h4 className="font-medium leading-none">הוסף פילטר</h4>
+                      <h4 className="font-medium leading-none text-gray-900">הוסף פילטר</h4>
                       <p className="text-sm text-muted-foreground">
                         סנן תושבים לפי קטגוריות.
                       </p>
@@ -1188,7 +1188,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                         value={currentAdvancedFilter.field}
                         dir="rtl"
                       >
-                        <SelectTrigger className="text-right">
+                        <SelectTrigger className="text-right bg-white">
                           <SelectValue placeholder="בחר שדה" />
                         </SelectTrigger>
                         <SelectContent className="text-right">
@@ -1203,7 +1203,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                           value={currentAdvancedFilter.value}
                           dir="rtl"
                         >
-                          <SelectTrigger className="text-right">
+                          <SelectTrigger className="text-right bg-white">
                             <SelectValue placeholder="בחר ערך" />
                           </SelectTrigger>
                           <SelectContent className="text-right">
@@ -1214,7 +1214,7 @@ function ResidentsManagement({ residents, tasks = [], statusColorMap = {}, statu
                         </Select>
                       )}
                       <Button
-                        className="w-full bg-[#3B82F6] text-white hover:bg-[#2563EB] disabled:opacity-100 disabled:bg-blue-200 disabled:text-blue-800"
+                        className="mt-1 min-h-10 w-full bg-[#3B82F6] font-bold text-white shadow-md hover:bg-[#2563EB] disabled:pointer-events-none disabled:opacity-100 disabled:bg-[#93C5FD] disabled:text-[#1E3A8A] disabled:shadow-none"
                         onClick={handleAddAdvancedFilter}
                         disabled={!currentAdvancedFilter.field || !currentAdvancedFilter.value}
                       >

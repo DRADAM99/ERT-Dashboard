@@ -1,5 +1,5 @@
-import StatusWorkspace from "@/components/v2/StatusWorkspace";
+import StatusPageClient from "./StatusPageClient";
 
 export default function StatusPage() {
-  return <StatusWorkspace />;
+  return <StatusPageClient />;
 }

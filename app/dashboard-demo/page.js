@@ -7,5 +7,5 @@ import "@/app/v2.css";
 import WidgetSitrepDashboard from "@/components/v2/WidgetSitrepDashboard";
 
 export default function DashboardDemoPage() {
-  return <WidgetSitrepDashboard />;
+  return <WidgetSitrepDashboard initialDataSource="demo" showDemoToggle />;
 }

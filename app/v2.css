@@ -60,9 +60,10 @@
 .v2-btn-primary,
 .v2-btn-primary:disabled,
 .v2-btn-primary:hover:disabled {
-  background: var(--v2-accent);
+  /* Fallbacks: Radix portals render outside .v2-shell where --v2-* vars are unset */
+  background: var(--v2-accent, #1b3a78);
   color: #fff;
-  border-color: var(--v2-accent);
+  border-color: var(--v2-accent, #1b3a78);
   -webkit-text-fill-color: #fff;
   opacity: 1;
 }
@@ -77,6 +78,44 @@
   background: #244a8f;
   border-color: #244a8f;
   color: #fff;
+}
+
+/* Residents filter "הוסף" — always-visible blue on white (portaled popover) */
+.v2-btn-hosef {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #2563eb;
+  background: #3b82f6;
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.35);
+}
+.v2-btn-hosef:hover:not(:disabled),
+.v2-btn-hosef:active:not(:disabled) {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
+.v2-btn-hosef:disabled {
+  background: #93c5fd;
+  border-color: #60a5fa;
+  color: #1e3a8a;
+  -webkit-text-fill-color: #1e3a8a;
+  opacity: 1;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.v2-filter-popover {
+  overflow: visible !important;
 }
 .v2-btn-sm { padding: 5px 9px; font-size: 12px; }
 .v2-btn-icon {
