@@ -202,9 +202,10 @@ export function DeptHeadsWidget({ deptHeads, onChangeDeptHeads }) {
                   <td>
                     <select
                       className="v2-select v2-select-sm text-xs"
-                      value={row.status}
+                      value={row.status || ""}
                       onChange={(e) => updateRow(idx, "status", e.target.value)}
                     >
+                      <option value="">—</option>
                       <option value='בחמ"ל'>בחמ"ל</option>
                       <option value="בשטח">בשטח</option>
                       <option value="זמין">זמין</option>

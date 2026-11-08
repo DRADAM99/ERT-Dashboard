@@ -8,6 +8,7 @@ import { db } from "@/firebase";
 import { useData } from "@/app/context/DataContext";
 import { displayResidentStatus, residentName, residentStatus } from "@/lib/residents";
 import {
+  EMPTY_DEPT_HEADS,
   sanitizeEventFilename,
   SITREP_SESSION_CLEARED_EVENT,
   SITREP_SESSION_STORAGE_KEYS,
@@ -42,7 +43,7 @@ import {
 const STORAGE_KEYS = {
   TITLE: "ert.eventLogTitle",
   LAYOUT: "ert.sitrepWidgetLayout.v2",
-  DEPT_HEADS: "ert.sitrepDeptHeads.v1",
+  DEPT_HEADS: SITREP_SESSION_STORAGE_KEYS.DEPT_HEADS,
   ANNOUNCEMENTS: SITREP_SESSION_STORAGE_KEYS.ANNOUNCEMENTS,
   COMMANDER_NOTES: SITREP_SESSION_STORAGE_KEYS.COMMANDER_NOTES,
 };
@@ -108,7 +109,8 @@ export default function WidgetSitrepDashboard({
   const [liveEvents, setLiveEvents] = useState([]);
   const [liveMapConfig, setLiveMapConfig] = useState(null);
   const [widgets, setWidgets] = useState(DEFAULT_WIDGET_LAYOUT);
-  const [deptHeads, setDeptHeads] = useState(DEFAULT_DEPT_HEADS);
+  // Live /status starts with blank כח אדם; demo routes keep sample staff.
+  const [deptHeads, setDeptHeads] = useState(isLiveInitial ? EMPTY_DEPT_HEADS : DEFAULT_DEPT_HEADS);
   // Live /status must not seed demo drill narrative; demo routes keep sample copy.
   const [announcements, setAnnouncements] = useState(
     isLiveInitial ? EMPTY_ANNOUNCEMENTS : DEFAULT_ANNOUNCEMENTS
@@ -136,7 +138,12 @@ export default function WidgetSitrepDashboard({
         if (Array.isArray(parsed) && parsed.length) setWidgets(mergeWithDefaultWidgets(parsed));
       }
       const savedHeads = window.localStorage.getItem(STORAGE_KEYS.DEPT_HEADS);
-      if (savedHeads) setDeptHeads(JSON.parse(savedHeads));
+      if (savedHeads !== null) {
+        const parsed = JSON.parse(savedHeads);
+        if (Array.isArray(parsed)) setDeptHeads(parsed.length ? parsed : EMPTY_DEPT_HEADS);
+      } else if (isLiveInitial) {
+        setDeptHeads(EMPTY_DEPT_HEADS);
+      }
       const savedAnn = window.localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
       // null = never saved → live stays empty, demo keeps sample copy; "[]" = cleared after end
       if (savedAnn !== null) {
@@ -173,6 +180,7 @@ export default function WidgetSitrepDashboard({
     const onSessionCleared = () => {
       setAnnouncements(EMPTY_ANNOUNCEMENTS);
       setCommanderNotes(EMPTY_COMMANDER_NOTES);
+      setDeptHeads(EMPTY_DEPT_HEADS);
     };
     window.addEventListener(SITREP_SESSION_CLEARED_EVENT, onSessionCleared);
     return () => window.removeEventListener(SITREP_SESSION_CLEARED_EVENT, onSessionCleared);
