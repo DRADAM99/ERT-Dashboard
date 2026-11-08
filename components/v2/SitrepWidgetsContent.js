@@ -537,12 +537,16 @@ export function EventSummaryBriefWidget({ eventLogs, residents, tasks, statusCou
           )}
         </div>
         <ul className="space-y-1.5 list-disc pr-4 text-[#1a2e52]">
-          {eventLogs.slice(-4).map((ev) => (
-            <li key={ev.id} className="leading-snug">
-              <span className="font-semibold text-[#5f7384]">{formatDateTime(ev.createdAt).split(" ")[1] || ""} [{ev.department || 'חמ"ל'}]:</span>{" "}
-              {ev.description}
-            </li>
-          ))}
+          {eventLogs.length === 0 ? (
+            <li className="list-none text-[#5f7384]">אין עדיין רשומות ביומן לאירוע זה.</li>
+          ) : (
+            eventLogs.slice(-4).map((ev) => (
+              <li key={ev.id} className="leading-snug">
+                <span className="font-semibold text-[#5f7384]">{formatDateTime(ev.createdAt).split(" ")[1] || ""} [{ev.department || 'חמ"ל'}]:</span>{" "}
+                {ev.description}
+              </li>
+            ))
+          )}
         </ul>
         <div className="pt-1">
           <label className="block text-[11px] font-semibold text-[#5f7384] mb-1">דגשי מפקד החמ״ל (מתעדכן לדו״ח):</label>
@@ -577,7 +581,7 @@ export function EventSummaryBriefWidget({ eventLogs, residents, tasks, statusCou
           <li className="flex items-start gap-2 bg-white p-2 rounded border border-[#d2e4ea]">
             <span className="w-2 h-2 rounded-full bg-amber-500 mt-1 shrink-0" />
             <div>
-              <strong>עומס משימות וצווארי בקבוק:</strong> {openTasks.length} משימות פתוחות כעת ({urgentOpen.length} דחופות). מיקוד נוכחי: אספקת גנרטורים בהרחבה הצפונית וסבב ביקורי בית למנותקי קשר.
+              <strong>עומס משימות וצווארי בקבוק:</strong> {openTasks.length} משימות פתוחות כעת ({urgentOpen.length} דחופות).
             </div>
           </li>
         </ul>

@@ -49,6 +49,16 @@ const STORAGE_KEYS = {
 
 const EMPTY_COMMANDER_NOTES = "";
 const EMPTY_ANNOUNCEMENTS = [];
+const DEMO_COMMANDER_NOTES =
+  "ניתוק חשמל בהרחבה הצפונית בטיפול מול חח״י; עדיפות עליונה לאספקת גנרטורים למחוללי חמצן והשלמת סבב ביקורי בית ל-2 תושבים שטרם ענו.";
+
+/** Demo sample copy left in localStorage should not stick on live /status. */
+function isDemoAnnouncementSeed(list) {
+  if (!Array.isArray(list) || !list.length) return false;
+  const demoIds = new Set(DEFAULT_ANNOUNCEMENTS.map((a) => a.id));
+  const demoTexts = new Set(DEFAULT_ANNOUNCEMENTS.map((a) => a.text));
+  return list.every((a) => demoIds.has(a?.id) || demoTexts.has(a?.text));
+}
 
 function mergeWithDefaultWidgets(savedList) {
   if (!Array.isArray(savedList) || !savedList.length) return DEFAULT_WIDGET_LAYOUT;
@@ -89,18 +99,22 @@ export default function WidgetSitrepDashboard({
   embedded = false,
 } = {}) {
   const contextData = useData();
+  const isLiveInitial = initialDataSource === "live";
   const [title, setTitle] = useState('תמונת מצב — אירוע חירום חמ"ל');
   const [editingTitle, setEditingTitle] = useState(false);
-  const [dataSource, setDataSource] = useState(initialDataSource === "live" ? "live" : "demo");
+  const [dataSource, setDataSource] = useState(isLiveInitial ? "live" : "demo");
   const [liveResidents, setLiveResidents] = useState([]);
   const [liveTasks, setLiveTasks] = useState([]);
   const [liveEvents, setLiveEvents] = useState([]);
   const [liveMapConfig, setLiveMapConfig] = useState(null);
   const [widgets, setWidgets] = useState(DEFAULT_WIDGET_LAYOUT);
   const [deptHeads, setDeptHeads] = useState(DEFAULT_DEPT_HEADS);
-  const [announcements, setAnnouncements] = useState(DEFAULT_ANNOUNCEMENTS);
+  // Live /status must not seed demo drill narrative; demo routes keep sample copy.
+  const [announcements, setAnnouncements] = useState(
+    isLiveInitial ? EMPTY_ANNOUNCEMENTS : DEFAULT_ANNOUNCEMENTS
+  );
   const [commanderNotes, setCommanderNotes] = useState(
-    "ניתוק חשמל בהרחבה הצפונית בטיפול מול חח״י; עדיפות עליונה לאספקת גנרטורים למחוללי חמצן והשלמת סבב ביקורי בית ל-2 תושבים שטרם ענו."
+    isLiveInitial ? EMPTY_COMMANDER_NOTES : DEMO_COMMANDER_NOTES
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [customizeOpen, setCustomizeOpen] = useState(null);
@@ -124,14 +138,31 @@ export default function WidgetSitrepDashboard({
       const savedHeads = window.localStorage.getItem(STORAGE_KEYS.DEPT_HEADS);
       if (savedHeads) setDeptHeads(JSON.parse(savedHeads));
       const savedAnn = window.localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
-      // null = never saved (keep demo defaults); "[]" = cleared after end-drill
+      // null = never saved → live stays empty, demo keeps sample copy; "[]" = cleared after end
       if (savedAnn !== null) {
         const parsed = JSON.parse(savedAnn);
-        setAnnouncements(Array.isArray(parsed) ? parsed : EMPTY_ANNOUNCEMENTS);
+        const list = Array.isArray(parsed) ? parsed : EMPTY_ANNOUNCEMENTS;
+        if (isLiveInitial && isDemoAnnouncementSeed(list)) {
+          setAnnouncements(EMPTY_ANNOUNCEMENTS);
+          window.localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(EMPTY_ANNOUNCEMENTS));
+        } else {
+          setAnnouncements(list);
+        }
+      } else if (isLiveInitial) {
+        setAnnouncements(EMPTY_ANNOUNCEMENTS);
       }
       const savedNotes = window.localStorage.getItem(STORAGE_KEYS.COMMANDER_NOTES);
       // null = never saved; "" = cleared after end-drill (must not fall back to demo text)
-      if (savedNotes !== null) setCommanderNotes(savedNotes);
+      if (savedNotes !== null) {
+        if (isLiveInitial && savedNotes.trim() === DEMO_COMMANDER_NOTES.trim()) {
+          setCommanderNotes(EMPTY_COMMANDER_NOTES);
+          window.localStorage.setItem(STORAGE_KEYS.COMMANDER_NOTES, EMPTY_COMMANDER_NOTES);
+        } else {
+          setCommanderNotes(savedNotes);
+        }
+      } else if (isLiveInitial) {
+        setCommanderNotes(EMPTY_COMMANDER_NOTES);
+      }
     } catch {
       /* ignore */
     }
