@@ -818,13 +818,20 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
                 סנן לפי ▾
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-72 max-w-[calc(100vw-24px)] p-3" align="end" collisionPadding={12} dir="rtl">
+            <PopoverContent
+              className="v2-filter-popover w-72 max-w-[calc(100vw-24px)] overflow-visible bg-white p-3 text-[#1a2e52] shadow-lg"
+              align="end"
+              side="bottom"
+              sideOffset={8}
+              collisionPadding={16}
+              dir="rtl"
+            >
               <div className="mb-3">
-                <div className="text-sm font-medium">הוסף פילטר</div>
-                <div className="mt-1 text-xs text-[var(--v2-muted)]">שכונה, הורה/ילד, סטטוס מגורים</div>
+                <div className="text-sm font-medium text-[#1a2e52]">הוסף פילטר</div>
+                <div className="mt-1 text-xs text-[#5f7384]">שכונה, הורה/ילד, סטטוס מגורים</div>
               </div>
               <select
-                className="v2-select mb-2"
+                className="v2-select mb-2 w-full bg-white text-[#1a2e52]"
                 value={draftFilter.field}
                 onChange={(e) => setDraftFilter({ field: e.target.value, value: "" })}
               >
@@ -835,7 +842,7 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
               </select>
               {draftFilter.field && (
                 <select
-                  className="v2-select mb-2"
+                  className="v2-select mb-3 w-full bg-white text-[#1a2e52]"
                   value={draftFilter.value}
                   onChange={(e) => setDraftFilter((prev) => ({ ...prev, value: e.target.value }))}
                 >
@@ -845,8 +852,9 @@ export default function ResidentsWorkspace({ view, onViewChange, openResidentId,
                   ))}
                 </select>
               )}
+              {/* Hardcoded blue: Popover portals outside .v2-shell so --v2-accent is unset (white-on-white). */}
               <button
-                className="v2-btn v2-btn-primary v2-btn-sm w-full"
+                className="v2-btn-hosef mt-1 w-full"
                 type="button"
                 disabled={!draftFilter.field || !draftFilter.value}
                 onClick={addAdvancedFilter}

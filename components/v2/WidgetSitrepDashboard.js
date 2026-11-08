@@ -69,11 +69,22 @@ const ROW_SPAN_CLASSES = {
   tall: "min-h-[370px]",
 };
 
-export default function WidgetSitrepDashboard() {
+/**
+ * @param {"live"|"demo"} [initialDataSource="demo"]
+ * @param {boolean} [showDemoToggle=true] — demo routes keep the נתוני הדגמה toggle; /status hides it
+ * @param {() => void} [onSwitchToClassic] — when set, shows "תמונת מצב קלאסית" instead of back-link
+ * @param {boolean} [embedded=false] — inside AppShell: skip outer chrome / duplicate shell padding
+ */
+export default function WidgetSitrepDashboard({
+  initialDataSource = "demo",
+  showDemoToggle = true,
+  onSwitchToClassic,
+  embedded = false,
+} = {}) {
   const contextData = useData();
   const [title, setTitle] = useState('תמונת מצב — אירוע חירום חמ"ל');
   const [editingTitle, setEditingTitle] = useState(false);
-  const [dataSource, setDataSource] = useState("demo");
+  const [dataSource, setDataSource] = useState(initialDataSource === "live" ? "live" : "demo");
   const [liveResidents, setLiveResidents] = useState([]);
   const [liveTasks, setLiveTasks] = useState([]);
   const [liveEvents, setLiveEvents] = useState([]);
@@ -150,7 +161,10 @@ export default function WidgetSitrepDashboard() {
   }, []);
 
   const mapConfig = useMemo(
-    () => normalizeMapConfig(liveMapConfig || contextData?.mapConfig || DEFAULT_MAP_CENTER),
+    () =>
+      normalizeMapConfig(
+        contextData?.mapConfig || liveMapConfig || DEFAULT_MAP_CENTER
+      ),
     [liveMapConfig, contextData?.mapConfig]
   );
 
@@ -201,9 +215,21 @@ export default function WidgetSitrepDashboard() {
     }
   };
 
-  const residents = dataSource === "live" && liveResidents.length ? liveResidents : DEMO_RESIDENTS;
-  const tasks = dataSource === "live" && liveTasks.length ? liveTasks : DEMO_TASKS;
-  const eventLogs = dataSource === "live" && liveEvents.length ? liveEvents : DEMO_EVENT_LOGS;
+  // Live path: prefer DataContext (AppShell), fall back to local listeners. Never fall back to demo on live.
+  const residents =
+    dataSource === "live"
+      ? (contextData?.residents?.length ? contextData.residents : liveResidents)
+      : DEMO_RESIDENTS;
+  const tasks =
+    dataSource === "live"
+      ? (contextData?.tasks?.length ? contextData.tasks : liveTasks)
+      : DEMO_TASKS;
+  const eventLogs =
+    dataSource === "live"
+      ? (contextData?.eventLogs?.length ? contextData.eventLogs : liveEvents)
+      : DEMO_EVENT_LOGS;
+  const liveResidentCount =
+    contextData?.residents?.length || liveResidents.length || 0;
 
   const startTime = useMemo(() => (eventLogs[0] ? toDate(eventLogs[0].createdAt) : null), [eventLogs]);
 
@@ -477,9 +503,13 @@ export default function WidgetSitrepDashboard() {
     }
   };
 
+  const shellClass = embedded
+    ? "space-y-4"
+    : "v2-shell min-h-[100dvh] p-3 sm:p-5";
+
   return (
-    <div className="v2-shell min-h-[100dvh] p-3 sm:p-5" dir="rtl">
-      <div className="mx-auto max-w-[1600px] space-y-4">
+    <div className={shellClass} dir="rtl">
+      <div className={embedded ? "space-y-4" : "mx-auto max-w-[1600px] space-y-4"}>
         {/* Top Header Bar */}
         <header className="v2-card p-3.5 sm:p-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-1">
@@ -515,6 +545,11 @@ export default function WidgetSitrepDashboard() {
                   <span className="rounded-full bg-[#d8f0f4] text-[#1b3a78] px-2.5 py-0.5 text-xs font-bold">
                     תצוגת ווידג׳טים מותאמת (12 עמודות)
                   </span>
+                  {dataSource === "live" && (
+                    <span className="rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 text-xs font-bold">
+                      נתוני אמת ({liveResidentCount})
+                    </span>
+                  )}
                 </>
               )}
             </div>
@@ -529,23 +564,25 @@ export default function WidgetSitrepDashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Demo vs Live Data Toggle */}
-            <div className="v2-seg" role="group" aria-label="מקור נתונים">
-              <button
-                type="button"
-                className={dataSource === "demo" ? "on" : ""}
-                onClick={() => setDataSource("demo")}
-              >
-                נתוני הדגמה מלאים
-              </button>
-              <button
-                type="button"
-                className={dataSource === "live" ? "on" : ""}
-                onClick={() => setDataSource("live")}
-              >
-                נתוני אמת ({liveResidents.length})
-              </button>
-            </div>
+            {/* Demo vs Live — only on dedicated demo routes */}
+            {showDemoToggle && (
+              <div className="v2-seg" role="group" aria-label="מקור נתונים">
+                <button
+                  type="button"
+                  className={dataSource === "demo" ? "on" : ""}
+                  onClick={() => setDataSource("demo")}
+                >
+                  נתוני הדגמה מלאים
+                </button>
+                <button
+                  type="button"
+                  className={dataSource === "live" ? "on" : ""}
+                  onClick={() => setDataSource("live")}
+                >
+                  נתוני אמת ({liveResidentCount})
+                </button>
+              </div>
+            )}
 
             {/* Restore Hidden Widgets Drawer Button */}
             <div className="relative">
@@ -612,9 +649,20 @@ export default function WidgetSitrepDashboard() {
               <Download className="w-3.5 h-3.5" /> שמור HTML
             </button>
 
-            <Link href="/status" className="v2-btn v2-btn-sm">
-              <ArrowRight className="w-3.5 h-3.5" /> חזרה לתמונת מצב
-            </Link>
+            {typeof onSwitchToClassic === "function" ? (
+              <button
+                type="button"
+                className="v2-btn v2-btn-sm"
+                onClick={onSwitchToClassic}
+                title="מעבר לתצוגה הקלאסית של תמונת מצב"
+              >
+                תמונת מצב קלאסית
+              </button>
+            ) : (
+              <Link href="/status" className="v2-btn v2-btn-sm">
+                <ArrowRight className="w-3.5 h-3.5" /> חזרה לתמונת מצב
+              </Link>
+            )}
 
             <div className="v2-clock v2-clock-sm" aria-label="זמן מתחילת האירוע">
               {clock}
