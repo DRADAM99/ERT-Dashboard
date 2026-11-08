@@ -7,7 +7,12 @@ import { GripVertical, X, Plus, RotateCcw, Download, Edit2, Check, SlidersHorizo
 import { db } from "@/firebase";
 import { useData } from "@/app/context/DataContext";
 import { displayResidentStatus, residentName, residentStatus } from "@/lib/residents";
-import { sanitizeEventFilename } from "@/lib/emergencyActions";
+import {
+  EMPTY_DEPT_HEADS,
+  sanitizeEventFilename,
+  SITREP_SESSION_CLEARED_EVENT,
+  SITREP_SESSION_STORAGE_KEYS,
+} from "@/lib/emergencyActions";
 import { DEFAULT_MAP_CENTER, MAP_CONFIG_DOC, normalizeMapConfig } from "@/lib/mapConfig";
 import { formatDateTime, formatElapsed, toDate } from "@/components/v2/format";
 import {
@@ -38,10 +43,23 @@ import {
 const STORAGE_KEYS = {
   TITLE: "ert.eventLogTitle",
   LAYOUT: "ert.sitrepWidgetLayout.v2",
-  DEPT_HEADS: "ert.sitrepDeptHeads.v1",
-  ANNOUNCEMENTS: "ert.sitrepAnnouncements.v1",
-  COMMANDER_NOTES: "ert.sitrepCommanderNotes.v1",
+  DEPT_HEADS: SITREP_SESSION_STORAGE_KEYS.DEPT_HEADS,
+  ANNOUNCEMENTS: SITREP_SESSION_STORAGE_KEYS.ANNOUNCEMENTS,
+  COMMANDER_NOTES: SITREP_SESSION_STORAGE_KEYS.COMMANDER_NOTES,
 };
+
+const EMPTY_COMMANDER_NOTES = "";
+const EMPTY_ANNOUNCEMENTS = [];
+const DEMO_COMMANDER_NOTES =
+  "ניתוק חשמל בהרחבה הצפונית בטיפול מול חח״י; עדיפות עליונה לאספקת גנרטורים למחוללי חמצן והשלמת סבב ביקורי בית ל-2 תושבים שטרם ענו.";
+
+/** Demo sample copy left in localStorage should not stick on live /status. */
+function isDemoAnnouncementSeed(list) {
+  if (!Array.isArray(list) || !list.length) return false;
+  const demoIds = new Set(DEFAULT_ANNOUNCEMENTS.map((a) => a.id));
+  const demoTexts = new Set(DEFAULT_ANNOUNCEMENTS.map((a) => a.text));
+  return list.every((a) => demoIds.has(a?.id) || demoTexts.has(a?.text));
+}
 
 function mergeWithDefaultWidgets(savedList) {
   if (!Array.isArray(savedList) || !savedList.length) return DEFAULT_WIDGET_LAYOUT;
@@ -82,18 +100,23 @@ export default function WidgetSitrepDashboard({
   embedded = false,
 } = {}) {
   const contextData = useData();
+  const isLiveInitial = initialDataSource === "live";
   const [title, setTitle] = useState('תמונת מצב — אירוע חירום חמ"ל');
   const [editingTitle, setEditingTitle] = useState(false);
-  const [dataSource, setDataSource] = useState(initialDataSource === "live" ? "live" : "demo");
+  const [dataSource, setDataSource] = useState(isLiveInitial ? "live" : "demo");
   const [liveResidents, setLiveResidents] = useState([]);
   const [liveTasks, setLiveTasks] = useState([]);
   const [liveEvents, setLiveEvents] = useState([]);
   const [liveMapConfig, setLiveMapConfig] = useState(null);
   const [widgets, setWidgets] = useState(DEFAULT_WIDGET_LAYOUT);
-  const [deptHeads, setDeptHeads] = useState(DEFAULT_DEPT_HEADS);
-  const [announcements, setAnnouncements] = useState(DEFAULT_ANNOUNCEMENTS);
+  // Live /status starts with blank כח אדם; demo routes keep sample staff.
+  const [deptHeads, setDeptHeads] = useState(isLiveInitial ? EMPTY_DEPT_HEADS : DEFAULT_DEPT_HEADS);
+  // Live /status must not seed demo drill narrative; demo routes keep sample copy.
+  const [announcements, setAnnouncements] = useState(
+    isLiveInitial ? EMPTY_ANNOUNCEMENTS : DEFAULT_ANNOUNCEMENTS
+  );
   const [commanderNotes, setCommanderNotes] = useState(
-    "ניתוק חשמל בהרחבה הצפונית בטיפול מול חח״י; עדיפות עליונה לאספקת גנרטורים למחוללי חמצן והשלמת סבב ביקורי בית ל-2 תושבים שטרם ענו."
+    isLiveInitial ? EMPTY_COMMANDER_NOTES : DEMO_COMMANDER_NOTES
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [customizeOpen, setCustomizeOpen] = useState(null);
@@ -115,14 +138,52 @@ export default function WidgetSitrepDashboard({
         if (Array.isArray(parsed) && parsed.length) setWidgets(mergeWithDefaultWidgets(parsed));
       }
       const savedHeads = window.localStorage.getItem(STORAGE_KEYS.DEPT_HEADS);
-      if (savedHeads) setDeptHeads(JSON.parse(savedHeads));
+      if (savedHeads !== null) {
+        const parsed = JSON.parse(savedHeads);
+        if (Array.isArray(parsed)) setDeptHeads(parsed.length ? parsed : EMPTY_DEPT_HEADS);
+      } else if (isLiveInitial) {
+        setDeptHeads(EMPTY_DEPT_HEADS);
+      }
       const savedAnn = window.localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
-      if (savedAnn) setAnnouncements(JSON.parse(savedAnn));
+      // null = never saved → live stays empty, demo keeps sample copy; "[]" = cleared after end
+      if (savedAnn !== null) {
+        const parsed = JSON.parse(savedAnn);
+        const list = Array.isArray(parsed) ? parsed : EMPTY_ANNOUNCEMENTS;
+        if (isLiveInitial && isDemoAnnouncementSeed(list)) {
+          setAnnouncements(EMPTY_ANNOUNCEMENTS);
+          window.localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(EMPTY_ANNOUNCEMENTS));
+        } else {
+          setAnnouncements(list);
+        }
+      } else if (isLiveInitial) {
+        setAnnouncements(EMPTY_ANNOUNCEMENTS);
+      }
       const savedNotes = window.localStorage.getItem(STORAGE_KEYS.COMMANDER_NOTES);
-      if (savedNotes) setCommanderNotes(savedNotes);
+      // null = never saved; "" = cleared after end-drill (must not fall back to demo text)
+      if (savedNotes !== null) {
+        if (isLiveInitial && savedNotes.trim() === DEMO_COMMANDER_NOTES.trim()) {
+          setCommanderNotes(EMPTY_COMMANDER_NOTES);
+          window.localStorage.setItem(STORAGE_KEYS.COMMANDER_NOTES, EMPTY_COMMANDER_NOTES);
+        } else {
+          setCommanderNotes(savedNotes);
+        }
+      } else if (isLiveInitial) {
+        setCommanderNotes(EMPTY_COMMANDER_NOTES);
+      }
     } catch {
       /* ignore */
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onSessionCleared = () => {
+      setAnnouncements(EMPTY_ANNOUNCEMENTS);
+      setCommanderNotes(EMPTY_COMMANDER_NOTES);
+      setDeptHeads(EMPTY_DEPT_HEADS);
+    };
+    window.addEventListener(SITREP_SESSION_CLEARED_EVENT, onSessionCleared);
+    return () => window.removeEventListener(SITREP_SESSION_CLEARED_EVENT, onSessionCleared);
   }, []);
 
   useEffect(() => {
