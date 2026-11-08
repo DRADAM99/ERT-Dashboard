@@ -72,6 +72,7 @@ import SortableCategoryColumn from "../../components/ui/sortable-category-column
 import SortableItem from "../../components/ui/sortable-item";
 //CandidatesBlock
 import EventLogBlock from "../../components/EventLogBlock";
+import { prepareCleanSessionState } from "@/lib/emergencyActions";
 
 import moment from 'moment-timezone';
 import 'moment/locale/he';
@@ -794,21 +795,26 @@ const handleFollowUpClick = async (lead) => {
       const exportSuccess = await exportEmergencyDataToCSV();
       
       if (exportSuccess) {
+        // Shared client cleanup: SitRep localStorage + resident statuses → ללא סטטוס
+        const sessionCleanup = await prepareCleanSessionState();
         const { getFunctions, httpsCallable } = await import("firebase/functions");
         const endEmergency = httpsCallable(getFunctions(), "endEmergencyEvent");
         const result = await endEmergency({ clearSheet: true });
-        const summary = result.data || {};
+        const summary = { ...(result.data || {}), ...sessionCleanup };
         console.log("✅ Emergency cleanup completed:", summary);
+        const endLabel = isDrillMode ? "התרגיל הסתיים" : "אירוע החירום הסתיים";
         if (summary.sheetCleanupError) {
           toast({
-            title: "אירוע החירום הסתיים עם אזהרה",
+            title: `${endLabel} עם אזהרה`,
             description: `Firebase נוקה, אך ניקוי הגיליון נכשל: ${summary.sheetCleanupError}`,
             variant: "destructive",
           });
         } else {
           toast({
-            title: "אירוע החירום הסתיים",
-            description: `הנתונים יוצאו ונוקו בהצלחה (${summary.deletedResidents || 0} תושבים, ${summary.deletedTasks || 0} משימות)`,
+            title: endLabel,
+            description: `הנתונים יוצאו ונוקו בהצלחה (${summary.deletedResidents || 0} תושבים, ${summary.deletedTasks || 0} משימות${
+              summary.resetResidents ? `, ${summary.resetResidents} סטטוסים אופסו` : ""
+            })`,
           });
         }
         
@@ -2757,7 +2763,7 @@ useEffect(() => {
                     disabled={isEndEmergencyDisabled}
                     className="text-xs bg-green-600 hover:bg-green-700 text-white font-medium px-2 py-1"
                   >
-                    סיים אירוע
+                    {isDrillMode ? "סיים תרגיל" : "סיים אירוע"}
                   </Button>
                 </>
               )}
@@ -2794,7 +2800,7 @@ useEffect(() => {
                       onSelect={() => !isEndEmergencyDisabled && setShowEndEmergencyDialog(true)}
                       disabled={isEndEmergencyDisabled}
                     >
-                      <span className="text-green-700">{`סיים אירוע (${emergencyModeLabel})`}</span>
+                      <span className="text-green-700">{`${isDrillMode ? "סיים תרגיל" : "סיים אירוע"} (${emergencyModeLabel})`}</span>
                     </DropdownMenuCheckboxItem>
                   )}
                   {(currentUser?.role === 'admin' || role === 'admin') && <DropdownMenuSeparator />}
@@ -2910,7 +2916,7 @@ useEffect(() => {
                     disabled={isEndEmergencyDisabled}
                     className="text-xs w-full"
                   >
-                    <span className="truncate">{`סיים אירוע (${emergencyModeLabel})`}</span>
+                    <span className="truncate">{`${isDrillMode ? "סיים תרגיל" : "סיים אירוע"} (${emergencyModeLabel})`}</span>
                   </Button>
                 </>
               )}
@@ -3227,12 +3233,14 @@ useEffect(() => {
         <DialogContent className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full" style={{ direction: 'rtl', textAlign: 'right' }}>
           <DialogHeader className="text-right">
             <DialogTitle className="text-lg font-bold mb-4 text-right text-red-600">
-              סיום אירוע חירום
+              {isDrillMode ? "סיום תרגיל" : "סיום אירוע חירום"}
             </DialogTitle>
           </DialogHeader>
           <div className="mb-6">
             <p className="text-sm text-gray-700 mb-4">
-              האם אתה בטוח שאתה רוצה לסיים את אירוע החירום?
+              {isDrillMode
+                ? "האם אתה בטוח שאתה רוצה לסיים את התרגיל?"
+                : "האם אתה בטוח שאתה רוצה לסיים את אירוע החירום?"}
             </p>
             <p className="text-xs text-gray-600 mb-4">
               <strong>מזהה אירוע:</strong> {emergencyEventId}
@@ -3242,7 +3250,10 @@ useEffect(() => {
             </p>
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
               <p className="text-xs text-yellow-800">
-                <strong>שים לב:</strong> פעולה זו תייצא את כל הנתונים לקובץ CSV ותנקה את המערכת לאירוע הבא:
+                <strong>שים לב:</strong>{" "}
+                {isDrillMode
+                  ? "פעולה זו תייצא את כל הנתונים לקובץ CSV ותאפס את המערכת לתרגיל הבא:"
+                  : "פעולה זו תייצא את כל הנתונים לקובץ CSV ותנקה את המערכת לאירוע הבא:"}
               </p>
               <ul className="text-xs text-yellow-700 mt-2 space-y-1 list-disc list-inside">
                 <li>יומן אירועים</li>
@@ -3250,7 +3261,8 @@ useEffect(() => {
                 <li>שינויים בסטטוס תושבים</li>
                 <li>דיווחים ותגובות</li>
                 <li>כל הפעילות עם חותמות זמן</li>
-                <li><strong>ניקוי כל סטטוסי התושבים</strong></li>
+                <li><strong>איפוס כל סטטוסי התושבים ל־ללא סטטוס</strong></li>
+                <li><strong>ניקוי הודעה אחרונה לציבור + סיכום יומן אירועים</strong></li>
                 <li><strong>מחיקת כל התושבים מהמערכת</strong></li>
                 <li><strong>מחיקת כל יומן האירועים</strong></li>
                 <li><strong>מחיקת כל המשימות והלידים</strong></li>
@@ -3269,7 +3281,7 @@ useEffect(() => {
               onClick={handleEndEmergencyEvent}
               className="bg-red-600 hover:bg-red-700"
             >
-              סיים אירוע וייצא נתונים
+              {isDrillMode ? "סיים תרגיל וייצא נתונים" : "סיים אירוע וייצא נתונים"}
             </Button>
           </DialogFooter>
         </DialogContent>

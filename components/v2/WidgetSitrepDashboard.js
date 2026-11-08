@@ -7,7 +7,11 @@ import { GripVertical, X, Plus, RotateCcw, Download, Edit2, Check, SlidersHorizo
 import { db } from "@/firebase";
 import { useData } from "@/app/context/DataContext";
 import { displayResidentStatus, residentName, residentStatus } from "@/lib/residents";
-import { sanitizeEventFilename } from "@/lib/emergencyActions";
+import {
+  sanitizeEventFilename,
+  SITREP_SESSION_CLEARED_EVENT,
+  SITREP_SESSION_STORAGE_KEYS,
+} from "@/lib/emergencyActions";
 import { DEFAULT_MAP_CENTER, MAP_CONFIG_DOC, normalizeMapConfig } from "@/lib/mapConfig";
 import { formatDateTime, formatElapsed, toDate } from "@/components/v2/format";
 import {
@@ -39,9 +43,12 @@ const STORAGE_KEYS = {
   TITLE: "ert.eventLogTitle",
   LAYOUT: "ert.sitrepWidgetLayout.v2",
   DEPT_HEADS: "ert.sitrepDeptHeads.v1",
-  ANNOUNCEMENTS: "ert.sitrepAnnouncements.v1",
-  COMMANDER_NOTES: "ert.sitrepCommanderNotes.v1",
+  ANNOUNCEMENTS: SITREP_SESSION_STORAGE_KEYS.ANNOUNCEMENTS,
+  COMMANDER_NOTES: SITREP_SESSION_STORAGE_KEYS.COMMANDER_NOTES,
 };
+
+const EMPTY_COMMANDER_NOTES = "";
+const EMPTY_ANNOUNCEMENTS = [];
 
 function mergeWithDefaultWidgets(savedList) {
   if (!Array.isArray(savedList) || !savedList.length) return DEFAULT_WIDGET_LAYOUT;
@@ -117,12 +124,27 @@ export default function WidgetSitrepDashboard({
       const savedHeads = window.localStorage.getItem(STORAGE_KEYS.DEPT_HEADS);
       if (savedHeads) setDeptHeads(JSON.parse(savedHeads));
       const savedAnn = window.localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
-      if (savedAnn) setAnnouncements(JSON.parse(savedAnn));
+      // null = never saved (keep demo defaults); "[]" = cleared after end-drill
+      if (savedAnn !== null) {
+        const parsed = JSON.parse(savedAnn);
+        setAnnouncements(Array.isArray(parsed) ? parsed : EMPTY_ANNOUNCEMENTS);
+      }
       const savedNotes = window.localStorage.getItem(STORAGE_KEYS.COMMANDER_NOTES);
-      if (savedNotes) setCommanderNotes(savedNotes);
+      // null = never saved; "" = cleared after end-drill (must not fall back to demo text)
+      if (savedNotes !== null) setCommanderNotes(savedNotes);
     } catch {
       /* ignore */
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onSessionCleared = () => {
+      setAnnouncements(EMPTY_ANNOUNCEMENTS);
+      setCommanderNotes(EMPTY_COMMANDER_NOTES);
+    };
+    window.addEventListener(SITREP_SESSION_CLEARED_EVENT, onSessionCleared);
+    return () => window.removeEventListener(SITREP_SESSION_CLEARED_EVENT, onSessionCleared);
   }, []);
 
   useEffect(() => {

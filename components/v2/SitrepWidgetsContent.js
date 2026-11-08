@@ -236,6 +236,12 @@ export function PublicAnnouncementWidget({ announcements, onUpdateAnnouncements 
   const [copied, setCopied] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
 
+  // Keep draft in sync when parent clears announcements (e.g. סיים תרגיל).
+  useEffect(() => {
+    setDraft(latest.text || "");
+    if (!announcements.length) setShowHistory(false);
+  }, [latest.text, announcements.length]);
+
   const handleSaveNew = () => {
     if (!draft.trim()) return;
     const entry = {

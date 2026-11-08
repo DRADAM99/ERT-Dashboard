@@ -299,21 +299,28 @@ export default function AppShell({ children }) {
     try {
       const summary = await endEmergencyEvent({ emergencyEventId });
       setShowEndEmergency(false);
+      const endLabel = isDrill ? "התרגיל הסתיים" : "אירוע החירום הסתיים";
       if (summary.sheetCleanupError) {
         toast({
-          title: "אירוע החירום הסתיים עם אזהרה",
+          title: `${endLabel} עם אזהרה`,
           description: `Firebase נוקה, אך ניקוי הגיליון נכשל: ${summary.sheetCleanupError}`,
           variant: "destructive",
         });
       } else {
         toast({
-          title: "אירוע החירום הסתיים",
-          description: `הנתונים יוצאו ונוקו (${summary.deletedResidents || 0} תושבים, ${summary.deletedTasks || 0} משימות)`,
+          title: endLabel,
+          description: `הנתונים יוצאו ונוקו (${summary.deletedResidents || 0} תושבים, ${summary.deletedTasks || 0} משימות${
+            summary.resetResidents ? `, ${summary.resetResidents} סטטוסים אופסו` : ""
+          })`,
         });
       }
     } catch (error) {
       setShowEndEmergency(false);
-      toast({ title: "שגיאה בסיום אירוע החירום", description: error.message, variant: "destructive" });
+      toast({
+        title: isDrill ? "שגיאה בסיום התרגיל" : "שגיאה בסיום אירוע החירום",
+        description: error.message,
+        variant: "destructive",
+      });
     } finally {
       setSavingEmergency(false);
     }
@@ -386,7 +393,7 @@ export default function AppShell({ children }) {
             )}
             {isAdmin && (
               <button type="button" className="v2-btn v2-btn-sm hidden bg-emerald-600 text-white border-emerald-600 md:inline-flex" disabled={opsDisabled} onClick={() => setShowEndEmergency(true)}>
-                סיים אירוע
+                {isDrill ? "סיים תרגיל" : "סיים אירוע"}
               </button>
             )}
             {isAdmin && (
@@ -489,7 +496,7 @@ export default function AppShell({ children }) {
               )}
               {isAdmin && (
                 <button className="block w-full rounded-lg px-3 py-2 text-right hover:bg-[var(--v2-bg)]" disabled={opsDisabled} onClick={() => { setMoreOpen(false); setShowEndEmergency(true); }}>
-                  סיים אירוע
+                  {isDrill ? "סיים תרגיל" : "סיים אירוע"}
                 </button>
               )}
               {isAdmin && (
@@ -549,7 +556,7 @@ export default function AppShell({ children }) {
         <Dialog open={showEndEmergency} onOpenChange={setShowEndEmergency}>
           <DialogContent className="bg-white" dir="rtl">
             <DialogHeader>
-              <DialogTitle className="text-red-600">סיום אירוע חירום</DialogTitle>
+              <DialogTitle className="text-red-600">{isDrill ? "סיום תרגיל" : "סיום אירוע חירום"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-3 text-sm">
               <p>
@@ -559,18 +566,25 @@ export default function AppShell({ children }) {
                 <strong>שם אירוע:</strong> יומן אירועים - חמ&quot;ל ({emergencyEventId})
               </p>
               <div className="rounded border border-red-200 bg-red-50 p-3 text-red-900">
-                <p className="mb-2 font-semibold">שים לב: פעולה זו תייצא את כל הנתונים לקובץ CSV ותנקה את המערכת לאירוע הבא:</p>
+                <p className="mb-2 font-semibold">
+                  {isDrill
+                    ? "שים לב: פעולה זו תייצא את כל הנתונים לקובץ CSV ותאפס את המערכת לתרגיל הבא:"
+                    : "שים לב: פעולה זו תייצא את כל הנתונים לקובץ CSV ותנקה את המערכת לאירוע הבא:"}
+                </p>
                 <ul className="list-disc space-y-1 pe-5 text-xs">
                   <li>יומן אירועים</li>
                   <li>משימות</li>
-                  <li>סטטוסי תושבים</li>
+                  <li>סטטוסי תושבים → ללא סטטוס</li>
+                  <li>הודעה אחרונה לציבור + סיכום יומן אירועים (ווידג׳טים)</li>
                   <li>מחיקת תושבים / משימות / לידים</li>
                 </ul>
               </div>
             </div>
             <DialogFooter className="gap-2">
               <button className="v2-btn" type="button" onClick={() => setShowEndEmergency(false)}>ביטול</button>
-              <button className="v2-btn bg-red-600 text-white border-red-600" type="button" onClick={onEndEmergency}>סיים אירוע וייצא נתונים</button>
+              <button className="v2-btn bg-red-600 text-white border-red-600" type="button" onClick={onEndEmergency}>
+                {isDrill ? "סיים תרגיל וייצא נתונים" : "סיים אירוע וייצא נתונים"}
+              </button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
