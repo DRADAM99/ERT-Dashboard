@@ -12,6 +12,8 @@ import {
   sanitizeEventFilename,
   SITREP_SESSION_CLEARED_EVENT,
   SITREP_SESSION_STORAGE_KEYS,
+  subscribePublicAnnouncements,
+  writePublicAnnouncements,
 } from "@/lib/emergencyActions";
 import { DEFAULT_MAP_CENTER, MAP_CONFIG_DOC, normalizeMapConfig } from "@/lib/mapConfig";
 import { formatDateTime, formatElapsed, toDate } from "@/components/v2/format";
@@ -52,14 +54,6 @@ const EMPTY_COMMANDER_NOTES = "";
 const EMPTY_ANNOUNCEMENTS = [];
 const DEMO_COMMANDER_NOTES =
   "ניתוק חשמל בהרחבה הצפונית בטיפול מול חח״י; עדיפות עליונה לאספקת גנרטורים למחוללי חמצן והשלמת סבב ביקורי בית ל-2 תושבים שטרם ענו.";
-
-/** Demo sample copy left in localStorage should not stick on live /status. */
-function isDemoAnnouncementSeed(list) {
-  if (!Array.isArray(list) || !list.length) return false;
-  const demoIds = new Set(DEFAULT_ANNOUNCEMENTS.map((a) => a.id));
-  const demoTexts = new Set(DEFAULT_ANNOUNCEMENTS.map((a) => a.text));
-  return list.every((a) => demoIds.has(a?.id) || demoTexts.has(a?.text));
-}
 
 function mergeWithDefaultWidgets(savedList) {
   if (!Array.isArray(savedList) || !savedList.length) return DEFAULT_WIDGET_LAYOUT;
@@ -126,6 +120,9 @@ export default function WidgetSitrepDashboard({
   const [clock, setClock] = useState("00:54:12");
   const [exportNotice, setExportNotice] = useState("");
   const gridRef = useRef(null);
+  const remoteAnnouncementsRef = useRef(EMPTY_ANNOUNCEMENTS);
+  const hasRemoteAnnouncementRef = useRef(false);
+  const announcementsBeforeLiveRef = useRef(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -144,19 +141,15 @@ export default function WidgetSitrepDashboard({
       } else if (isLiveInitial) {
         setDeptHeads(EMPTY_DEPT_HEADS);
       }
-      const savedAnn = window.localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
-      // null = never saved → live stays empty, demo keeps sample copy; "[]" = cleared after end
-      if (savedAnn !== null) {
-        const parsed = JSON.parse(savedAnn);
-        const list = Array.isArray(parsed) ? parsed : EMPTY_ANNOUNCEMENTS;
-        if (isLiveInitial && isDemoAnnouncementSeed(list)) {
-          setAnnouncements(EMPTY_ANNOUNCEMENTS);
-          window.localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(EMPTY_ANNOUNCEMENTS));
-        } else {
+      // Live /status takes the shared Firestore list. localStorage is only a
+      // cache the listener overwrites, so a private copy must not paint first.
+      if (!isLiveInitial) {
+        const savedAnn = window.localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
+        if (savedAnn !== null) {
+          const parsed = JSON.parse(savedAnn);
+          const list = Array.isArray(parsed) ? parsed : EMPTY_ANNOUNCEMENTS;
           setAnnouncements(list);
         }
-      } else if (isLiveInitial) {
-        setAnnouncements(EMPTY_ANNOUNCEMENTS);
       }
       const savedNotes = window.localStorage.getItem(STORAGE_KEYS.COMMANDER_NOTES);
       // null = never saved; "" = cleared after end-drill (must not fall back to demo text)
@@ -178,13 +171,47 @@ export default function WidgetSitrepDashboard({
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const onSessionCleared = () => {
-      setAnnouncements(EMPTY_ANNOUNCEMENTS);
       setCommanderNotes(EMPTY_COMMANDER_NOTES);
       setDeptHeads(EMPTY_DEPT_HEADS);
+      // Live copy clears when the shared doc listener receives [].
+      if (dataSource !== "live") setAnnouncements(EMPTY_ANNOUNCEMENTS);
     };
     window.addEventListener(SITREP_SESSION_CLEARED_EVENT, onSessionCleared);
     return () => window.removeEventListener(SITREP_SESSION_CLEARED_EVENT, onSessionCleared);
-  }, []);
+  }, [dataSource]);
+
+  useEffect(() => {
+    if (dataSource !== "live") {
+      if (!isLiveInitial && announcementsBeforeLiveRef.current) {
+        const restore = announcementsBeforeLiveRef.current;
+        announcementsBeforeLiveRef.current = null;
+        setAnnouncements(restore);
+      }
+      return undefined;
+    }
+    let active = true;
+    if (!isLiveInitial) {
+      setAnnouncements((current) => {
+        if (!announcementsBeforeLiveRef.current) announcementsBeforeLiveRef.current = current;
+        return EMPTY_ANNOUNCEMENTS;
+      });
+    }
+    let unsubscribe = () => {};
+    try {
+      unsubscribe = subscribePublicAnnouncements((list) => {
+        if (!active) return;
+        hasRemoteAnnouncementRef.current = true;
+        remoteAnnouncementsRef.current = list;
+        setAnnouncements(list);
+      });
+    } catch {
+      /* ignore unauthenticated firestore errors */
+    }
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [dataSource, isLiveInitial]);
 
   useEffect(() => {
     const unsubs = [];
@@ -259,12 +286,26 @@ export default function WidgetSitrepDashboard({
   };
 
   const handleUpdateAnnouncements = (next) => {
-    setAnnouncements(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(next));
-    } catch {
-      /* ignore */
+    const list = Array.isArray(next) ? next : EMPTY_ANNOUNCEMENTS;
+    if (dataSource !== "live") {
+      setAnnouncements(list);
+      try {
+        window.localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(list));
+      } catch {
+        /* ignore */
+      }
+      return;
     }
+    const updatedBy =
+      contextData?.currentUserData?.alias ||
+      contextData?.currentUserData?.email ||
+      'חמ"ל יישובי';
+    setAnnouncements(list);
+    writePublicAnnouncements(list, updatedBy).catch(() => {
+      setAnnouncements(
+        hasRemoteAnnouncementRef.current ? remoteAnnouncementsRef.current : EMPTY_ANNOUNCEMENTS
+      );
+    });
   };
 
   const handleUpdateNotes = (next) => {

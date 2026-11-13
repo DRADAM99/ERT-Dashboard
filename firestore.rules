@@ -264,9 +264,48 @@ service cloud.firestore {
     // ────────────────
     // System Settings Collection
     // ────────────────
+    // הודעה אחרונה לציבור — one shared list. Any signed-in user can read and
+    // publish; other systemSettings stay admin-only. Client normalizes every
+    // entry; rules check the document shape and the newest entry.
+    match /systemSettings/publicAnnouncement {
+      function isValidAnnouncementEntry(entry) {
+        return entry is map
+          && entry.keys().hasAll(['id', 'text', 'timestamp', 'author'])
+          && entry.keys().hasOnly(['id', 'text', 'timestamp', 'author'])
+          && entry.id is string
+          && entry.id.size() > 0
+          && entry.id.size() <= 80
+          && entry.text is string
+          && entry.text.size() > 0
+          && entry.text.size() <= 4000
+          && entry.timestamp is string
+          && entry.timestamp.size() > 0
+          && entry.timestamp.size() <= 40
+          && entry.author is string
+          && entry.author.size() > 0
+          && entry.author.size() <= 120;
+      }
+
+      function isValidPublicAnnouncement() {
+        let data = request.resource.data;
+        return data.keys().hasOnly(['announcements', 'updatedBy', 'updatedAt'])
+          && data.announcements is list
+          && data.announcements.size() <= 100
+          && (data.announcements.size() == 0 || isValidAnnouncementEntry(data.announcements[0]))
+          && data.updatedBy is string
+          && data.updatedBy.size() > 0
+          && data.updatedBy.size() <= 200
+          && data.updatedAt == request.time;
+      }
+
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidPublicAnnouncement();
+      allow delete: if isAdmin();
+    }
+
     match /systemSettings/{settingId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isAdmin() && settingId != 'publicAnnouncement';
     }
 
   }
