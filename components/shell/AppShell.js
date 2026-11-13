@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { NEED_HELP_STATUSES, residentStatus } from "@/lib/residents";
 import { formatElapsed, toDate } from "@/components/v2/format";
+import { useDrillClock } from "@/components/drill/useDrillClock";
 import {
   EMERGENCY_MODES,
   activateGreenEyes,
@@ -178,6 +179,7 @@ export default function AppShell({ children }) {
   const [wallClock, setWallClock] = useState("");
   const role = currentUserData?.role || "";
   const isAdmin = role === "admin";
+  const drillClock = useDrillClock({ isAdmin });
   const alias = currentUserData?.alias || currentUser?.email || "";
   const department = currentUserData?.department || "";
   const isDrill = emergencyMode !== EMERGENCY_MODES.LIVE;
@@ -347,8 +349,12 @@ export default function AppShell({ children }) {
             <span className="hidden sm:inline">ניהול אירוע חירום</span>
           </div>
           <div className="hidden min-w-0 flex-col text-[10px] leading-tight text-[var(--v2-muted)] md:flex">
-            <span className="v2-clock v2-clock-sm" title="זמן מתחילת האירוע" aria-label="זמן מתחילת האירוע">
-              {elapsedClock}
+            <span
+              className="v2-clock v2-clock-sm"
+              title={drillClock.active ? (drillClock.frozen ? "התרגיל מושהה" : "זמן מתחילת התרגיל") : "זמן מתחילת האירוע"}
+              aria-label={drillClock.active ? (drillClock.frozen ? "זמן התרגיל מושהה" : "זמן מתחילת התרגיל") : "זמן מתחילת האירוע"}
+            >
+              {drillClock.active ? drillClock.label : elapsedClock}
             </span>
             <span title="שעון קיר">{wallClock}</span>
           </div>

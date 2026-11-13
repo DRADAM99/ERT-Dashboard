@@ -15,9 +15,37 @@ const SOURCE = "drill-sandbox";
 const LOCK_PATH = "systemSettings/drillSandbox";
 const ALLOWED_STATUS = new Set(["כולם בסדר", "זקוקים לסיוע", "לא בטוח"]);
 
-function elapsedMinute(startedAtMs, nowMs) {
-  if (!Number.isFinite(startedAtMs) || !Number.isFinite(nowMs)) return -1;
-  return Math.floor((nowMs - startedAtMs) / 60000);
+function timestampMs(value) {
+  if (value == null || value === "") return NaN;
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  if (typeof value.toDate === "function") {
+    const date = value.toDate();
+    return date instanceof Date && !Number.isNaN(date.getTime()) ? date.getTime() : NaN;
+  }
+  if (typeof value.seconds === "number") return value.seconds * 1000;
+  return NaN;
+}
+
+/**
+ * Same clock as lib/drillTime.js. Completed pauses live in pausedMs.
+ * A paused run freezes at pausedAt so the next tick does not skip ahead.
+ */
+function drillElapsedMs(run, nowMs) {
+  const started = timestampMs(run && run.startedAt);
+  if (!Number.isFinite(started) || !Number.isFinite(nowMs)) return -1;
+  const pausedMs = Math.max(0, Math.round(Number(run && run.pausedMs) || 0));
+  let end = nowMs;
+  if (run && run.status === "paused") {
+    const pausedAt = timestampMs(run.pausedAt);
+    if (Number.isFinite(pausedAt)) end = pausedAt;
+  }
+  return Math.max(0, end - started - pausedMs);
+}
+
+function elapsedMinute(run, nowMs) {
+  const elapsed = drillElapsedMs(run, nowMs);
+  if (elapsed < 0) return -1;
+  return Math.floor(elapsed / 60000);
 }
 
 async function safetyBlock(db) {
@@ -43,6 +71,10 @@ async function pauseRun(db, admin, runRef, reason) {
     const lock = await tx.get(lockRef);
     if (!fresh.exists || fresh.get("status") !== "running") return;
     const now = admin.firestore.FieldValue.serverTimestamp();
+    const data = fresh.data() || {};
+    const pausedMs = lock.exists && lock.get("activeRunId") === runRef.id
+      ? Math.max(0, Math.round(Number(lock.get("pausedMs")) || 0))
+      : Math.max(0, Math.round(Number(data.pausedMs) || 0));
     tx.update(runRef, {
       status: "paused",
       pausedAt: now,
@@ -50,14 +82,16 @@ async function pauseRun(db, admin, runRef, reason) {
       updatedAt: now,
       updatedBy: SOURCE,
     });
-    if (lock.exists && lock.get("activeRunId") === runRef.id) {
-      tx.set(lockRef, {
-        activeRunId: "",
-        activeStatus: "idle",
-        updatedAt: now,
-        updatedBy: SOURCE,
-      }, {merge: true});
-    }
+    tx.set(lockRef, {
+      activeRunId: runRef.id,
+      activeStatus: "paused",
+      startedAt: data.startedAt || null,
+      pausedAt: now,
+      pausedMs,
+      durationMinutes: Math.max(1, Number(data.durationMinutes) || 1),
+      updatedAt: now,
+      updatedBy: SOURCE,
+    }, {merge: true});
   });
 }
 
@@ -79,6 +113,10 @@ async function finishRun(db, admin, runRef, reason) {
       tx.set(lockRef, {
         activeRunId: "",
         activeStatus: "idle",
+        startedAt: admin.firestore.FieldValue.delete(),
+        pausedAt: admin.firestore.FieldValue.delete(),
+        pausedMs: admin.firestore.FieldValue.delete(),
+        durationMinutes: admin.firestore.FieldValue.delete(),
         updatedAt: now,
         updatedBy: SOURCE,
       }, {merge: true});
@@ -159,11 +197,12 @@ async function applyBucket(db, admin, bucketSnap, scenarioId) {
 
 async function applyDueBuckets(db, admin, runSnap, nowMs) {
   const run = runSnap.data() || {};
-  const startedAt = run.startedAt && typeof run.startedAt.toDate === "function"
-    ? run.startedAt.toDate().getTime()
-    : NaN;
+  const lock = await db.doc(LOCK_PATH).get();
+  const pausedMs = lock.exists && lock.get("activeRunId") === runSnap.id
+    ? Number(lock.get("pausedMs")) || 0
+    : Number(run.pausedMs) || 0;
   const duration = Math.max(1, Number(run.durationMinutes) || 1);
-  const elapsed = elapsedMinute(startedAt, nowMs);
+  const elapsed = elapsedMinute({...run, pausedMs}, nowMs);
   if (elapsed < 0) return;
 
   const bucketsSnap = await runSnap.ref.collection("buckets").get();
@@ -220,6 +259,7 @@ async function tickDrillSandbox(db, admin, nowMs = Date.now()) {
 
 module.exports = {
   tickDrillSandbox,
+  drillElapsedMs,
   elapsedMinute,
   BATCH_LIMIT,
   SOURCE,

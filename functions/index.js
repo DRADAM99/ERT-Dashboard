@@ -1011,8 +1011,9 @@ exports.syncResidentsManual = functions
 // Applies due minute-buckets on drillRuns whose status is "running".
 // Does not send WhatsApp, does not write a sheet, and does not create
 // emergencyEvents. If emergency mode is live or a real green-eyes send is
-// still in progress, the run is paused instead of writing, so a later tick
-// cannot catch up onto resident statuses that may now be real.
+// still in progress, the run is paused instead of writing. Pause freezes
+// the schedule; resume continues from that timestamp and does not skip
+// minutes that were already due.
 
 const {tickDrillSandbox} = require("./drillSandbox");
 

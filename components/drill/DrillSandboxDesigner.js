@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { displayResidentStatus, getFieldValue, residentName } from "@/lib/residents";
 import {
   DRILL_STATUS_HELP,
@@ -16,6 +16,7 @@ import {
   withPreset,
 } from "@/lib/drillPlan";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { drillElapsedMs, drillTimeline, formatClock } from "@/lib/drillTime";
 
 const PRESETS = [
   { id: "even", label: "אחיד" },
@@ -24,18 +25,12 @@ const PRESETS = [
 ];
 
 const PAUSE_REASON = {
-  manual: "ההשהיה ידנית. דקות שעדיין לא נכתבו לא ייכתבו.",
+  manual: "השעון עצר כדי שהצוות יוכל לדבר. המשך ממשיך מאותה נקודה, בלי לדלג על דקות שכבר הגיע זמנן.",
   "emergency-live": "הושהה כי המערכת במצב חי. סטטוסים שכבר נכתבו נשארים.",
   "green-eyes-in-progress": "הושהה כי שליחת ירוק בעיניים אמיתית עדיין רצה.",
 };
 
-function elapsedMinute(startedAt, nowMs) {
-  const startedMs = startedAt?.toMillis?.()
-    || startedAt?.toDate?.()?.getTime?.()
-    || (typeof startedAt === "number" ? startedAt : NaN);
-  if (!Number.isFinite(startedMs)) return 0;
-  return Math.max(0, Math.floor((nowMs - startedMs) / 60000));
-}
+const SAFETY_PAUSE = new Set(["emergency-live", "green-eyes-in-progress"]);
 
 export default function DrillSandboxDesigner({
   residents = [],
@@ -54,11 +49,14 @@ export default function DrillSandboxDesigner({
   onDelete,
   onActivate,
   onPause,
+  onResume,
+  buckets = null,
 }) {
   const [search, setSearch] = useState("");
   const [neighborhood, setNeighborhood] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [formError, setFormError] = useState("");
+  const currentMinuteRef = useRef(null);
 
   const residentIds = useMemo(() => residents.map((row) => row.id).filter(Boolean), [residents]);
   const plan = useMemo(
@@ -99,7 +97,21 @@ export default function DrillSandboxDesigner({
   }, [residents, search, neighborhood]);
 
   const percentSum = curveSum(draft?.curve);
-  const activeBlocked = activeRun?.status === "running";
+  const activeBlocked = activeRun?.status === "running" || activeRun?.status === "paused";
+  const timeline = useMemo(
+    () => (activeRun ? drillTimeline(buckets || [], activeRun, nowMs) : null),
+    [activeRun, buckets, nowMs]
+  );
+  const clockLabel = activeRun ? formatClock(drillElapsedMs(activeRun, nowMs)) : "00:00:00";
+  const canResume = Boolean(
+    activeRun?.status === "paused"
+    && !SAFETY_PAUSE.has(activeRun.pauseReason)
+    && typeof onResume === "function"
+  );
+
+  useEffect(() => {
+    currentMinuteRef.current?.scrollIntoView({ block: "nearest" });
+  }, [timeline?.minuteLabel, activeRun?.id]);
   const canActivate = Boolean(
     !busy
     && !activeBlocked
@@ -120,9 +132,7 @@ export default function DrillSandboxDesigner({
   };
 
   const shown = filtered.slice(0, 80);
-  const minuteLabel = activeRun
-    ? Math.min(elapsedMinute(activeRun.startedAt, nowMs) + 1, activeRun.durationMinutes || 1)
-    : 1;
+  const minuteLabel = timeline?.minuteLabel || 1;
 
   return (
     <div className="space-y-4">
@@ -152,19 +162,63 @@ export default function DrillSandboxDesigner({
                 {activeRun.status === "paused" ? "תרגיל מושהה" : "תרגיל פעיל"}: {activeRun.scenarioName || "ללא שם"}
               </div>
               <p className="mt-1 text-sm text-[var(--v2-muted)]">
-                דקה {minuteLabel} מתוך {activeRun.durationMinutes || 1}. סגירת הדפדפן לא עוצרת את השעון.
-                סטטוסים שכבר נכתבו נשארים עד סיים תרגיל.
+                דקה {minuteLabel} מתוך {activeRun.durationMinutes || 1}.
+                {activeRun.status === "paused"
+                  ? " השעון עצר. סגירת הדפדפן לא ממשיכה אותו."
+                  : " השעון רץ כל שנייה מזמן ההתחלה, גם אם סוגרים את הדפדפן."}
+                {" "}סטטוסים שכבר נכתבו נשארים עד סיים תרגיל.
               </p>
               {activeRun.status === "paused" && (
                 <p className="mt-1 text-sm text-amber-800">
-                  {PAUSE_REASON[activeRun.pauseReason] || "התרגיל מושהה. דקות שעדיין לא נכתבו לא ייכתבו."}
+                  {PAUSE_REASON[activeRun.pauseReason] || PAUSE_REASON.manual}
                 </p>
               )}
             </div>
-            {activeRun.status === "running" && (
-              <button type="button" className="v2-btn" disabled={busy} onClick={() => onPause(activeRun.id)}>
-                השהה
-              </button>
+            <div className="flex items-center gap-2">
+              <div
+                className="v2-clock v2-clock-sm"
+                aria-label={activeRun.status === "paused" ? "זמן התרגיל מושהה" : "זמן מתחילת התרגיל"}
+                title={activeRun.status === "paused" ? "השעון מושהה" : "זמן מתחילת התרגיל"}
+              >
+                {clockLabel}
+              </div>
+              {activeRun.status === "running" && (
+                <button type="button" className="v2-btn" disabled={busy} onClick={() => onPause(activeRun.id)}>
+                  השהה
+                </button>
+              )}
+              {canResume && (
+                <button type="button" className="v2-btn border-amber-500 bg-amber-500 text-white" disabled={busy} onClick={() => onResume(activeRun.id)}>
+                  המשך
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="mt-4" aria-label="ציר זמן התרגיל">
+            <div className="mb-2 text-sm font-semibold">ציר הזמן</div>
+            {buckets == null ? (
+              <p className="text-sm text-[var(--v2-muted)]">טוען את לוח הדקות…</p>
+            ) : (
+              <div className="max-h-80 space-y-1 overflow-auto">
+                {timeline.rows.map((row) => (
+                  <div
+                    key={row.minute}
+                    ref={row.current ? currentMinuteRef : null}
+                    className={`rounded-lg px-3 py-2 ${row.current ? "bg-[var(--v2-accent-soft)]" : "bg-[var(--v2-bg)]"}`}
+                  >
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className={row.current ? "font-semibold" : ""}>דקה {row.minute}</span>
+                      <span className="text-xs text-[var(--v2-muted)]">
+                        {row.label}
+                        {row.label !== "בהמשך" && row.totalBuckets > 0 ? ` · ${row.appliedBuckets}/${row.totalBuckets} נכתבו` : ""}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-[var(--v2-muted)]">
+                      {row.ok} הכל בסדר · {row.help} זקוקים לסיוע · {row.unsure} לא בטוח
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -437,7 +491,7 @@ export default function DrillSandboxDesigner({
               </button>
             </div>
             {activeBlocked && (
-              <p className="mt-2 text-xs text-amber-800">אי אפשר להפעיל תרגיל נוסף כל עוד הריצה הזו רצה. השהיה עוצרת את הדקות הבאות ומשחררת הפעלה חדשה.</p>
+              <p className="mt-2 text-xs text-amber-800">אי אפשר להפעיל תרגיל נוסף כל עוד התרגיל הזה רץ או מושהה. השהה עוצרת את השעון, והמשך ממשיך מאותה נקודה.</p>
             )}
           </section>
         </div>

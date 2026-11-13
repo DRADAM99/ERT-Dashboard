@@ -8,8 +8,12 @@ import {
   activateDrillScenario,
   deleteDrillScenario,
   pauseDrillRun,
+  publishDrillClock,
+  resumeDrillRun,
   saveDrillScenario,
   subscribeActiveDrillRuns,
+  subscribeDrillBuckets,
+  subscribeDrillLock,
   subscribeDrillScenarios,
 } from "@/lib/drillSandbox";
 
@@ -23,13 +27,15 @@ export default function DrillSandboxPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [listenError, setListenError] = useState("");
+  const [buckets, setBuckets] = useState(null);
+  const [clockLock, setClockLock] = useState(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const role = currentUserData?.role || "";
   const updatedBy = currentUserData?.alias || currentUserData?.email || "";
 
   useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), 15000);
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -137,13 +143,57 @@ export default function DrillSandboxPage() {
     setNotice("");
     try {
       await pauseDrillRun({ runId, updatedBy });
-      setNotice("התרגיל הושהה. סטטוסים שכבר נכתבו נשארים.");
+      setNotice("התרגיל הושהה. השעון עצר, ודקות שטרם נכתבו ייכתבו אחרי המשך.");
     } catch (error) {
       setNotice(error?.message || "ההשהיה נכשלה");
     } finally {
       setBusy(false);
     }
   };
+
+  const onResume = async (runId) => {
+    setBusy(true);
+    setNotice("");
+    try {
+      await resumeDrillRun({ runId, updatedBy });
+      setNotice("התרגיל המשיך מאותה נקודה. דקות שכבר הגיע זמנן לא דולגו.");
+    } catch (error) {
+      setNotice(error?.message || "ההמשך נכשל");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const activeRun = activeRuns.find((run) => run.status === "running")
+    || activeRuns.find((run) => run.status === "paused")
+    || null;
+  const activeRunId = activeRun?.id || "";
+  const pausedAtMs = activeRun?.pausedAt?.toMillis?.()
+    || (typeof activeRun?.pausedAt === "number" ? activeRun.pausedAt : 0);
+
+  useEffect(() => {
+    if (role !== "admin") return undefined;
+    return subscribeDrillLock(setClockLock, () => setClockLock(null));
+  }, [role]);
+
+  useEffect(() => {
+    if (role !== "admin" || !activeRunId) {
+      setBuckets(null);
+      return undefined;
+    }
+    setBuckets(null);
+    return subscribeDrillBuckets(activeRunId, setBuckets, () => setBuckets([]));
+  }, [role, activeRunId]);
+
+  useEffect(() => {
+    if (role !== "admin" || !activeRun) return undefined;
+    publishDrillClock(activeRun).catch(() => {});
+    return undefined;
+  }, [role, activeRun, activeRunId, activeRun?.status, activeRun?.pausedMs, pausedAtMs]);
+
+  const displayRun = activeRun && clockLock?.activeRunId === activeRun.id
+    ? { ...activeRun, pausedMs: clockLock.pausedMs ?? activeRun.pausedMs }
+    : activeRun;
 
   if (loading || !currentUserData) {
     return <div className="p-6 text-sm text-[var(--v2-muted)]">טוען...</div>;
@@ -152,17 +202,14 @@ export default function DrillSandboxPage() {
     return <div className="v2-card p-6 text-sm">העמוד זמין למנהלים בלבד.</div>;
   }
 
-  const activeRun = activeRuns.find((run) => run.status === "running")
-    || activeRuns.find((run) => run.status === "paused")
-    || null;
-
   return (
     <DrillSandboxDesigner
       residents={residents || []}
       scenarios={scenarios.map((row) => scenarioFromDoc(row.id, row))}
       draft={draft}
       selectedId={selectedId}
-      activeRun={activeRun}
+      activeRun={displayRun}
+      buckets={buckets}
       busy={busy}
       listenError={listenError}
       notice={notice}
@@ -174,6 +221,7 @@ export default function DrillSandboxPage() {
       onDelete={onDelete}
       onActivate={onActivate}
       onPause={onPause}
+      onResume={onResume}
     />
   );
 }

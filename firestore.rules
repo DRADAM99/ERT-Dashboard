@@ -334,8 +334,10 @@ service cloud.firestore {
     //   - scenarioId, scenarioName, seed, durationMinutes, bucketCount, counts
     //   - status: "running" | "paused" | "finished"
     //   - startedAt, createdAt, updatedAt, createdBy, updatedBy
+    //   - pausedMs: accumulated completed pause length in ms (int >= 0)
     //   - optional pausedAt, finishedAt, pauseReason, finishReason
-    // Create is status running. Update may pause or finish. Plan fields stay put.
+    // Create is status running. Update may pause, resume the same run, or finish.
+    // Resume keeps startedAt and adds the pause length to pausedMs. Plan fields stay put.
     //
     // Subcollection: drillRuns/{runId}/buckets/{bucketId}
     //   minuteIndex, status, residentIds (<= 850), applied == false on create,
@@ -446,7 +448,7 @@ service cloud.firestore {
       return data.keys().hasOnly([
           'scenarioId', 'scenarioName', 'seed', 'durationMinutes', 'status',
           'startedAt', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy',
-          'totalResidents', 'bucketCount', 'counts', 'pausedAt', 'finishedAt',
+          'totalResidents', 'bucketCount', 'counts', 'pausedMs', 'pausedAt', 'finishedAt',
           'pauseReason', 'finishReason'
         ])
         && data.scenarioId is string
@@ -475,6 +477,7 @@ service cloud.firestore {
         && data.bucketCount is int
         && data.bucketCount >= 0
         && isValidDrillCounts(data.counts)
+        && (!('pausedMs' in data) || (data.pausedMs is int && data.pausedMs >= 0))
         && (!('pausedAt' in data) || data.pausedAt is timestamp)
         && (!('finishedAt' in data) || data.finishedAt is timestamp)
         && (!('pauseReason' in data) || (data.pauseReason is string && data.pauseReason.size() <= 80))
@@ -496,7 +499,7 @@ service cloud.firestore {
 
     function drillRunTransitionOk() {
       return (resource.data.status == 'running' && request.resource.data.status in ['paused', 'finished'])
-        || (resource.data.status == 'paused' && request.resource.data.status == 'finished');
+        || (resource.data.status == 'paused' && request.resource.data.status in ['running', 'finished']);
     }
 
     function isValidDrillBucket(data) {
