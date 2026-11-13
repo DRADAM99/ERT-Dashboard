@@ -183,12 +183,12 @@ export default function DrillSandboxDesigner({
                 {clockLabel}
               </div>
               {activeRun.status === "running" && (
-                <button type="button" className="v2-btn border-emerald-600 bg-emerald-600 text-white" disabled={busy} onClick={() => onPause(activeRun.id)}>
+                <button type="button" className="v2-btn border-yellow-400 bg-yellow-400 text-yellow-950" disabled={busy} onClick={() => onPause(activeRun.id)}>
                   השהה
                 </button>
               )}
               {canResume && (
-                <button type="button" className="v2-btn border-yellow-400 bg-yellow-400 text-yellow-950" disabled={busy} onClick={() => onResume(activeRun.id)}>
+                <button type="button" className="v2-btn border-emerald-600 bg-emerald-600 text-white" disabled={busy} onClick={() => onResume(activeRun.id)}>
                   המשך
                 </button>
               )}
