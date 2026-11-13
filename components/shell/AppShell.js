@@ -300,10 +300,14 @@ export default function AppShell({ children }) {
       const summary = await endEmergencyEvent({ emergencyEventId });
       setShowEndEmergency(false);
       const endLabel = isDrill ? "התרגיל הסתיים" : "אירוע החירום הסתיים";
-      if (summary.sheetCleanupError) {
+      if (summary.sheetCleanupError || summary.finishError) {
+        const warnings = [
+          summary.sheetCleanupError ? `ניקוי הגיליון נכשל: ${summary.sheetCleanupError}` : "",
+          summary.finishError ? `סיום ריצת ארגז החול נכשל: ${summary.finishError}` : "",
+        ].filter(Boolean);
         toast({
           title: `${endLabel} עם אזהרה`,
-          description: `Firebase נוקה, אך ניקוי הגיליון נכשל: ${summary.sheetCleanupError}`,
+          description: `Firebase נוקה, אך ${warnings.join(" · ")}`,
           variant: "destructive",
         });
       } else {
@@ -439,6 +443,11 @@ export default function AppShell({ children }) {
                 ⚙ ניהול
               </button>
             )}
+            {isAdmin && (
+              <Link href="/drill-sandbox" className={`mb-0.5 flex items-center gap-2 rounded-lg px-3 py-2 text-[13.5px] hover:bg-[var(--v2-bg)] ${pathname === "/drill-sandbox" ? "bg-[var(--v2-accent-soft)] font-semibold text-[var(--v2-accent)]" : ""}`}>
+                ארגז חול לתרגיל
+              </Link>
+            )}
             <Link href="/classic" className="mb-0.5 flex items-center gap-2 rounded-lg px-3 py-2 text-[13.5px] font-medium text-[var(--v2-accent)] hover:bg-[var(--v2-bg)]">
               עיצוב ישן
             </Link>
@@ -503,6 +512,11 @@ export default function AppShell({ children }) {
                 <button className="block w-full rounded-lg px-3 py-2 text-right hover:bg-[var(--v2-bg)]" onClick={() => { setMoreOpen(false); setShowAdminPanel(true); }}>
                   ניהול
                 </button>
+              )}
+              {isAdmin && (
+                <Link className="block rounded-lg px-3 py-2 hover:bg-[var(--v2-bg)]" href="/drill-sandbox" onClick={() => setMoreOpen(false)}>
+                  ארגז חול לתרגיל
+                </Link>
               )}
               <div className="px-3 py-2">
                 <NotesAndLinks section="notes" />
@@ -576,6 +590,7 @@ export default function AppShell({ children }) {
                   <li>משימות</li>
                   <li>סטטוסי תושבים → ללא סטטוס</li>
                   <li>הודעה אחרונה לציבור + סיכום יומן אירועים + כח אדם (ווידג׳טים)</li>
+                  <li>תרגיל ארגז חול פעיל יסומן כהסתיים</li>
                   <li>מחיקת תושבים / משימות / לידים</li>
                 </ul>
               </div>
