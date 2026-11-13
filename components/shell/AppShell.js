@@ -402,14 +402,6 @@ export default function AppShell({ children }) {
               </button>
             )}
             {isAdmin && (
-              <Link
-                href="/drill-sandbox"
-                className={`v2-btn v2-btn-sm hidden border-amber-500 md:inline-flex ${pathname === "/drill-sandbox" ? "bg-amber-500 text-white" : "bg-amber-50 text-amber-900"}`}
-              >
-                ארגז חול לתרגיל
-              </Link>
-            )}
-            {isAdmin && (
               <button type="button" className="v2-btn v2-btn-sm hidden bg-emerald-600 text-white border-emerald-600 md:inline-flex" disabled={opsDisabled} onClick={() => setShowEndEmergency(true)}>
                 {isDrill ? "סיים תרגיל" : "סיים אירוע"}
               </button>

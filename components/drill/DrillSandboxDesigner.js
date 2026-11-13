@@ -183,13 +183,18 @@ export default function DrillSandboxDesigner({
                 {clockLabel}
               </div>
               {activeRun.status === "running" && (
-                <button type="button" className="v2-btn" disabled={busy} onClick={() => onPause(activeRun.id)}>
+                <button type="button" className="v2-btn border-emerald-600 bg-emerald-600 text-white" disabled={busy} onClick={() => onPause(activeRun.id)}>
                   השהה
                 </button>
               )}
               {canResume && (
-                <button type="button" className="v2-btn border-amber-500 bg-amber-500 text-white" disabled={busy} onClick={() => onResume(activeRun.id)}>
+                <button type="button" className="v2-btn border-yellow-400 bg-yellow-400 text-yellow-950" disabled={busy} onClick={() => onResume(activeRun.id)}>
                   המשך
+                </button>
+              )}
+              {(activeRun.status === "finished" || activeRun.status === "stopped") && (
+                <button type="button" className="v2-btn border-red-600 bg-red-600 text-white" disabled>
+                  הסתיים
                 </button>
               )}
             </div>
@@ -204,7 +209,7 @@ export default function DrillSandboxDesigner({
                   <div
                     key={row.minute}
                     ref={row.current ? currentMinuteRef : null}
-                    className={`rounded-lg px-3 py-2 ${row.current ? "bg-[var(--v2-accent-soft)]" : "bg-[var(--v2-bg)]"}`}
+                    className={`rounded-lg px-3 py-2 ${row.current ? "bg-yellow-100" : "bg-[var(--v2-bg)]"}`}
                   >
                     <div className="flex items-center justify-between gap-2 text-sm">
                       <span className={row.current ? "font-semibold" : ""}>דקה {row.minute}</span>
@@ -483,7 +488,7 @@ export default function DrillSandboxDesigner({
               )}
               <button
                 type="button"
-                className="v2-btn border-amber-500 bg-amber-500 text-white"
+                className={`v2-btn ${canActivate ? "border-emerald-600 bg-emerald-600 text-white" : "border-gray-300 bg-gray-200 text-gray-500"}`}
                 disabled={!canActivate}
                 onClick={() => setConfirmOpen(true)}
               >
@@ -511,7 +516,7 @@ export default function DrillSandboxDesigner({
             <button type="button" className="v2-btn" onClick={() => setConfirmOpen(false)}>ביטול</button>
             <button
               type="button"
-              className="v2-btn border-amber-500 bg-amber-500 text-white"
+              className="v2-btn border-emerald-600 bg-emerald-600 text-white"
               onClick={() => {
                 setConfirmOpen(false);
                 onActivate();
