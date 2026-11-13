@@ -246,7 +246,7 @@ export function PublicAnnouncementWidget({ announcements, onUpdateAnnouncements 
   const handleSaveNew = () => {
     if (!draft.trim()) return;
     const entry = {
-      id: `ann-${Date.now()}`,
+      id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       timestamp: new Date().toISOString(),
       author: 'חמ"ל יישובי',
       text: draft.trim(),
