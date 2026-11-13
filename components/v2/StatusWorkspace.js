@@ -6,6 +6,7 @@ import { useData } from "@/app/context/DataContext";
 import { displayResidentStatus, NEED_HELP_STATUSES, residentName, residentStatus } from "@/lib/residents";
 import { EMERGENCY_MODES } from "@/lib/emergencyActions";
 import { formatDateTime, formatDuration, formatElapsed, toDate } from "@/components/v2/format";
+import { useDrillClock } from "@/components/drill/useDrillClock";
 import RecordOverlay from "@/components/v2/RecordOverlay";
 import ResidentRecord from "@/components/v2/ResidentRecord";
 
@@ -72,7 +73,8 @@ function ResidentHelpRow({ row, onOpen }) {
 }
 
 export default function StatusWorkspace({ onSwitchToWidgets } = {}) {
-  const { residents, tasks, eventLogs, emergencyMode } = useData();
+  const { currentUserData, residents, tasks, eventLogs, emergencyMode } = useData();
+  const drillClock = useDrillClock({ isAdmin: currentUserData?.role === "admin" });
   const [clock, setClock] = useState("00:00:00");
   const [layout, setLayout] = useState("vertical");
   const [zoom, setZoom] = useState(1);
@@ -236,7 +238,12 @@ export default function StatusWorkspace({ onSwitchToWidgets } = {}) {
             </Link>
           )}
           <span className={isDrill ? "v2-mode-drill" : "v2-mode-live"}>{isDrill ? "תרגיל" : "חי"}</span>
-          <div className="v2-clock" aria-label="זמן מתחילת האירוע">{clock}</div>
+          <div
+            className="v2-clock"
+            aria-label={drillClock.active ? (drillClock.frozen ? "זמן התרגיל מושהה" : "זמן מתחילת התרגיל") : "זמן מתחילת האירוע"}
+          >
+            {drillClock.active ? drillClock.label : clock}
+          </div>
         </div>
       </div>
 

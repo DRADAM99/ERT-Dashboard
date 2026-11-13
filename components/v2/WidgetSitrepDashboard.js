@@ -17,6 +17,7 @@ import {
 } from "@/lib/emergencyActions";
 import { DEFAULT_MAP_CENTER, MAP_CONFIG_DOC, normalizeMapConfig } from "@/lib/mapConfig";
 import { formatDateTime, formatElapsed, toDate } from "@/components/v2/format";
+import { useDrillClock } from "@/components/drill/useDrillClock";
 import {
   DEFAULT_ANNOUNCEMENTS,
   DEFAULT_DEPT_HEADS,
@@ -118,6 +119,11 @@ export default function WidgetSitrepDashboard({
   const [dragOverId, setDragOverId] = useState(null);
   const [isResizing, setIsResizing] = useState(false);
   const [clock, setClock] = useState("00:54:12");
+  const drillClock = useDrillClock({
+    enabled: dataSource === "live",
+    isAdmin: contextData?.currentUserData?.role === "admin",
+  });
+  const shownClock = dataSource === "live" && drillClock.active ? drillClock.label : clock;
   const [exportNotice, setExportNotice] = useState("");
   const gridRef = useRef(null);
   const remoteAnnouncementsRef = useRef(EMPTY_ANNOUNCEMENTS);
@@ -766,8 +772,11 @@ export default function WidgetSitrepDashboard({
               </Link>
             )}
 
-            <div className="v2-clock v2-clock-sm" aria-label="זמן מתחילת האירוע">
-              {clock}
+            <div
+              className="v2-clock v2-clock-sm"
+              aria-label={dataSource === "live" && drillClock.active ? (drillClock.frozen ? "זמן התרגיל מושהה" : "זמן מתחילת התרגיל") : "זמן מתחילת האירוע"}
+            >
+              {shownClock}
             </div>
           </div>
         </header>

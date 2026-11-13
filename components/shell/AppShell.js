@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { NEED_HELP_STATUSES, residentStatus } from "@/lib/residents";
 import { formatElapsed, toDate } from "@/components/v2/format";
+import { useDrillClock } from "@/components/drill/useDrillClock";
 import {
   EMERGENCY_MODES,
   activateGreenEyes,
@@ -178,6 +179,7 @@ export default function AppShell({ children }) {
   const [wallClock, setWallClock] = useState("");
   const role = currentUserData?.role || "";
   const isAdmin = role === "admin";
+  const drillClock = useDrillClock({ isAdmin });
   const alias = currentUserData?.alias || currentUser?.email || "";
   const department = currentUserData?.department || "";
   const isDrill = emergencyMode !== EMERGENCY_MODES.LIVE;
@@ -300,10 +302,14 @@ export default function AppShell({ children }) {
       const summary = await endEmergencyEvent({ emergencyEventId });
       setShowEndEmergency(false);
       const endLabel = isDrill ? "התרגיל הסתיים" : "אירוע החירום הסתיים";
-      if (summary.sheetCleanupError) {
+      if (summary.sheetCleanupError || summary.finishError) {
+        const warnings = [
+          summary.sheetCleanupError ? `ניקוי הגיליון נכשל: ${summary.sheetCleanupError}` : "",
+          summary.finishError ? `סיום ריצת ארגז החול נכשל: ${summary.finishError}` : "",
+        ].filter(Boolean);
         toast({
           title: `${endLabel} עם אזהרה`,
-          description: `Firebase נוקה, אך ניקוי הגיליון נכשל: ${summary.sheetCleanupError}`,
+          description: `Firebase נוקה, אך ${warnings.join(" · ")}`,
           variant: "destructive",
         });
       } else {
@@ -343,8 +349,12 @@ export default function AppShell({ children }) {
             <span className="hidden sm:inline">ניהול אירוע חירום</span>
           </div>
           <div className="hidden min-w-0 flex-col text-[10px] leading-tight text-[var(--v2-muted)] md:flex">
-            <span className="v2-clock v2-clock-sm" title="זמן מתחילת האירוע" aria-label="זמן מתחילת האירוע">
-              {elapsedClock}
+            <span
+              className="v2-clock v2-clock-sm"
+              title={drillClock.active ? (drillClock.frozen ? "התרגיל מושהה" : "זמן מתחילת התרגיל") : "זמן מתחילת האירוע"}
+              aria-label={drillClock.active ? (drillClock.frozen ? "זמן התרגיל מושהה" : "זמן מתחילת התרגיל") : "זמן מתחילת האירוע"}
+            >
+              {drillClock.active ? drillClock.label : elapsedClock}
             </span>
             <span title="שעון קיר">{wallClock}</span>
           </div>
@@ -439,6 +449,11 @@ export default function AppShell({ children }) {
                 ⚙ ניהול
               </button>
             )}
+            {isAdmin && (
+              <Link href="/drill-sandbox" className={`mb-0.5 flex items-center gap-2 rounded-lg px-3 py-2 text-[13.5px] hover:bg-[var(--v2-bg)] ${pathname === "/drill-sandbox" ? "bg-[var(--v2-accent-soft)] font-semibold text-[var(--v2-accent)]" : ""}`}>
+                ארגז חול לתרגיל
+              </Link>
+            )}
             <Link href="/classic" className="mb-0.5 flex items-center gap-2 rounded-lg px-3 py-2 text-[13.5px] font-medium text-[var(--v2-accent)] hover:bg-[var(--v2-bg)]">
               עיצוב ישן
             </Link>
@@ -503,6 +518,11 @@ export default function AppShell({ children }) {
                 <button className="block w-full rounded-lg px-3 py-2 text-right hover:bg-[var(--v2-bg)]" onClick={() => { setMoreOpen(false); setShowAdminPanel(true); }}>
                   ניהול
                 </button>
+              )}
+              {isAdmin && (
+                <Link className="block rounded-lg px-3 py-2 hover:bg-[var(--v2-bg)]" href="/drill-sandbox" onClick={() => setMoreOpen(false)}>
+                  ארגז חול לתרגיל
+                </Link>
               )}
               <div className="px-3 py-2">
                 <NotesAndLinks section="notes" />
@@ -576,6 +596,7 @@ export default function AppShell({ children }) {
                   <li>משימות</li>
                   <li>סטטוסי תושבים → ללא סטטוס</li>
                   <li>הודעה אחרונה לציבור + סיכום יומן אירועים + כח אדם (ווידג׳טים)</li>
+                  <li>תרגיל ארגז חול פעיל יסומן כהסתיים</li>
                   <li>מחיקת תושבים / משימות / לידים</li>
                 </ul>
               </div>

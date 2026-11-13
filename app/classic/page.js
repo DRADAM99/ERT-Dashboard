@@ -803,10 +803,14 @@ const handleFollowUpClick = async (lead) => {
         const summary = { ...(result.data || {}), ...sessionCleanup };
         console.log("✅ Emergency cleanup completed:", summary);
         const endLabel = isDrillMode ? "התרגיל הסתיים" : "אירוע החירום הסתיים";
-        if (summary.sheetCleanupError) {
+        if (summary.sheetCleanupError || summary.finishError) {
+          const warnings = [
+            summary.sheetCleanupError ? `ניקוי הגיליון נכשל: ${summary.sheetCleanupError}` : "",
+            summary.finishError ? `סיום ריצת ארגז החול נכשל: ${summary.finishError}` : "",
+          ].filter(Boolean);
           toast({
             title: `${endLabel} עם אזהרה`,
-            description: `Firebase נוקה, אך ניקוי הגיליון נכשל: ${summary.sheetCleanupError}`,
+            description: `Firebase נוקה, אך ${warnings.join(" · ")}`,
             variant: "destructive",
           });
         } else {
@@ -3263,6 +3267,7 @@ useEffect(() => {
                 <li>כל הפעילות עם חותמות זמן</li>
                 <li><strong>איפוס כל סטטוסי התושבים ל־ללא סטטוס</strong></li>
                 <li><strong>ניקוי הודעה אחרונה לציבור + סיכום יומן אירועים + כח אדם</strong></li>
+                <li><strong>תרגיל ארגז חול פעיל יסומן כהסתיים</strong></li>
                 <li><strong>מחיקת כל התושבים מהמערכת</strong></li>
                 <li><strong>מחיקת כל יומן האירועים</strong></li>
                 <li><strong>מחיקת כל המשימות והלידים</strong></li>

@@ -1004,3 +1004,24 @@ exports.syncResidentsManual = functions
       console.log(`[SyncResidents] Done — ${writtenCount} residents synced by ${userAlias}`);
       return {success: true, count: writtenCount, syncId};
     });
+
+// ============================================================================
+// tickDrillSandbox — scheduled runner for the admin drill sandbox
+// ============================================================================
+// Applies due minute-buckets on drillRuns whose status is "running".
+// Does not send WhatsApp, does not write a sheet, and does not create
+// emergencyEvents. If emergency mode is live or a real green-eyes send is
+// still in progress, the run is paused instead of writing. Pause freezes
+// the schedule; resume continues from that timestamp and does not skip
+// minutes that were already due.
+
+const {tickDrillSandbox} = require("./drillSandbox");
+
+exports.tickDrillSandbox = functions
+    .runWith({timeoutSeconds: 540, memory: "512MB"})
+    .pubsub.schedule("every 1 minutes")
+    .timeZone("Asia/Jerusalem")
+    .onRun(async () => {
+      await tickDrillSandbox(db, admin);
+      return null;
+    });

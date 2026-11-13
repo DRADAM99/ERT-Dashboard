@@ -308,5 +308,253 @@ service cloud.firestore {
       allow write: if isAdmin() && settingId != 'publicAnnouncement';
     }
 
+    // ===============================================================
+    // Drill sandbox
+    // ===============================================================
+    //
+    // Collection: drillScenarios
+    // Document ID: auto
+    // Fields:
+    //   - name: string (required, 1..200)
+    //   - announcementText: string (required, 0..4000; activate needs non-empty)
+    //   - durationMinutes: int (required, 1..180)
+    //   - curve: list of ints 0..100, length == durationMinutes
+    //     (rules check both ends; the client refuses activate unless the sum is 100)
+    //   - curvePreset: "even" | "front-loaded" | "back-loaded" | "custom"
+    //   - seed: int > 0 (required, immutable replay order)
+    //   - exceptions: list size <= 20 of maps
+    //       id, status ("זקוקים לסיוע" | "לא בטוח"), timing ("single" | "spread"),
+    //       minute (int 1..180), residentIds (list size 1..20000)
+    //   - createdAt / updatedAt: timestamp
+    //   - createdBy / updatedBy: string
+    //
+    // Collection: drillRuns
+    // Document ID: auto
+    // Fields:
+    //   - scenarioId, scenarioName, seed, durationMinutes, bucketCount, counts
+    //   - status: "running" | "paused" | "finished"
+    //   - startedAt, createdAt, updatedAt, createdBy, updatedBy
+    //   - pausedMs: accumulated completed pause length in ms (int >= 0)
+    //   - optional pausedAt, finishedAt, pauseReason, finishReason
+    // Create is status running. Update may pause, resume the same run, or finish.
+    // Resume keeps startedAt and adds the pause length to pausedMs. Plan fields stay put.
+    //
+    // Subcollection: drillRuns/{runId}/buckets/{bucketId}
+    //   minuteIndex, status, residentIds (<= 850), applied == false on create,
+    //   scenarioId. The scheduled function uses the admin SDK and bypasses rules.
+    //
+    // systemSettings/drillSandbox is the one-active-run lock and stays under
+    // the admin systemSettings rule above.
+    //
+    // ===============================================================
+
+    function isValidDrillException(entry) {
+      return entry is map
+        && entry.keys().hasOnly(['id', 'status', 'timing', 'minute', 'residentIds'])
+        && entry.id is string
+        && entry.id.size() > 0
+        && entry.id.size() <= 80
+        && entry.status in ['זקוקים לסיוע', 'לא בטוח']
+        && entry.timing in ['single', 'spread']
+        && entry.minute is int
+        && entry.minute >= 1
+        && entry.minute <= 180
+        && entry.residentIds is list
+        && entry.residentIds.size() > 0
+        && entry.residentIds.size() <= 20000
+        && entry.residentIds[0] is string
+        && entry.residentIds[0].size() > 0
+        && entry.residentIds[0].size() <= 200;
+    }
+
+    function drillExceptionsValid(list) {
+      return list is list
+        && list.size() <= 20
+        && (list.size() < 1 || isValidDrillException(list[0]))
+        && (list.size() < 2 || isValidDrillException(list[1]))
+        && (list.size() < 3 || isValidDrillException(list[2]))
+        && (list.size() < 4 || isValidDrillException(list[3]))
+        && (list.size() < 5 || isValidDrillException(list[4]))
+        && (list.size() < 6 || isValidDrillException(list[5]))
+        && (list.size() < 7 || isValidDrillException(list[6]))
+        && (list.size() < 8 || isValidDrillException(list[7]))
+        && (list.size() < 9 || isValidDrillException(list[8]))
+        && (list.size() < 10 || isValidDrillException(list[9]))
+        && (list.size() < 11 || isValidDrillException(list[10]))
+        && (list.size() < 12 || isValidDrillException(list[11]))
+        && (list.size() < 13 || isValidDrillException(list[12]))
+        && (list.size() < 14 || isValidDrillException(list[13]))
+        && (list.size() < 15 || isValidDrillException(list[14]))
+        && (list.size() < 16 || isValidDrillException(list[15]))
+        && (list.size() < 17 || isValidDrillException(list[16]))
+        && (list.size() < 18 || isValidDrillException(list[17]))
+        && (list.size() < 19 || isValidDrillException(list[18]))
+        && (list.size() < 20 || isValidDrillException(list[19]));
+    }
+
+    function isValidDrillCurve(curve, durationMinutes) {
+      return curve is list
+        && curve.size() == durationMinutes
+        && curve.size() >= 1
+        && curve.size() <= 180
+        && curve[0] is int
+        && curve[0] >= 0
+        && curve[0] <= 100
+        && curve[curve.size() - 1] is int
+        && curve[curve.size() - 1] >= 0
+        && curve[curve.size() - 1] <= 100;
+    }
+
+    function isValidDrillScenario(data) {
+      return data.keys().hasOnly([
+          'name', 'announcementText', 'durationMinutes', 'curve', 'curvePreset',
+          'seed', 'exceptions', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+        ])
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 200
+        && data.announcementText is string
+        && data.announcementText.size() <= 4000
+        && data.durationMinutes is int
+        && data.durationMinutes >= 1
+        && data.durationMinutes <= 180
+        && isValidDrillCurve(data.curve, data.durationMinutes)
+        && data.curvePreset in ['even', 'front-loaded', 'back-loaded', 'custom']
+        && data.seed is int
+        && data.seed > 0
+        && drillExceptionsValid(data.exceptions)
+        && data.createdBy is string
+        && data.createdBy.size() > 0
+        && data.createdBy.size() <= 200
+        && data.updatedBy is string
+        && data.updatedBy.size() > 0
+        && data.updatedBy.size() <= 200
+        && data.createdAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidDrillCounts(counts) {
+      return counts is map
+        && counts.keys().hasOnly(['ok', 'help', 'unsure'])
+        && counts.ok is int
+        && counts.ok >= 0
+        && counts.help is int
+        && counts.help >= 0
+        && counts.unsure is int
+        && counts.unsure >= 0;
+    }
+
+    function isValidDrillRun(data) {
+      return data.keys().hasOnly([
+          'scenarioId', 'scenarioName', 'seed', 'durationMinutes', 'status',
+          'startedAt', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy',
+          'totalResidents', 'bucketCount', 'counts', 'pausedMs', 'pausedAt', 'finishedAt',
+          'pauseReason', 'finishReason'
+        ])
+        && data.scenarioId is string
+        && data.scenarioId.size() > 0
+        && data.scenarioId.size() <= 200
+        && data.scenarioName is string
+        && data.scenarioName.size() > 0
+        && data.scenarioName.size() <= 200
+        && data.seed is int
+        && data.seed > 0
+        && data.durationMinutes is int
+        && data.durationMinutes >= 1
+        && data.durationMinutes <= 180
+        && data.status in ['running', 'paused', 'finished']
+        && data.startedAt is timestamp
+        && data.createdAt is timestamp
+        && data.updatedAt == request.time
+        && data.createdBy is string
+        && data.createdBy.size() > 0
+        && data.createdBy.size() <= 200
+        && data.updatedBy is string
+        && data.updatedBy.size() > 0
+        && data.updatedBy.size() <= 200
+        && data.totalResidents is int
+        && data.totalResidents >= 0
+        && data.bucketCount is int
+        && data.bucketCount >= 0
+        && isValidDrillCounts(data.counts)
+        && (!('pausedMs' in data) || (data.pausedMs is int && data.pausedMs >= 0))
+        && (!('pausedAt' in data) || data.pausedAt is timestamp)
+        && (!('finishedAt' in data) || data.finishedAt is timestamp)
+        && (!('pauseReason' in data) || (data.pauseReason is string && data.pauseReason.size() <= 80))
+        && (!('finishReason' in data) || (data.finishReason is string && data.finishReason.size() <= 80));
+    }
+
+    function drillRunPlanUnchanged() {
+      return request.resource.data.scenarioId == resource.data.scenarioId
+        && request.resource.data.scenarioName == resource.data.scenarioName
+        && request.resource.data.seed == resource.data.seed
+        && request.resource.data.durationMinutes == resource.data.durationMinutes
+        && request.resource.data.startedAt == resource.data.startedAt
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.totalResidents == resource.data.totalResidents
+        && request.resource.data.bucketCount == resource.data.bucketCount
+        && request.resource.data.counts == resource.data.counts;
+    }
+
+    function drillRunTransitionOk() {
+      return (resource.data.status == 'running' && request.resource.data.status in ['paused', 'finished'])
+        || (resource.data.status == 'paused' && request.resource.data.status in ['running', 'finished']);
+    }
+
+    function isValidDrillBucket(data) {
+      return data.keys().hasOnly(['minuteIndex', 'status', 'residentIds', 'applied', 'scenarioId', 'appliedAt'])
+        && data.minuteIndex is int
+        && data.minuteIndex >= 0
+        && data.minuteIndex < 180
+        && data.status in ['כולם בסדר', 'זקוקים לסיוע', 'לא בטוח']
+        && data.residentIds is list
+        && data.residentIds.size() > 0
+        && data.residentIds.size() <= 850
+        && data.residentIds[0] is string
+        && data.residentIds[0].size() > 0
+        && data.residentIds[0].size() <= 200
+        && data.applied is bool
+        && data.scenarioId is string
+        && data.scenarioId.size() > 0
+        && data.scenarioId.size() <= 200
+        && (!('appliedAt' in data) || data.appliedAt is timestamp);
+    }
+
+    match /drillScenarios/{scenarioId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && isValidDrillScenario(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+      allow update: if isAdmin()
+        && isValidDrillScenario(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.seed == resource.data.seed;
+      allow delete: if isAdmin();
+    }
+
+    match /drillRuns/{runId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && isValidDrillRun(request.resource.data)
+        && request.resource.data.status == 'running'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.startedAt == request.time;
+      allow update: if isAdmin()
+        && isValidDrillRun(request.resource.data)
+        && drillRunPlanUnchanged()
+        && drillRunTransitionOk();
+      allow delete: if isAdmin();
+
+      match /buckets/{bucketId} {
+        allow read: if isAdmin();
+        allow create: if isAdmin()
+          && isValidDrillBucket(request.resource.data)
+          && request.resource.data.applied == false;
+        allow delete: if isAdmin();
+      }
+    }
+
   }
 }
