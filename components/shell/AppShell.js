@@ -90,12 +90,93 @@ function HeaderResidentSearch() {
   );
 }
 
+function NavIcon({ children }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="block h-[18px] w-[18px] shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
 const NAV = [
-  { href: "/status", label: "תמונת מצב", icon: "◎" },
-  { href: "/residents", label: "תושבים", icon: "▣" },
-  { href: "/map", label: "מפה", icon: "⌖" },
-  { href: "/tasks", label: "משימות", icon: "☐" },
-  { href: "/events", label: "יומן", icon: "≡" },
+  {
+    href: "/status",
+    label: "תמונת מצב",
+    icon: (
+      <NavIcon>
+        <rect x="3.4" y="3.4" width="17.2" height="17.2" rx="3.4" />
+        <circle cx="8" cy="12" r="1.7" fill="#ef4444" stroke="none" />
+        <circle cx="12" cy="12" r="1.7" fill="#eab308" stroke="none" />
+        <circle cx="16" cy="12" r="1.7" fill="#22c55e" stroke="none" />
+      </NavIcon>
+    ),
+  },
+  {
+    href: "/residents",
+    label: "תושבים",
+    icon: (
+      <NavIcon>
+        <path d="M3.8 11.2 12 4.2 20.2 11.2" />
+        <path d="M6.4 10.5V20.2" />
+        <path d="M17.6 10.5V20.2" />
+        <circle cx="9.35" cy="14.7" r="1.25" />
+        <path d="M7.55 20.2c.3-1.75 1.1-2.55 1.8-2.55s1.5.8 1.8 2.55" />
+        <circle cx="14.65" cy="14.7" r="1.25" />
+        <path d="M12.85 20.2c.3-1.75 1.1-2.55 1.8-2.55s1.5.8 1.8 2.55" />
+      </NavIcon>
+    ),
+  },
+  {
+    href: "/map",
+    label: "מפה",
+    icon: (
+      <NavIcon>
+        <path d="M3.6 7 8.7 5.1 15.3 7.5 20.4 5.6v12.1l-5.1 1.9-6.6-2.4L3.6 19.1Z" />
+        <path d="M8.7 5.1v12.1" />
+        <path d="M15.3 7.5v12.1" />
+        <path
+          d="M12 8.2c-1.35 0-2.4 1.05-2.4 2.35 0 1.75 2.4 4.25 2.4 4.25s2.4-2.5 2.4-4.25c0-1.3-1.05-2.35-2.4-2.35z"
+          fill="currentColor"
+          stroke="none"
+        />
+      </NavIcon>
+    ),
+  },
+  {
+    href: "/tasks",
+    label: "משימות",
+    icon: (
+      <NavIcon>
+        <rect x="6" y="5" width="12" height="15.2" rx="2" />
+        <path d="M9.2 5V3.8A1.2 1.2 0 0 1 10.4 2.6h3.2A1.2 1.2 0 0 1 14.8 3.8V5" />
+        <path d="M8.7 12.3 10.5 14.1 14.3 10.2" />
+        <path d="M8.7 16.8h6.6" />
+      </NavIcon>
+    ),
+  },
+  {
+    href: "/events",
+    label: "יומן",
+    icon: (
+      <NavIcon>
+        <rect x="4" y="5.6" width="16" height="14.6" rx="2" />
+        <path d="M4 9.5h16" />
+        <path d="M8 3.4v2.8" />
+        <path d="M16 3.4v2.8" />
+        <path d="M8 13h8" />
+        <path d="M8 16.2h5.2" />
+      </NavIcon>
+    ),
+  },
 ];
 
 function orderNav(items, savedHrefs) {
@@ -135,7 +216,7 @@ function SortableNavRow({ item, active, counts }) {
           active ? "v2-nav-on" : "hover:bg-[var(--v2-bg)]"
         }`}
       >
-        <span className="opacity-70">{item.icon}</span>
+        <span className="inline-flex shrink-0 opacity-70">{item.icon}</span>
         {item.label}
         {item.href === "/residents" && counts.needHelp > 0 && (
           <span className="v2-chip ms-auto rounded-full px-1.5 text-[10px]">{counts.needHelp}</span>
@@ -435,7 +516,7 @@ export default function AppShell({ children }) {
 
         <div className="flex min-h-0 flex-1">
           <aside className="sticky top-14 hidden h-[calc(100dvh-56px)] w-[220px] shrink-0 border-l border-[var(--v2-line)] bg-white p-2 md:block">
-            <div className="px-2 pb-1 pt-2 text-[11px] font-medium text-[var(--v2-muted)]">עבודה יומית · גרור לסידור</div>
+            <div className="px-2 pb-1 pt-2 text-[11px] font-medium text-[var(--v2-muted)]">תפריט - גרור לסידור</div>
             <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis, restrictToParentElement]} onDragEnd={onNavDragEnd}>
               <SortableContext items={navItems.map((item) => item.href)} strategy={verticalListSortingStrategy}>
                 {navItems.map((item) => (
