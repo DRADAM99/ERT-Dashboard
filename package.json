@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "my-crm-pwa",
-  "version": "5.4.0",
+  "version": "9.0",
   "private": true,
   "scripts": {
     "dev": "next dev",

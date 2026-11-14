@@ -36,7 +36,7 @@ import "@fontsource/rubik/500.css";
 import "@fontsource/rubik/700.css";
 import "@/app/v2.css";
 
-const APP_VERSION = "Version 8.65";
+const APP_VERSION = "Version 9.0";
 
 function HeaderResidentSearch() {
   const router = useRouter();
